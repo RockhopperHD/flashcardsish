@@ -1,0 +1,5 @@
+{
+  "name": "Flashcard Trainer Pro",
+  "description": "A premium, dark-mode flashcard application with local session persistence, smart string matching, and support for historical dates.",
+  "requestFramePermissions": []
+}
