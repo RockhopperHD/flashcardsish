@@ -202,8 +202,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     <div className="max-w-4xl mx-auto w-full pb-20 pt-8 animate-in fade-in duration-700">
       
       {/* Header */}
-      <div className="text-left mb-10">
-         <div className="text-accent font-mono text-sm mb-1 tracking-widest uppercase opacity-80">{currentDate}</div>
+      <div className={clsx("mb-10", mode === 'builder' ? "text-center" : "text-left")}>
+         {mode === 'paste' && (
+             <div className="text-accent font-mono text-sm mb-1 tracking-widest uppercase opacity-80">{currentDate}</div>
+         )}
          <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
             {mode === 'paste' ? greeting : 'List Builder'}
          </h1>

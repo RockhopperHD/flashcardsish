@@ -6,7 +6,7 @@ import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart } from 'lucide-react';
 import clsx from 'clsx';
 
 const STORAGE_KEY = 'flashcard-sessions-v2';
@@ -26,8 +26,8 @@ const SettingsModal: React.FC<{
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+      <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-text">Settings</h2>
           <button onClick={onClose} className="text-muted hover:text-text">
@@ -74,8 +74,8 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen,
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 max-h-[80vh] overflow-y-auto custom-scrollbar">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+      <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 max-h-[80vh] overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-text">How to Use</h2>
           <button onClick={onClose} className="text-muted hover:text-text">
@@ -110,6 +110,14 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen,
                  <li><kbd className="bg-panel-2 border border-outline px-2 py-0.5 rounded text-xs">O</kbd> : Override Result</li>
                  <li>Click a mastery counter (top right) twice to move all cards in that category to the category before it.</li>
                  <li>You can name sets by clicking the title on the top. You can also click the timer to hide it.</li>
+              </ul>
+           </div>
+
+           <div>
+              <h3 className="text-lg font-bold text-accent mb-2">Learn More</h3>
+              <ul className="list-disc pl-5 space-y-2 text-muted">
+                 <li>This was made by <a href="https://owenwhelan.com" target="_blank" rel="noopener noreferrer" className="text-text underline decoration-accent/50 hover:decoration-accent transition-colors">Owen Whelan</a>.</li>
+                 <li>You can download the code, make changes, do whatever by checking out the <a href="https://github.com/RockhopperHD/flashcardsish" target="_blank" rel="noopener noreferrer" className="text-text underline decoration-accent/50 hover:decoration-accent transition-colors">GitHub repo</a>.</li>
               </ul>
            </div>
         </div>
@@ -442,7 +450,9 @@ const App: React.FC = () => {
        </main>
 
        <footer className="py-8 text-center text-muted opacity-60 text-sm border-t border-outline bg-panel-2/50">
-          <p>&copy; {new Date().getFullYear()} Flashcard Trainer Pro. Keep learning.</p>
+          <div className="flex items-center justify-center gap-1.5">
+            Made with <Heart size={14} className="text-red fill-red" /> and vibe coding by Owen Whelan.
+          </div>
        </footer>
     </div>
   );
