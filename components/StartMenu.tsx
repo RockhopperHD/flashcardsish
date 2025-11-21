@@ -24,12 +24,13 @@ const BUILDER_STORAGE_KEY = 'flashcard-builder-rows';
 
 const GREETINGS = [
   "What are we learning next?",
-  "Time to expand your mind.",
-  "Ready to ace this?",
-  "Let's get to work.",
-  "Focus mode: On.",
-  "Knowledge awaits.",
-  "Sharpen your skills."
+  "Who's excited to study?!",
+  "You got this!",
+  "Step 1 is studying.",
+  "Lock in.",
+  "One more set?",
+  "What's up?",
+  "All you."
 ];
 
 // Tooltip Component

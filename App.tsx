@@ -373,7 +373,7 @@ const App: React.FC = () => {
                      </span>
                   )
                ) : (
-                  <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcard Trainer</div>
+                  <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcardsish</div>
                )}
             </div>
 
