@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings } from '../types';
 import { checkAnswer, renderMarkdown } from '../utils';
+import { ArrowLeft } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -9,9 +10,10 @@ interface GameProps {
   onUpdateSet: (updatedSet: CardSet) => void;
   onFinish: () => void;
   settings: Settings;
+  onExit: () => void;
 }
 
-export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings }) => {
+export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit }) => {
   // Game State
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [inputTerm, setInputTerm] = useState('');
@@ -286,38 +288,52 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
   return (
     <div className="w-full max-w-3xl mx-auto pb-20 pt-0">
       
-      {/* Mastery Header */}
-      <div className="flex justify-end gap-3 mb-4 select-none">
-        {[0, 1, 2].map(level => (
-          <div key={level} className="relative">
-             {confirmResetLevel === level && (
-                <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
-                   CONFIRM?
-                </div>
-             )}
-             <div 
-               onClick={() => {
-                  if (confirmResetLevel === level) demoteLevel(level);
-                  else if (counts[level] > 0) {
-                     setConfirmResetLevel(level);
-                     setTimeout(() => setConfirmResetLevel(null), 3000);
-                  }
-               }}
-               className={clsx(
-                  "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
-                  "bg-panel border-outline",
-                  counts[level] > 0 && "hover:border-accent"
-               )}
-             >
-                <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
-                <div className="flex gap-1">
-                   {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
-                   {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
-                   {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
-                </div>
+      {/* Top Controls Row */}
+      <div className="flex justify-between items-end mb-4 select-none">
+          {/* Back Button (Flashcards Mode) */}
+          <button 
+             onClick={onExit}
+             className="flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors mb-2"
+           >
+             <div className="p-2 rounded-full border border-outline hover:bg-panel transition-colors">
+                <ArrowLeft size={16} />
              </div>
+             Back
+           </button>
+
+          {/* Mastery Stats */}
+          <div className="flex gap-3">
+            {[0, 1, 2].map(level => (
+            <div key={level} className="relative">
+                {confirmResetLevel === level && (
+                    <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
+                    CONFIRM?
+                    </div>
+                )}
+                <div 
+                onClick={() => {
+                    if (confirmResetLevel === level) demoteLevel(level);
+                    else if (counts[level] > 0) {
+                        setConfirmResetLevel(level);
+                        setTimeout(() => setConfirmResetLevel(null), 3000);
+                    }
+                }}
+                className={clsx(
+                    "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
+                    "bg-panel border-outline",
+                    counts[level] > 0 && "hover:border-accent"
+                )}
+                >
+                    <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
+                    <div className="flex gap-1">
+                    {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
+                    {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
+                    {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
+                    </div>
+                </div>
+            </div>
+            ))}
           </div>
-        ))}
       </div>
 
       {/* Main Card Area */}

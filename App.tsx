@@ -1,15 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CardSet, GameState, Settings } from './types';
+import { CardSet, GameState, Settings, Card } from './types';
 import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen } from 'lucide-react';
 import clsx from 'clsx';
 
-const STORAGE_KEY = 'flashcard-sessions-v2';
+const LIBRARY_KEY = 'flashcard-library-v3';
+const SESSIONS_KEY = 'flashcard-sessions-v3';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 
 // Settings Modal Component
@@ -69,6 +70,56 @@ const SettingsModal: React.FC<{
   );
 };
 
+// Set Preview Modal
+const SetPreviewModal: React.FC<{
+    set: CardSet | null;
+    onClose: () => void;
+    onUpdateSet: (s: CardSet) => void;
+    mode: 'library' | 'session';
+}> = ({ set, onClose, onUpdateSet, mode }) => {
+    if (!set) return null;
+
+    const toggleStar = (cardId: string) => {
+        const newCards = set.cards.map(c => c.id === cardId ? { ...c, star: !c.star } : c);
+        onUpdateSet({ ...set, cards: newCards });
+    };
+
+    return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+      <div className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="p-6 border-b border-outline flex justify-between items-center bg-panel-2 rounded-t-2xl">
+           <div>
+               <h2 className="text-xl font-bold text-text">{set.name}</h2>
+               <div className="text-sm text-muted">{set.cards.length} cards &bull; {mode === 'library' ? 'Template' : 'Active Session'}</div>
+           </div>
+           <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-3">
+            {set.cards.map((card, i) => (
+                <div key={card.id} className="flex gap-4 p-4 border border-outline rounded-xl bg-panel items-start">
+                    <div className="text-xs font-mono text-muted pt-1 w-6">{i+1}</div>
+                    <div className="flex-1">
+                        <div className="font-bold text-text mb-1">{card.term.join(' / ')}</div>
+                        <div className="text-sm text-muted line-clamp-2">{card.content}</div>
+                        {card.year && <div className="text-xs text-accent mt-1">{card.year}</div>}
+                    </div>
+                    {mode === 'session' && (
+                      <div className="pt-1 flex flex-col items-center gap-1">
+                         <div className={clsx("w-2 h-2 rounded-full", card.mastery >= 1 ? "bg-green" : "bg-outline")}></div>
+                         <div className={clsx("w-2 h-2 rounded-full", card.mastery >= 2 ? "bg-green" : "bg-outline")}></div>
+                      </div>
+                    )}
+                    <button onClick={() => toggleStar(card.id)} className="pt-1">
+                        {card.star ? <span className="text-yellow text-lg">★</span> : <span className="text-outline hover:text-muted text-lg">☆</span>}
+                    </button>
+                </div>
+            ))}
+        </div>
+      </div>
+    </div>
+    );
+};
+
 // Info Modal Component
 const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
@@ -87,37 +138,27 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen,
            <div>
               <h3 className="text-lg font-bold text-accent mb-2">Getting Started</h3>
               <ul className="list-disc pl-5 space-y-2 text-muted">
-                 <li>You can write your cards on a word processor (like Google Docs) and paste them in, or use the list builder.</li>
-                 <li>Manually typed cards follow this format: <code>Term / Definition /// Year</code>.</li>
-                 <li>The year field is optional.</li>
-                 <li>Cards support importing, if you'd like to change devices.</li>
+                 <li>Create a new set in the builder or import a file.</li>
+                 <li>This saves it to your <b>Library</b>.</li>
+                 <li>Raw text format: <code>Term / Definition /// Year</code>.</li>
+                 <li>Separate cards with <code>&&&</code> on a new line.</li>
               </ul>
            </div>
 
            <div>
               <h3 className="text-lg font-bold text-accent mb-2">Study Mode</h3>
               <ul className="list-disc pl-5 space-y-2 text-muted">
-                 <li>Type your answer and hit <b>Enter</b>, or click the button.</li>
-                 <li>If you disagree with how you were evaluated, you can click the override button to have it marked the opposite way.</li>
-                 <li>Cards move up in mastery levels, maximum mastery being getting it right twice.</li>
+                 <li>Click "Play" on a set to start a new <b>Session</b>.</li>
+                 <li>Sessions are saved separately from your Library templates.</li>
+                 <li>Get it right twice to master a card.</li>
               </ul>
            </div>
 
            <div>
-              <h3 className="text-lg font-bold text-accent mb-2">Shortcuts & Gestures</h3>
+              <h3 className="text-lg font-bold text-accent mb-2">About</h3>
               <ul className="list-disc pl-5 space-y-2 text-muted">
-                 <li><kbd className="bg-panel-2 border border-outline px-2 py-0.5 rounded text-xs">Enter</kbd> : Submit / Continue</li>
-                 <li><kbd className="bg-panel-2 border border-outline px-2 py-0.5 rounded text-xs">O</kbd> : Override Result</li>
-                 <li>Click a mastery counter (top right) twice to move all cards in that category to the category before it.</li>
-                 <li>You can name sets by clicking the title on the top. You can also click the timer to hide it.</li>
-              </ul>
-           </div>
-
-           <div>
-              <h3 className="text-lg font-bold text-accent mb-2">Learn More</h3>
-              <ul className="list-disc pl-5 space-y-2 text-muted">
-                 <li>This was made by <a href="https://owenwhelan.com" target="_blank" rel="noopener noreferrer" className="text-text underline decoration-accent/50 hover:decoration-accent transition-colors">Owen Whelan</a>.</li>
-                 <li>You can download the code, make changes, do whatever by checking out the <a href="https://github.com/RockhopperHD/flashcardsish" target="_blank" rel="noopener noreferrer" className="text-text underline decoration-accent/50 hover:decoration-accent transition-colors">GitHub repo</a>.</li>
+                 <li>This project was made by <a href="https://www.owenwhelan.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">Owen Whelan</a>.</li>
+                 <li>You can modify, hack, and check out the code at the <a href="https://github.com/RockhopperHD/flashcardsish" target="_blank" rel="noreferrer" className="text-accent hover:underline">GitHub repo</a>.</li>
               </ul>
            </div>
         </div>
@@ -128,16 +169,22 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen,
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
-  const [savedSets, setSavedSets] = useState<CardSet[]>([]);
-  const [activeSet, setActiveSet] = useState<CardSet | null>(null);
+  
+  const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
+  const [activeSessions, setActiveSessions] = useState<CardSet[]>([]);
+  const [activeSession, setActiveSession] = useState<CardSet | null>(null);
+
   const [settings, setSettings] = useState<Settings>({ 
     strictSpelling: false, 
     retypeOnMistake: false,
     darkMode: true,
     starredOnly: false
   });
+  
+  // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [previewSet, setPreviewSet] = useState<{set: CardSet, mode: 'library' | 'session'} | null>(null);
   
   // Timer State
   const [timerStart, setTimerStart] = useState<number>(0);
@@ -150,19 +197,24 @@ const App: React.FC = () => {
 
   // Load from local storage
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+    const savedLibrary = localStorage.getItem(LIBRARY_KEY);
+    const savedSessions = localStorage.getItem(SESSIONS_KEY);
+
+    if (savedLibrary) {
       try {
-        setSavedSets(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to load saves", e);
-      }
+        setLibrarySets(JSON.parse(savedLibrary));
+      } catch (e) { console.error(e); }
     }
+    if (savedSessions) {
+      try {
+        setActiveSessions(JSON.parse(savedSessions));
+      } catch (e) { console.error(e); }
+    }
+
     const savedSettings = localStorage.getItem(SETTINGS_KEY);
     if (savedSettings) {
       try {
          const s = JSON.parse(savedSettings);
-         // Ensure defaults for new settings
          setSettings({
             strictSpelling: s.strictSpelling ?? false,
             retypeOnMistake: s.retypeOnMistake ?? false,
@@ -173,11 +225,14 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Save Effects
   useEffect(() => {
-    if (savedSets.length > 0) {
-       localStorage.setItem(STORAGE_KEY, JSON.stringify(savedSets));
-    }
-  }, [savedSets]);
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(librarySets));
+  }, [librarySets]);
+
+  useEffect(() => {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(activeSessions));
+  }, [activeSessions]);
 
   useEffect(() => {
     if (settings.darkMode) {
@@ -216,30 +271,65 @@ const App: React.FC = () => {
      }
   };
 
-  const handleStartSet = (set: CardSet) => {
-    if (!savedSets.find(s => s.id === set.id)) {
-      setSavedSets(prev => [set, ...prev]);
-    } else {
-      // Move to top
-      setSavedSets(prev => [set, ...prev.filter(s => s.id !== set.id)]);
-    }
-    setActiveSet(set);
+  // --- ACTIONS ---
+
+  const handleStartFromLibrary = (libSet: CardSet) => {
+    // Create a new session based on the library set
+    const newSession: CardSet = {
+        ...libSet,
+        id: generateId(), // New ID for session
+        name: libSet.name,
+        cards: libSet.cards.map(c => ({ ...c, mastery: 0 })), // Reset mastery
+        elapsedTime: 0,
+        topStreak: 0,
+        lastPlayed: Date.now()
+    };
+    
+    setActiveSessions(prev => [newSession, ...prev]);
+    setActiveSession(newSession);
+    
     setTimerStart(Date.now());
     setTimerNow(Date.now());
     setIsTimerPaused(false);
     setGameState(GameState.PLAYING);
   };
 
-  const handleDeleteSet = (id: string) => {
-     const newSets = savedSets.filter(s => s.id !== id);
-     setSavedSets(newSets);
-     if (newSets.length === 0) localStorage.removeItem(STORAGE_KEY);
-     else localStorage.setItem(STORAGE_KEY, JSON.stringify(newSets));
+  const handleResumeSession = (session: CardSet) => {
+      setActiveSession(session);
+      // Move to top of list
+      setActiveSessions(prev => [session, ...prev.filter(s => s.id !== session.id)]);
+      
+      setTimerStart(Date.now());
+      setTimerNow(Date.now());
+      setIsTimerPaused(false);
+      setGameState(GameState.PLAYING);
   };
 
-  const handleUpdateSet = (updatedSet: CardSet) => {
+  const handleSaveToLibrary = (set: CardSet) => {
+     // Check if updating existing
+     const existingIdx = librarySets.findIndex(s => s.id === set.id);
+     if (existingIdx !== -1) {
+         setLibrarySets(prev => prev.map(s => s.id === set.id ? set : s));
+     } else {
+         setLibrarySets(prev => [set, ...prev]);
+     }
+  };
+  
+  const handleUpdateLibrarySet = (updatedSet: CardSet) => {
+      setLibrarySets(prev => prev.map(s => s.id === updatedSet.id ? updatedSet : s));
+  };
+
+  const handleDeleteLibrarySet = (id: string) => {
+     setLibrarySets(prev => prev.filter(s => s.id !== id));
+  };
+
+  const handleDeleteSession = (id: string) => {
+     setActiveSessions(prev => prev.filter(s => s.id !== id));
+  };
+
+  const handleUpdateActiveSession = (updatedSession: CardSet) => {
     const now = Date.now();
-    let newElapsedTime = updatedSet.elapsedTime;
+    let newElapsedTime = updatedSession.elapsedTime;
 
     if (!isTimerPaused) {
         const delta = now - timerStart;
@@ -247,70 +337,99 @@ const App: React.FC = () => {
         newElapsedTime += delta;
     }
 
-    const newSetData = {
-       ...updatedSet,
+    const newSessionData = {
+       ...updatedSession,
        elapsedTime: newElapsedTime,
        lastPlayed: now
     };
 
-    setActiveSet(newSetData);
-    setSavedSets(prev => prev.map(s => s.id === updatedSet.id ? newSetData : s));
+    setActiveSession(newSessionData);
+    setActiveSessions(prev => prev.map(s => s.id === updatedSession.id ? newSessionData : s));
+  };
+  
+  const handleUpdatePreview = (updatedSet: CardSet) => {
+      if (!previewSet) return;
+      setPreviewSet({ ...previewSet, set: updatedSet });
+      if (previewSet.mode === 'library') {
+          handleUpdateLibrarySet(updatedSet);
+      } else {
+          setActiveSessions(prev => prev.map(s => s.id === updatedSet.id ? updatedSet : s));
+      }
   };
 
-  const handleRenameSet = (newName: string) => {
-     if (activeSet) {
-        const updated = { ...activeSet, name: newName };
-        setActiveSet(updated);
-        setSavedSets(prev => prev.map(s => s.id === activeSet.id ? updated : s));
+  const handleRenameSession = (newName: string) => {
+     if (activeSession) {
+        const updated = { ...activeSession, name: newName };
+        setActiveSession(updated);
+        setActiveSessions(prev => prev.map(s => s.id === activeSession.id ? updated : s));
      }
      setIsRenaming(false);
   };
 
   const handleFinish = () => {
+    if (activeSession) {
+         const now = Date.now();
+         const delta = isTimerPaused ? 0 : (now - timerStart);
+         const finalSet = {
+             ...activeSession,
+             elapsedTime: activeSession.elapsedTime + delta,
+             lastPlayed: now
+         };
+         setActiveSession(finalSet);
+         setActiveSessions(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+    }
     setGameState(GameState.WIN);
   };
 
   const handleBackToMenu = () => {
-     // Critical: Save current progress including time before leaving
-     if (activeSet && gameState === GameState.PLAYING) {
+     if (activeSession && gameState === GameState.PLAYING) {
          const now = Date.now();
          const delta = isTimerPaused ? 0 : (now - timerStart);
          const finalSet = {
-             ...activeSet,
-             elapsedTime: activeSet.elapsedTime + delta,
+             ...activeSession,
+             elapsedTime: activeSession.elapsedTime + delta,
              lastPlayed: now
          };
-         
-         // Update saved sets immediately
-         setSavedSets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+         setActiveSessions(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
      }
-
      setGameState(GameState.MENU);
-     setActiveSet(null);
+     setActiveSession(null);
      setIsRenaming(false);
   };
 
-  const handleSaveStarred = () => {
-      if (!activeSet) return;
-      const starred = activeSet.cards.filter(c => c.star);
+  const handleRestart = () => {
+      if (!activeSession) return;
       
-      if (starred.length === 0) return;
-
-      const newSet: CardSet = {
-        id: generateId(),
-        name: `${activeSet.name} (Starred)`,
-        cards: starred.map(c => ({
-          ...c,
-          id: generateId(), // New ID for the card copy
-          mastery: 0 // Reset mastery
-        })),
-        lastPlayed: Date.now(),
-        elapsedTime: 0,
-        topStreak: 0
+      const resetSession = {
+          ...activeSession,
+          elapsedTime: 0,
+          topStreak: 0,
+          cards: activeSession.cards.map(c => ({ ...c, mastery: 0 }))
       };
+      
+      setActiveSession(resetSession);
+      setActiveSessions(prev => prev.map(s => s.id === resetSession.id ? resetSession : s));
+      setTimerStart(Date.now());
+      setTimerNow(Date.now());
+      setIsTimerPaused(false);
+      setGameState(GameState.PLAYING);
+  };
 
-      setSavedSets(prev => [newSet, ...prev]);
-      alert(`Saved new set "${newSet.name}" with ${starred.length} cards!`);
+  const handleSaveStarredToLibrary = () => {
+    if (!activeSession) return;
+    const starred = activeSession.cards.filter(c => c.star);
+    if (starred.length === 0) return;
+
+    const newSet: CardSet = {
+      id: generateId(),
+      name: `${activeSession.name} (Starred)`,
+      cards: starred.map(c => ({...c, mastery: 0})),
+      lastPlayed: Date.now(),
+      elapsedTime: 0,
+      topStreak: 0
+    };
+    handleSaveToLibrary(newSet);
+    alert("Saved starred cards as a new set in Library!");
   };
 
   return (
@@ -323,6 +442,13 @@ const App: React.FC = () => {
           settings={settings}
           onUpdate={updateSettings}
        />
+       
+       <SetPreviewModal
+          set={previewSet?.set || null}
+          mode={previewSet?.mode || 'library'}
+          onClose={() => setPreviewSet(null)}
+          onUpdateSet={handleUpdatePreview}
+       />
 
        <InfoModal
           isOpen={isInfoOpen}
@@ -331,7 +457,7 @@ const App: React.FC = () => {
 
        {/* Top Bar */}
        <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-outline px-6 py-4">
-         <div className="max-w-4xl mx-auto flex items-center justify-between">
+         <div className="max-w-5xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-4 w-1/3">
                <button
                   onClick={() => setIsInfoOpen(true)}
@@ -340,7 +466,7 @@ const App: React.FC = () => {
                >
                   <HelpCircle size={20} />
                </button>
-               {gameState !== GameState.MENU && (
+               {gameState !== GameState.MENU && gameState !== GameState.PLAYING && (
                   <button 
                     onClick={handleBackToMenu}
                     className="group flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
@@ -354,13 +480,13 @@ const App: React.FC = () => {
             </div>
 
             <div className="w-1/3 flex justify-center">
-               {gameState === GameState.PLAYING && activeSet ? (
+               {gameState === GameState.PLAYING && activeSession ? (
                   isRenaming ? (
                      <input 
                         autoFocus
-                        defaultValue={activeSet.name}
-                        onBlur={(e) => handleRenameSet(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleRenameSet(e.currentTarget.value)}
+                        defaultValue={activeSession.name}
+                        onBlur={(e) => handleRenameSession(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleRenameSession(e.currentTarget.value)}
                         className="bg-transparent border-b border-accent text-center font-bold text-text focus:outline-none pb-1 min-w-[200px]"
                      />
                   ) : (
@@ -369,16 +495,16 @@ const App: React.FC = () => {
                         className="font-bold text-text opacity-50 hover:opacity-100 cursor-pointer hover:text-accent transition-all truncate max-w-[250px]"
                         title="Click to rename"
                      >
-                        {activeSet.name}
+                        {activeSession.name}
                      </span>
                   )
                ) : (
-                  <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcardsish</div>
+                  <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcard Trainer</div>
                )}
             </div>
 
             <div className="flex justify-end w-1/3 items-center gap-4">
-               {gameState === GameState.PLAYING && activeSet && (
+               {gameState === GameState.PLAYING && activeSession && (
                   <button 
                     onClick={toggleTimer}
                     className={clsx(
@@ -387,63 +513,80 @@ const App: React.FC = () => {
                     )}
                   >
                      <Clock size={18} />
-                     <span className="hidden sm:inline">{isTimerPaused ? "PAUSED" : fmtTime(activeSet.elapsedTime + (timerNow - timerStart))}</span>
+                     <span className="hidden sm:inline">{isTimerPaused ? "PAUSED" : fmtTime(activeSession.elapsedTime + (timerNow - timerStart))}</span>
                   </button>
                )}
 
-               <button 
-                 onClick={() => setIsSettingsOpen(true)}
-                 className="p-2 text-muted hover:text-text transition-colors"
-               >
-                  <SettingsIcon size={20} />
-               </button>
+               {gameState === GameState.PLAYING && (
+                    <button 
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="p-2 text-muted hover:text-text transition-colors"
+                    >
+                        <SettingsIcon size={20} />
+                    </button>
+               )}
             </div>
          </div>
        </header>
 
-       <main className="flex-grow p-6 md:p-10 max-w-5xl mx-auto w-full">
+       <main className="flex-grow p-6 md:p-8 max-w-5xl mx-auto w-full">
           {gameState === GameState.MENU && (
              <StartMenu 
-               savedSets={savedSets} 
-               onStartSet={handleStartSet} 
-               onDeleteSet={handleDeleteSet}
+               librarySets={librarySets}
+               activeSessions={activeSessions}
+               onStartFromLibrary={handleStartFromLibrary}
+               onResumeSession={handleResumeSession}
+               onSaveToLibrary={handleSaveToLibrary}
+               onDeleteLibrarySet={handleDeleteLibrarySet}
+               onDeleteSession={handleDeleteSession}
+               onViewPreview={setPreviewSet}
                settings={settings}
                onUpdateSettings={updateSettings}
              />
           )}
 
-          {gameState === GameState.PLAYING && activeSet && (
+          {gameState === GameState.PLAYING && activeSession && (
              <Game 
-               set={activeSet} 
-               onUpdateSet={handleUpdateSet}
+               set={activeSession} 
+               onUpdateSet={handleUpdateActiveSession}
                onFinish={handleFinish}
                settings={settings}
+               onExit={handleBackToMenu}
              />
           )}
 
           {gameState === GameState.WIN && (
              <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-bg/95 backdrop-blur-xl animate-in fade-in duration-500">
-                <h2 className="text-5xl font-bold text-accent mb-4 drop-shadow-[0_0_35px_rgba(208,164,94,0.4)]">
-                   Session Complete
-                </h2>
-                <p className="text-xl text-muted mb-12">Excellent work.</p>
+                <div className="text-center mb-10">
+                    <h2 className="text-5xl font-bold text-accent mb-4 drop-shadow-[0_0_35px_rgba(208,164,94,0.4)]">
+                       Session Complete
+                    </h2>
+                    <p className="text-xl text-muted">Excellent work.</p>
+                </div>
                 
-                <div className="flex gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-lg px-6">
                   <button 
-                    onClick={handleBackToMenu}
-                    className="bg-text text-bg px-8 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-transform shadow-2xl"
+                    onClick={handleRestart}
+                    className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-all shadow-sm flex items-center justify-center gap-2"
                   >
-                    Back to Menu
+                    <RotateCcw size={20} /> Restart Session
                   </button>
 
-                  {activeSet && activeSet.cards.some(c => c.star) && (
+                  {activeSession && activeSession.cards.some(c => c.star) && (
                       <button 
-                          onClick={handleSaveStarred}
-                          className="bg-panel-2 border border-outline text-text px-8 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-lg flex items-center gap-2"
+                          onClick={handleSaveStarredToLibrary}
+                          className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-sm flex items-center justify-center gap-2"
                       >
-                          <div className="text-yellow">★</div> Save Starred
+                          <span className="text-yellow text-xl">★</span> Save Starred
                       </button>
                   )}
+                  
+                  <button 
+                    onClick={handleBackToMenu}
+                    className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-sm flex items-center justify-center gap-2 md:col-span-2"
+                  >
+                     <FolderOpen size={20} /> Save & Back to Menu
+                  </button>
                 </div>
              </div>
           )}

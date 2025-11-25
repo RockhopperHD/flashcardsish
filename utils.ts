@@ -75,7 +75,9 @@ export const parseInput = (text: string): Partial<Card>[] => {
   // Try JSON first
   try {
     const j = JSON.parse(text);
-    const rawCards = Array.isArray(j) ? (j[0]?.cards ? j[0].cards : j) : (j.cards ? j.cards : [j]);
+    // Check if it's a full session export or just cards
+    const rawCards = j.cards ? j.cards : (Array.isArray(j) ? (j[0]?.cards ? j[0].cards : j) : [j]);
+    
     return rawCards.map((c: any) => ({
       term: Array.isArray(c.term) ? c.term : [String(c.term || 'Untitled')],
       content: Array.isArray(c.content) ? c.content.join('\n') : String(c.content || ''),
@@ -84,14 +86,22 @@ export const parseInput = (text: string): Partial<Card>[] => {
       star: Boolean(c.star || 0)
     }));
   } catch (e) {
-    // Fallback to Slash format
+    // Fallback to Raw Separator format
     // Format: Term/Definition///Year
-    // Split by newline to handle lists properly
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    // Separator: &&& on its own line
     
-    return lines.map(line => {
+    const cardsRaw = text.split(/\n\s*&&&\s*\n/);
+    
+    return cardsRaw.map(block => {
+      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+      // Join lines back for processing single card structure if needed, 
+      // but usually the first line or split handles term/def.
+      // However, we need to handle multi-line definitions.
+      
+      const fullText = block.trim();
+      
       // Split year first (///)
-      const parts = line.split('///');
+      const parts = fullText.split('///');
       const mainPart = parts[0].trim();
       const yearPart = parts[1] ? parts[1].trim() : undefined;
       
@@ -107,6 +117,8 @@ export const parseInput = (text: string): Partial<Card>[] => {
         termRaw = mainPart;
       }
       
+      if (!termRaw && !defRaw) return null;
+
       return {
         term: [termRaw],
         content: defRaw,
@@ -114,38 +126,56 @@ export const parseInput = (text: string): Partial<Card>[] => {
         mastery: 0,
         star: false
       };
-    });
+    }).filter(Boolean) as Partial<Card>[];
   }
 };
 
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
-export const DEFAULT_SET: any = {
-  name: "Demo",
-  cards: [
-    { term: "Atom", content: "* Smallest unit of matter * Composed of nucleus and electrons", mastery: 0, star: 0 },
-    { term: "Photosynthesis", content: "Process plants use to convert light to chemical energy", mastery: 0, star: 0 },
-    { term: "Moon Landing", content: "Apollo 11 mission lands Neil Armstrong on the moon", year: "1969", mastery: 0, star: 0 }
-  ]
+export const downloadFile = (filename: string, content: string, type: 'text' | 'json') => {
+  const mime = type === 'json' ? 'application/json' : 'text/plain';
+  const element = document.createElement('a');
+  const file = new Blob([content], {type: mime});
+  element.href = URL.createObjectURL(file);
+  element.download = filename;
+  document.body.appendChild(element);
+  element.click();
+  document.body.removeChild(element);
 };
 
 // --- MARKDOWN RENDERING ---
 
 const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
-  // Split by tags: <b>Bold</b>, <i>Italic</i>, __Underline__
-  const parts = text.split(/(<b>.*?<\/b>)|(<i>.*?<\/i>)|(__.*?__)/g).filter(p => p !== undefined && p !== '');
+  // 1. Code: `text`
+  // 2. BoldItalic: ***text***
+  // 3. Bold: **text**
+  // 4. Italic: *text*
+  // 5. Underline: __text__
   
+  const parts = text.split(/(`[^`]+`)|(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(__[^_]+__)/g).filter(p => p !== undefined && p !== '');
+
   return parts.map((part, idx) => {
     const key = `${keyPrefix}-${idx}`;
     
-    if (part.startsWith('<b>') && part.endsWith('</b>')) {
-      return React.createElement('b', { key, className: "font-bold text-accent" }, part.slice(3, -4));
+    // Code
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return React.createElement('code', { key, className: "bg-panel-2 border border-outline px-1.5 py-0.5 rounded text-[0.9em] font-mono text-accent" }, part.slice(1, -1));
     }
+    // Bold & Italic
+    if (part.startsWith('***') && part.endsWith('***')) {
+       return React.createElement('strong', { key, className: "font-bold text-accent italic" }, part.slice(3, -3));
+    }
+    // Bold
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return React.createElement('strong', { key, className: "font-bold text-accent" }, part.slice(2, -2));
+    }
+    // Italic
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return React.createElement('em', { key, className: "italic text-muted/90" }, part.slice(1, -1));
+    }
+    // Underline
     if (part.startsWith('__') && part.endsWith('__')) {
       return React.createElement('u', { key, className: "underline decoration-accent underline-offset-4" }, part.slice(2, -2));
-    }
-    if (part.startsWith('<i>') && part.endsWith('</i>')) {
-      return React.createElement('i', { key, className: "italic text-muted/80" }, part.slice(3, -4));
     }
     
     return React.createElement('span', { key }, part);
@@ -153,6 +183,8 @@ const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
 };
 
 export const renderMarkdown = (content: string): React.ReactNode => {
+  if (!content) return React.createElement('div', { className: "text-muted italic opacity-50" }, "No content");
+
   // 1. Extract Category: (Item) Definition
   let category: string | null = null;
   let body = content;
@@ -163,45 +195,48 @@ export const renderMarkdown = (content: string): React.ReactNode => {
     body = catMatch[2];
   }
 
-  // 2. Split by <p> for blocks
+  // 2. Split by <p> for block separation (Explicit paragraph break)
   const blocks = body.split(/<p>/i);
 
   const renderedBlocks = blocks.map((block, blockIdx) => {
-    // Check if block contains bullets (*)
-    if (block.includes('*')) {
-       const parts = block.split('*');
-       const nodes: React.ReactNode[] = [];
-       
-       // First part is regular text before the first bullet
-       if (parts[0].trim()) {
-          nodes.push(
-            React.createElement('div', { key: `pre-${blockIdx}`, className: "mb-2" },
-               renderInline(parts[0].trim(), `pre-${blockIdx}`)
+    // Check if block contains list items (hyphens)
+    // We treat lines starting with "- " as list items
+    const lines = block.split('\n');
+    const nodes: React.ReactNode[] = [];
+    let listBuffer: React.ReactNode[] = [];
+    
+    lines.forEach((line, lineIdx) => {
+       const trimmed = line.trim();
+       if (trimmed.startsWith('-')) {
+          // List item
+          listBuffer.push(
+            React.createElement('li', { key: `li-${lineIdx}`, className: "list-disc marker:text-accent pl-1" },
+              renderInline(trimmed.substring(1).trim(), `li-content-${blockIdx}-${lineIdx}`)
             )
           );
-       }
-
-       // Subsequent parts are list items
-       if (parts.length > 1) {
-          const listItems = parts.slice(1).map((p, i) => 
-             p.trim() ? React.createElement('li', { key: i, className: "list-disc marker:text-accent pl-1" },
-                renderInline(p.trim(), `li-${blockIdx}-${i}`)
-             ) : null
-          ).filter(Boolean);
-
-          if (listItems.length > 0) {
-            nodes.push(
-                React.createElement('ul', { key: `ul-${blockIdx}`, className: "mb-2 pl-4 space-y-1" }, listItems)
-            );
+       } else {
+          // Flush list if exists
+          if (listBuffer.length > 0) {
+             nodes.push(React.createElement('ul', { key: `ul-${blockIdx}-${lineIdx}`, className: "mb-2 pl-4 space-y-1" }, [...listBuffer]));
+             listBuffer = [];
+          }
+          // Regular text
+          if (trimmed) {
+             nodes.push(
+                React.createElement('div', { key: `txt-${blockIdx}-${lineIdx}`, className: "mb-1" },
+                   renderInline(trimmed, `txt-${blockIdx}-${lineIdx}`)
+                )
+             );
           }
        }
-       return React.createElement('div', { key: blockIdx, className: "mb-4 last:mb-0" }, nodes);
-    } else {
-       // Regular block
-       return React.createElement('div', { key: blockIdx, className: "mb-4 last:mb-0" }, 
-          renderInline(block.trim(), `block-${blockIdx}`)
-       );
+    });
+
+    // Flush remaining list
+    if (listBuffer.length > 0) {
+        nodes.push(React.createElement('ul', { key: `ul-end-${blockIdx}`, className: "mb-2 pl-4 space-y-1" }, [...listBuffer]));
     }
+
+    return React.createElement('div', { key: blockIdx, className: "mb-4 last:mb-0" }, nodes);
   });
 
   const children: React.ReactNode[] = [];
