@@ -6,7 +6,7 @@ import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, Image as ImageIcon } from 'lucide-react';
 import clsx from 'clsx';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
@@ -98,8 +98,15 @@ const SetPreviewModal: React.FC<{
             {set.cards.map((card, i) => (
                 <div key={card.id} className="flex gap-4 p-4 border border-outline rounded-xl bg-panel items-start">
                     <div className="text-xs font-mono text-muted pt-1 w-6">{i+1}</div>
-                    <div className="flex-1">
-                        <div className="font-bold text-text mb-1">{card.term.join(' / ')}</div>
+                    
+                    {card.image && (
+                       <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-outline bg-panel-2 flex items-center justify-center">
+                          <img src={card.image} alt="Thumbnail" className="w-full h-full object-cover" />
+                       </div>
+                    )}
+
+                    <div className="flex-1 min-w-0">
+                        <div className="font-bold text-text mb-1 truncate">{card.term.join(' / ')}</div>
                         <div className="text-sm text-muted line-clamp-2">{card.content}</div>
                         {card.year && <div className="text-xs text-accent mt-1">{card.year}</div>}
                     </div>
@@ -499,7 +506,7 @@ const App: React.FC = () => {
                      </span>
                   )
                ) : (
-                  <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcard Trainer</div>
+                  <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcardsish</div>
                )}
             </div>
 

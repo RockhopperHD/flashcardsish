@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, X } from 'lucide-react';
+import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, X, Image as ImageIcon, Link } from 'lucide-react';
 import { CardSet, Card, Settings } from '../types';
 import { parseInput, generateId, downloadFile, renderMarkdown } from '../utils';
 import clsx from 'clsx';
@@ -23,6 +23,7 @@ interface BuilderRow {
   term: string;
   def: string;
   year: string;
+  image: string;
 }
 
 const BUILDER_STORAGE_KEY = 'flashcard-builder-rows';
@@ -35,7 +36,10 @@ const GREETINGS = [
   "Lock in.",
   "One more set?",
   "What's up?",
-  "All you."
+  "All you.",
+  "Greatness incoming(?).",
+  "Hey, you're here."
+  "Hi."
 ];
 
 // Unsaved Changes Modal
@@ -63,6 +67,98 @@ const UnsavedChangesModal: React.FC<{
                     </button>
                 </div>
             </div>
+        </div>
+    );
+};
+
+// Image Modal
+const ImageModal: React.FC<{ 
+    isOpen: boolean; 
+    onClose: () => void; 
+    onSave: (url: string) => void; 
+    initialValue: string;
+}> = ({ isOpen, onClose, onSave, initialValue }) => {
+    const [urlInput, setUrlInput] = useState(initialValue);
+    const [dragActive, setDragActive] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            setUrlInput(initialValue);
+        }
+    }, [isOpen, initialValue]);
+
+    const handleFile = (file: File) => {
+        if (!file.type.startsWith('image/')) return;
+        
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+                onSave(reader.result);
+                onClose();
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            handleFile(e.dataTransfer.files[0]);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+             <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-text">Add Image</h3>
+                    <button onClick={onClose}><X size={24} className="text-muted hover:text-text" /></button>
+                </div>
+
+                {/* Upload Section */}
+                <div 
+                    className={clsx(
+                        "border-2 border-dashed rounded-xl h-36 flex flex-col items-center justify-center cursor-pointer transition-colors",
+                        dragActive ? "border-accent bg-accent/10" : "border-outline hover:border-accent hover:bg-panel-2"
+                    )}
+                    onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => e.target.files && handleFile(e.target.files[0])} />
+                    <Upload size={32} className="text-muted mb-2" />
+                    <p className="text-sm text-muted font-medium">Drag & drop or click to upload</p>
+                </div>
+
+                <div className="flex items-center gap-4 my-5">
+                    <div className="h-px bg-outline flex-1"></div>
+                    <span className="text-muted text-xs font-bold uppercase tracking-wider opacity-60">OR</span>
+                    <div className="h-px bg-outline flex-1"></div>
+                </div>
+
+                {/* Link Section */}
+                <div className="flex gap-2">
+                     <input 
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        placeholder="Paste image link..."
+                        className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 focus:outline-none focus:border-accent transition-colors text-sm"
+                     />
+                     <button 
+                        onClick={() => { onSave(urlInput); onClose(); }}
+                        className="px-5 py-3 bg-panel-2 border border-outline hover:bg-accent hover:text-bg rounded-xl font-bold transition-all text-sm whitespace-nowrap"
+                     >
+                         Save
+                     </button>
+                </div>
+             </div>
         </div>
     );
 };
@@ -122,7 +218,8 @@ const BuilderRowItem: React.FC<{
     updateRow: (id: string, field: keyof BuilderRow, value: string) => void;
     removeRow: (id: string) => void;
     onAddNext: () => void;
-}> = ({ row, index, showYear, isDuplicate, isLast, updateRow, removeRow, onAddNext }) => {
+    onOpenImageModal: () => void;
+}> = ({ row, index, showYear, isDuplicate, isLast, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
     const [isEditingDef, setIsEditingDef] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -165,7 +262,6 @@ const BuilderRowItem: React.FC<{
 
         if (e.key === 'Tab' && !e.shiftKey) {
             // If it's the last row and we're on the last visible field (def or year depending on showYear)
-            // Actually, year is after def in visual order in code below? 
             // Layout is Term -> Year -> Def. So Def is always last.
             if (isLast) {
                 e.preventDefault();
@@ -236,6 +332,21 @@ const BuilderRowItem: React.FC<{
                         </div>
                     )}
                 </div>
+
+                 <button
+                    onClick={onOpenImageModal}
+                    className={clsx(
+                        "rounded hover:bg-panel-2 transition-all shrink-0 flex items-center justify-center overflow-hidden border border-transparent",
+                        row.image ? "w-[42px] h-[42px] p-0 border-outline bg-panel-2" : "p-2 pt-2.5 text-muted hover:text-text"
+                    )}
+                    title={row.image ? "Change Image" : "Add Image"}
+                >
+                    {row.image ? (
+                        <img src={row.image} alt="preview" className="w-full h-full object-cover" />
+                    ) : (
+                        <ImageIcon size={16} />
+                    )}
+                </button>
             </div>
             
             <button 
@@ -268,20 +379,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [showYears, setShowYears] = useState(true);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   
+  // Image Modal State
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [editingImageRowId, setEditingImageRowId] = useState<string | null>(null);
+
   // Builder State
   const [builderRows, setBuilderRows] = useState<BuilderRow[]>(() => {
     const saved = localStorage.getItem(BUILDER_STORAGE_KEY);
     try {
         return saved ? JSON.parse(saved) : [
-            { id: '1', term: '', def: '', year: '' },
-            { id: '2', term: '', def: '', year: '' },
-            { id: '3', term: '', def: '', year: '' }
+            { id: '1', term: '', def: '', year: '', image: '' },
+            { id: '2', term: '', def: '', year: '', image: '' },
+            { id: '3', term: '', def: '', year: '', image: '' }
         ];
     } catch {
         return [
-            { id: '1', term: '', def: '', year: '' },
-            { id: '2', term: '', def: '', year: '' },
-            { id: '3', term: '', def: '', year: '' }
+            { id: '1', term: '', def: '', year: '', image: '' },
+            { id: '2', term: '', def: '', year: '', image: '' },
+            { id: '3', term: '', def: '', year: '', image: '' }
         ];
     }
   });
@@ -317,9 +432,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const handleCreateNew = () => {
     setSetName('');
     setBuilderRows([
-        { id: '1', term: '', def: '', year: '' },
-        { id: '2', term: '', def: '', year: '' },
-        { id: '3', term: '', def: '', year: '' }
+        { id: '1', term: '', def: '', year: '', image: '' },
+        { id: '2', term: '', def: '', year: '', image: '' },
+        { id: '3', term: '', def: '', year: '', image: '' }
     ]);
     const defaultName = "New Set " + new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}).replace(',', '');
     setSetName(defaultName);
@@ -328,7 +443,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const handleBackToLibrary = () => {
       // Check for unsaved changes
-      // We consider it dirty if there is text in raw mode or any row has content in visual mode
       let isDirty = false;
       if (builderMode === 'raw') {
           isDirty = !!rawText.trim();
@@ -375,11 +489,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         id: generateId() + i,
         term: c.term?.[0] || '',
         def: c.content || '',
-        year: c.year || ''
+        year: c.year || '',
+        image: c.image || ''
     }));
     // Ensure at least 3 rows
     while (rows.length < 3) {
-        rows.push({ id: generateId(), term: '', def: '', year: '' });
+        rows.push({ id: generateId(), term: '', def: '', year: '', image: '' });
     }
     setBuilderRows(rows);
   };
@@ -401,7 +516,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           id: generateId() + i,
           term: c.term[0] || '',
           def: c.content || '',
-          year: c.year || ''
+          year: c.year || '',
+          image: c.image || ''
       }));
       setBuilderRows(rows);
       setView('builder');
@@ -430,7 +546,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
              id: generateId() + i,
              term: c.term?.[0] || '',
              def: c.content || '',
-             year: c.year || ''
+             year: c.year || '',
+             image: ''
          }));
          setBuilderRows(rows);
       }
@@ -440,7 +557,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
              id: generateId() + i,
              term: c.term?.[0] || '',
              def: c.content || '',
-             year: c.year || ''
+             year: c.year || '',
+             image: c.image || ''
          }));
          setBuilderRows(rows);
       } else if (builderMode === 'raw') {
@@ -460,6 +578,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 term: [r.term.trim()],
                 content: r.def.trim(),
                 year: r.year.trim() || undefined,
+                image: r.image.trim() || undefined,
                 star: false,
                 mastery: 0
             }));
@@ -477,20 +596,37 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         term: c.term || ['?'],
         content: c.content || '',
         year: c.year,
+        image: c.image,
         mastery: 0,
         star: c.star || false
      }));
 
      const newSet: CardSet = {
         id: generateId(),
-        name: setName || `Set ${new Date().toLocaleDateString()}`,
+        name: setName || `Set ${librarySets.length + 1}`,
         cards: fullCards,
         lastPlayed: Date.now(),
         elapsedTime: 0,
         topStreak: 0
      };
      
-     onStartFromLibrary(newSet); 
+     // Save to Library first to ensure persistence
+     onSaveToLibrary(newSet);
+     // Start Session
+     onStartFromLibrary(newSet);
+
+     // Clear Builder State
+     setSetName('');
+     setRawText('');
+     const emptyRows = [
+        { id: '1', term: '', def: '', year: '', image: '' },
+        { id: '2', term: '', def: '', year: '', image: '' },
+        { id: '3', term: '', def: '', year: '', image: '' }
+     ];
+     setBuilderRows(emptyRows);
+     // Explicitly clear local storage to prevent builder restoration on next visit
+     localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(emptyRows));
+     setShowUnsavedModal(false);
   };
 
   const handleSaveToLibraryAction = () => {
@@ -502,6 +638,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         term: c.term || ['?'],
         content: c.content || '',
         year: c.year,
+        image: c.image,
         mastery: 0,
         star: c.star || false
      }));
@@ -520,9 +657,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
      setSetName('');
      setRawText('');
      setBuilderRows([
-        { id: '1', term: '', def: '', year: '' },
-        { id: '2', term: '', def: '', year: '' },
-        { id: '3', term: '', def: '', year: '' }
+        { id: '1', term: '', def: '', year: '', image: '' },
+        { id: '2', term: '', def: '', year: '', image: '' },
+        { id: '3', term: '', def: '', year: '', image: '' }
      ]);
   };
 
@@ -560,7 +697,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   // --- HELPER FOR VISUAL BUILDER ---
   
   const addRow = () => {
-     setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '' }]);
+     setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '' }]);
   };
 
   const updateRow = (id: string, field: keyof BuilderRow, value: string) => {
@@ -569,6 +706,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const removeRow = (id: string) => {
      setBuilderRows(prev => prev.filter(r => r.id !== id));
+  };
+
+  const openImageModal = (rowId: string) => {
+      setEditingImageRowId(rowId);
+      setShowImageModal(true);
+  };
+
+  const handleSaveImage = (url: string) => {
+      if (editingImageRowId) {
+          updateRow(editingImageRowId, 'image', url);
+      }
   };
 
   const duplicateIds = useMemo(() => {
@@ -599,6 +747,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
   };
 
+  // Check for uploaded images (Base64)
+  const hasUploadedImages = useMemo(() => {
+      return builderRows.some(r => r.image && r.image.startsWith('data:'));
+  }, [builderRows]);
+
   return (
     <div className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700">
       
@@ -607,6 +760,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         onSave={handleSaveAndExit}
         onDiscard={handleDiscard}
         onCancel={() => setShowUnsavedModal(false)}
+      />
+
+      <ImageModal 
+        isOpen={showImageModal}
+        onClose={() => setShowImageModal(false)}
+        onSave={handleSaveImage}
+        initialValue={editingImageRowId ? (builderRows.find(r => r.id === editingImageRowId)?.image || '') : ''}
       />
 
       <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
@@ -727,13 +887,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     ) : (
                         <div className="space-y-3">
                             {librarySets.map(set => (
-                                <div key={set.id} className="group bg-panel border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm">
+                                <div key={set.id} className="group bg-panel border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full">
                                     <div className="flex justify-between items-start mb-4">
                                         <div>
                                             <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
-                                            <div className="text-xs text-muted font-mono">{set.cards.length} cards</div>
+                                            <div className="text-xs text-muted font-mono">{set.cards.length} card{set.cards.length === 1 ? '' : 's'}</div>
                                         </div>
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="flex items-center gap-1">
                                              <button 
                                                 onClick={() => handleLoadSetToBuilder(set)}
                                                 className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
@@ -755,23 +915,26 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                             >
                                                 <Download size={16} />
                                             </button>
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteClick(set.id, 'library');
+                                                }}
+                                                className={clsx(
+                                                    "p-1.5 rounded transition-all flex items-center justify-center",
+                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:bg-panel-2"
+                                                )}
+                                                title="Delete Set"
+                                            >
+                                                {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
+                                            </button>
                                         </div>
                                     </div>
                                     
-                                    <div className="flex items-center justify-between pt-2 border-t border-outline/50 mt-2">
-                                        <button 
-                                            onClick={() => handleDeleteClick(set.id, 'library')}
-                                            className={clsx(
-                                                "text-xs hover:underline transition-colors",
-                                                deleteConfirmId === set.id ? "text-red font-bold" : "text-muted hover:text-red"
-                                            )}
-                                        >
-                                            {deleteConfirmId === set.id ? "Click again to delete" : "Delete Set"}
-                                        </button>
-                                        
+                                    <div className="pt-2 mt-2">
                                         <button 
                                             onClick={() => onStartFromLibrary(set)}
-                                            className="px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center gap-2"
+                                            className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
                                         >
                                             <Play size={14} fill="currentColor" /> Play
                                         </button>
@@ -846,6 +1009,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                     updateRow={updateRow}
                                     removeRow={removeRow}
                                     onAddNext={addRow}
+                                    onOpenImageModal={() => openImageModal(row.id)}
                                 />
                             ))}
                             <button 
@@ -908,9 +1072,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </div>
                 </div>
                 
-                <p className="text-red font-bold text-center mt-6 text-sm opacity-80">
-                    Warning: Work is not automatically saved to your library. Please save or download your set regularly to avoid data loss.
-                </p>
+                <div className="text-center mt-6 text-sm opacity-80 space-y-1">
+                    <p className="text-red font-bold">
+                        Cards are saved per device in local storage: if you clear your cookies, you can lose them. It is highly recommended you download important sets!
+                    </p>
+                    {hasUploadedImages && (
+                        <p className="text-blue font-bold">
+                            You've uploaded images directly to this set. If you download your set, they won't be saved. To save them, put images in your set with image URLs.
+                        </p>
+                    )}
+                </div>
             </div>
         )}
       </div>

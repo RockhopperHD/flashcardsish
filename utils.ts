@@ -82,6 +82,7 @@ export const parseInput = (text: string): Partial<Card>[] => {
       term: Array.isArray(c.term) ? c.term : [String(c.term || 'Untitled')],
       content: Array.isArray(c.content) ? c.content.join('\n') : String(c.content || ''),
       year: c.year ? String(c.year) : undefined,
+      image: c.image ? String(c.image) : undefined,
       mastery: Number(c.mastery || 0),
       star: Boolean(c.star || 0)
     }));

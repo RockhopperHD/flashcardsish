@@ -361,9 +361,20 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             </div>
          </div>
 
-         {/* Content */}
-         <div className="text-3xl font-medium leading-normal text-text min-h-[140px] mb-10 font-sans">
-           {renderMarkdown(currentCard.content)}
+         {/* Content Area */}
+         <div className="min-h-[140px] mb-10 flex flex-col justify-center">
+            {currentCard.image && (
+                <div className="flex justify-center mb-6">
+                    <img 
+                        src={currentCard.image} 
+                        alt="Card visual" 
+                        className="rounded-xl max-h-60 w-auto object-contain border border-outline shadow-sm"
+                    />
+                </div>
+            )}
+            <div className="text-3xl font-medium leading-normal text-text font-sans">
+                {renderMarkdown(currentCard.content)}
+            </div>
          </div>
 
          {/* Interactive Area */}

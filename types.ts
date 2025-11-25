@@ -4,6 +4,7 @@ export interface Card {
   term: string[];
   content: string;
   year?: string; // Optional year field
+  image?: string; // Optional image URL or Base64
   mastery: number; // 0: Unseen, 1: Learning, 2: Learned
   star: boolean;
 }
