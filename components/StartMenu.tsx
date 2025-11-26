@@ -821,12 +821,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <div className="grid lg:grid-cols-[1fr_1fr] gap-8 items-start">
                 {/* ACTIVE SESSIONS COLUMN */}
                 <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
-                       Active Sessions
-                    </h3>
-                    
+                    <div className="flex justify-between items-center">
+                        <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
+                           Active Sessions
+                        </h3>
+                        <div className="flex gap-2 opacity-0 pointer-events-none" aria-hidden>
+                            <button className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold">
+                                <Upload size={14} /> Import
+                            </button>
+                            <button className="flex items-center gap-2 px-3 py-1.5 bg-text text-bg rounded-lg text-xs font-bold">
+                                <Plus size={14} /> Create
+                            </button>
+                        </div>
+                    </div>
+
                     {activeSessions.length === 0 ? (
-                        <div className="py-12 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
+                        <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
                             <p className="text-muted italic text-sm">No ongoing sessions.</p>
                             <p className="text-muted/50 text-xs mt-1">Start one from your Library.</p>
                         </div>
