@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, X, Image as ImageIcon, Link } from 'lucide-react';
 import { CardSet, Card, Settings } from '../types';
@@ -37,9 +36,8 @@ const GREETINGS = [
   "One more set?",
   "What's up?",
   "All you.",
-  "Greatness incoming(?).",
+  "Greatness incoming?",
   "Hey, you're here."
-  "Hi."
 ];
 
 // Unsaved Changes Modal
@@ -261,8 +259,7 @@ const BuilderRowItem: React.FC<{
         }
 
         if (e.key === 'Tab' && !e.shiftKey) {
-            // If it's the last row and we're on the last visible field (def or year depending on showYear)
-            // Layout is Term -> Year -> Def. So Def is always last.
+            // Def is the last field now.
             if (isLast) {
                 e.preventDefault();
                 onAddNext();
@@ -271,91 +268,111 @@ const BuilderRowItem: React.FC<{
     };
 
     return (
-        <div className="flex gap-3 items-start group w-full animate-in fade-in slide-in-from-left-2 duration-300">
-            <div className="text-xs text-muted font-mono w-6 text-right shrink-0 pt-3">{index + 1}</div>
-            
-            <div className="flex-1 flex gap-2 items-start min-w-0">
-                <div className="flex-[0.6] relative shrink-0">
-                    <input 
-                    id={`term-${row.id}`}
-                    value={row.term}
-                    onChange={(e) => updateRow(row.id, 'term', e.target.value)}
-                    placeholder="Term"
-                    className={clsx(
-                        "w-full bg-panel-2 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-all h-[42px]",
-                        isDuplicate ? "border-red" : "border-outline"
-                    )}
-                    />
-                    {isDuplicate && <div className="absolute right-2 top-2 text-red"><AlertCircle size={14} /></div>}
-                </div>
-
-                {showYear && (
-                    <input 
-                        value={row.year}
-                        onChange={(e) => updateRow(row.id, 'year', e.target.value)}
-                        placeholder="Year"
-                        className="w-20 bg-panel-2 border border-outline rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors text-left placeholder:text-muted/50 h-[42px] shrink-0"
-                    />
-                )}
-
-                <div className="flex-1 min-w-0 relative group/def">
-                    {isEditingDef ? (
-                         <div className="bg-panel-2 border border-accent rounded-lg">
-                            <textarea 
-                                ref={textareaRef}
-                                value={row.def}
-                                onChange={(e) => updateRow(row.id, 'def', e.target.value)}
-                                onBlur={() => setIsEditingDef(false)}
-                                onKeyDown={handleDefKeyDown}
-                                placeholder="Definition"
-                                rows={1}
-                                className="w-full bg-transparent border-none focus:outline-none px-3 py-[11px] text-sm resize-none min-h-[42px] overflow-hidden block custom-scrollbar"
-                                style={{ minHeight: '42px' }}
-                                onInput={(e) => {
-                                    const target = e.target as HTMLTextAreaElement;
-                                    target.style.height = 'auto';
-                                    target.style.height = (target.scrollHeight) + 'px';
-                                }}
-                            />
-                        </div>
-                    ) : (
-                        <div 
-                            tabIndex={0}
-                            onFocus={() => setIsEditingDef(true)}
-                            onClick={() => setIsEditingDef(true)}
+        <div className={clsx(
+            "group relative w-full animate-in fade-in slide-in-from-left-2 duration-300",
+            "p-3 mb-3 bg-panel-2/10 border border-outline rounded-xl"
+        )}>
+            <div className="flex flex-col md:flex-row gap-3">
+                
+                {/* Left Column: Term & Toolbar */}
+                <div className="w-full md:w-[35%] flex flex-col gap-2">
+                    <div className="relative">
+                        <input 
+                            id={`term-${row.id}`}
+                            value={row.term}
+                            onChange={(e) => updateRow(row.id, 'term', e.target.value)}
+                            placeholder="Term"
                             className={clsx(
-                                "w-full min-h-[42px] px-3 py-[10px] text-sm bg-panel-2 border rounded-lg cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent",
-                                row.def ? "border-outline" : "border-outline text-muted italic"
+                                "w-full bg-panel-2 border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-accent transition-all min-h-[42px]",
+                                isDuplicate ? "border-red" : "border-outline"
                             )}
+                        />
+                        {isDuplicate && <div className="absolute right-2 top-3 text-red"><AlertCircle size={14} /></div>}
+                    </div>
+
+                    {/* Toolbar Row: Image | Delete | Year */}
+                    <div className="flex items-center gap-2">
+                        {/* Image Button */}
+                        <button
+                            onClick={onOpenImageModal}
+                            tabIndex={-1}
+                            className={clsx(
+                                "rounded-lg hover:bg-panel-2 transition-all shrink-0 flex items-center justify-center overflow-hidden border border-transparent",
+                                row.image ? "w-[42px] h-[42px] p-0 border-outline bg-panel-2" : "p-2.5 text-muted hover:text-text"
+                            )}
+                            title={row.image ? "Change Image" : "Add Image"}
                         >
-                            {row.def ? renderMarkdown(row.def) : "Click to add definition..."}
-                        </div>
-                    )}
+                            {row.image ? (
+                                <img src={row.image} alt="preview" className="w-full h-full object-cover" />
+                            ) : (
+                                <ImageIcon size={16} />
+                            )}
+                        </button>
+
+                        {/* Delete Button */}
+                        <button 
+                            onClick={() => removeRow(row.id)}
+                            tabIndex={-1}
+                            className="p-2.5 text-muted hover:text-red transition-all shrink-0"
+                            title="Delete Card"
+                        >
+                            <Trash2 size={16} />
+                        </button>
+
+                        {/* Year Input (if enabled) */}
+                        {showYear && (
+                            <input 
+                                value={row.year}
+                                onChange={(e) => updateRow(row.id, 'year', e.target.value)}
+                                placeholder="Year"
+                                className="w-24 bg-panel-2 border border-outline rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-accent transition-colors text-center placeholder:text-muted/50 h-[42px]"
+                            />
+                        )}
+                    </div>
                 </div>
 
-                 <button
-                    onClick={onOpenImageModal}
-                    className={clsx(
-                        "rounded hover:bg-panel-2 transition-all shrink-0 flex items-center justify-center overflow-hidden border border-transparent",
-                        row.image ? "w-[42px] h-[42px] p-0 border-outline bg-panel-2" : "p-2 pt-2.5 text-muted hover:text-text"
-                    )}
-                    title={row.image ? "Change Image" : "Add Image"}
-                >
-                    {row.image ? (
-                        <img src={row.image} alt="preview" className="w-full h-full object-cover" />
-                    ) : (
-                        <ImageIcon size={16} />
-                    )}
-                </button>
+                {/* Right Column: Definition */}
+                <div className="flex-1 min-w-0">
+                    <div className="w-full relative group/def">
+                        {isEditingDef ? (
+                            <div className="bg-panel-2 border border-accent rounded-lg min-h-[42px] relative">
+                                <textarea 
+                                    ref={textareaRef}
+                                    value={row.def}
+                                    onChange={(e) => updateRow(row.id, 'def', e.target.value)}
+                                    onBlur={() => setIsEditingDef(false)}
+                                    onKeyDown={handleDefKeyDown}
+                                    placeholder="Definition"
+                                    rows={1}
+                                    className="w-full bg-transparent border-none focus:outline-none px-3 py-2.5 text-sm resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed"
+                                    onInput={(e) => {
+                                        const target = e.target as HTMLTextAreaElement;
+                                        target.style.height = 'auto';
+                                        target.style.height = (target.scrollHeight) + 'px';
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <div 
+                                tabIndex={0}
+                                onFocus={() => setIsEditingDef(true)}
+                                onClick={() => setIsEditingDef(true)}
+                                className={clsx(
+                                    "w-full min-h-[42px] px-3 py-2.5 text-sm bg-panel-2 border rounded-lg cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed",
+                                    row.def ? "border-outline" : "border-outline text-muted italic"
+                                )}
+                            >
+                                {row.def ? renderMarkdown(row.def) : "Click to add definition..."}
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
-            
-            <button 
-                onClick={() => removeRow(row.id)}
-                className="p-2 pt-2.5 text-muted hover:text-red opacity-0 group-hover:opacity-100 transition-all shrink-0"
-                tabIndex={-1}
-            >
-                <Trash2 size={16} />
-            </button>
+
+            {/* Absolute Index */}
+            <div className="absolute bottom-2 right-3 text-xs text-muted font-mono opacity-30 select-none pointer-events-none">
+                {index + 1}
+            </div>
         </div>
     );
 };
@@ -376,7 +393,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [view, setView] = useState<'menu' | 'builder'>('menu');
   const [builderMode, setBuilderMode] = useState<'visual' | 'raw'>('visual');
   const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
-  const [showYears, setShowYears] = useState(true);
+  const [showYears, setShowYears] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   
   // Image Modal State
@@ -781,7 +798,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {view === 'menu' ? greeting : 'List Builder'}
          </h1>
          <p className="text-muted text-lg">
-            {view === 'menu' ? 'Manage your sets and sessions.' : 'Craft your deck manually.'}
+            {view === 'menu' ? 'Study a deck or create a new one below.' : 'Build decks here!'}
          </p>
       </div>
 
@@ -922,7 +939,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                 }}
                                                 className={clsx(
                                                     "p-1.5 rounded transition-all flex items-center justify-center",
-                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:bg-panel-2"
+                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
                                                 )}
                                                 title="Delete Set"
                                             >
@@ -961,11 +978,26 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         />
 
                         <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
-                                <input type="checkbox" checked={showYears} onChange={e => setShowYears(e.target.checked)} className="rounded border-outline bg-panel-2 text-accent focus:ring-accent" />
-                                Show Years
+                            <label className="flex items-center gap-2 cursor-pointer group select-none">
+                                <div
+                                    onClick={() => setShowYears(!showYears)}
+                                    className={clsx(
+                                        "w-10 h-6 rounded-full p-1 transition-colors border border-transparent",
+                                        showYears ? "bg-accent" : "bg-outline"
+                                    )}
+                                >
+                                    <div 
+                                        className={clsx(
+                                            "w-3.5 h-3.5 bg-bg rounded-full shadow-sm transition-transform duration-200",
+                                            showYears ? "translate-x-4" : "translate-x-0"
+                                        )} 
+                                    />
+                                </div>
+                                <span className="text-sm text-muted group-hover:text-text transition-colors font-medium">Show Years</span>
                             </label>
+
                             <div className="h-6 w-px bg-outline"></div>
+                            
                             <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1">
                                 <button
                                 onClick={() => switchMode('visual')}
@@ -1037,34 +1069,34 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="flex items-center justify-between pt-6 border-t border-outline">
-                        <div className="flex gap-2">
+                    <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-outline gap-4">
+                        <div className="flex gap-2 w-full md:w-auto">
                             <button 
                             onClick={handleCopyCode}
-                            className="flex items-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
+                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
                             >
                                 <Copy size={18} />
-                                <span className="hidden sm:inline">Copy</span>
+                                <span className="inline">Copy</span>
                             </button>
                             <button 
                             onClick={handleDownloadFlashcards}
-                            className="flex items-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
+                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
                             >
                                 <Download size={18} />
-                                <span className="hidden sm:inline">.flashcards</span>
+                                <span className="inline">.flashcards</span>
                             </button>
                         </div>
 
-                        <div className="flex gap-3">
+                        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                             <button 
                             onClick={handleSaveToLibraryAction}
-                            className="flex items-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text hover:border-accent transition-all"
+                            className="flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text hover:border-accent transition-all"
                             >
                                 <FolderOpen size={18} /> Save to Library
                             </button>
                             <button 
                             onClick={handleStartSessionNow}
-                            className="flex items-center gap-2 bg-accent text-bg px-8 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
+                            className="flex items-center justify-center gap-2 bg-accent text-bg px-8 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
                             >
                             <Play size={18} fill="currentColor" /> Study Now
                             </button>
