@@ -200,6 +200,14 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                   <span className="text-muted">Exit List / New Para</span>
                   <span className="font-mono text-yellow text-right">&lt;p&gt;</span>
                </div>
+               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-outline/50">
+                  <span className="text-muted font-bold text-accent">Image Link</span>
+                  <span className="font-mono text-yellow text-right">**ADD TO RAW TEXT:** <br/> `... ||| http://link/image.jpg`</span>
+               </div>
+               <div className="grid grid-cols-2 gap-2">
+                  <span className="text-muted font-bold text-accent">Year</span>
+                  <span className="font-mono text-yellow text-right">**ADD TO RAW TEXT:** <br/> `... /// Year`</span>
+               </div>
             </div>
          </div>
       </div>
@@ -494,6 +502,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
          .map(r => {
              let line = `${r.term.trim()} / ${r.def.trim()}`;
              if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+             if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
              return line;
          })
          .join('\n\n&&&\n\n'); // New Separator
@@ -564,7 +573,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
              term: c.term?.[0] || '',
              def: c.content || '',
              year: c.year || '',
-             image: ''
+             image: c.image || ''
          }));
          setBuilderRows(rows);
       }
@@ -688,6 +697,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
              .map(r => {
                  let line = `${r.term.trim()} / ${r.def.trim()}`;
                  if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+                 if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
                  return line;
              })
              .join('\n\n&&&\n\n');
@@ -703,6 +713,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
              .map(r => {
                  let line = `${r.term.trim()} / ${r.def.trim()}`;
                  if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+                 if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
                  return line;
              })
              .join('\n\n&&&\n\n');
@@ -736,7 +747,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
   };
 
-  const duplicateIds = useMemo(() => {
+  duplicateIds = useMemo(() => {
      const counts = new Map<string, number>();
      const ids = new Set<string>();
      builderRows.forEach(r => {
@@ -1071,7 +1082,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <textarea
                             value={rawText}
                             onChange={(e) => setRawText(e.target.value)}
-                            placeholder={`Term / Definition /// Year\n\n&&&\n\nNext Term / Definition`}
+                            placeholder={`Term / Definition /// Year ||| ImageURL\n\n&&&\n\nNext Term / Definition`}
                             className="w-full bg-panel-2 border border-outline rounded-xl p-4 min-h-[400px] font-mono text-sm focus:outline-none focus:border-accent resize-y leading-relaxed"
                             />
                         </div>

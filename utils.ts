@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card } from './types';
 
@@ -88,25 +87,31 @@ export const parseInput = (text: string): Partial<Card>[] => {
     }));
   } catch (e) {
     // Fallback to Raw Separator format
-    // Format: Term/Definition///Year
+    // Format: Term/Definition///Year ||| ImageURL
     // Separator: &&& on its own line
     
     const cardsRaw = text.split(/\n\s*&&&\s*\n/);
     
     return cardsRaw.map(block => {
-      const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-      // Join lines back for processing single card structure if needed, 
-      // but usually the first line or split handles term/def.
-      // However, we need to handle multi-line definitions.
-      
       const fullText = block.trim();
       
-      // Split year first (///)
-      const parts = fullText.split('///');
+      // 1. Extract Image (|||)
+      const imgParts = fullText.split('|||');
+      let contentPart = imgParts[0].trim();
+      let imagePart: string | undefined = undefined;
+
+      if (imgParts.length > 1) {
+        // Take the last segment as image, and join the rest back
+        imagePart = imgParts.pop()?.trim(); 
+        contentPart = imgParts.join('|||').trim(); 
+      }
+
+      // 2. Split year (///) from the remaining content
+      const parts = contentPart.split('///');
       const mainPart = parts[0].trim();
       const yearPart = parts[1] ? parts[1].trim() : undefined;
       
-      // Split term/def by first slash
+      // 3. Split term/def by first slash
       const slashIndex = mainPart.indexOf('/');
       let termRaw = 'Untitled';
       let defRaw = '';
@@ -124,6 +129,7 @@ export const parseInput = (text: string): Partial<Card>[] => {
         term: [termRaw],
         content: defRaw,
         year: yearPart,
+        image: imagePart,
         mastery: 0,
         star: false
       };
