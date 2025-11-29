@@ -747,7 +747,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
   };
 
-  duplicateIds = useMemo(() => {
+  const duplicateIds = useMemo(() => {
      const counts = new Map<string, number>();
      const ids = new Set<string>();
      builderRows.forEach(r => {
