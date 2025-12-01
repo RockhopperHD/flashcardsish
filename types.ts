@@ -23,6 +23,7 @@ export interface Settings {
   retypeOnMistake: boolean;
   darkMode: boolean;
   starredOnly: boolean;
+  mode: 'standard' | 'multiple_choice';
 }
 
 export enum GameState {
