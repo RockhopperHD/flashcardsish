@@ -360,20 +360,26 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             </div>
          </div>
 
-         {/* Content Area */}
-         <div className="min-h-[140px] mb-10 flex flex-col justify-center">
-            {currentCard.image && (
-                <div className="flex justify-center mb-6">
-                    <img 
-                        src={currentCard.image} 
-                        alt="Card visual" 
-                        className="rounded-xl max-h-60 w-auto object-contain border border-outline shadow-sm"
-                    />
+         {/* Content Area - WIDE + SIDE-BY-SIDE MODE */}
+         <div className="min-h-[200px] mb-10 flex items-center">
+            {currentCard.image ? (
+                <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <div className="flex justify-center md:justify-center">
+                        <img 
+                            src={currentCard.image} 
+                            alt="Card visual" 
+                            className="rounded-xl max-h-[400px] w-auto object-contain border border-outline shadow-sm max-w-full"
+                        />
+                    </div>
+                    <div className="text-3xl font-medium leading-normal text-text font-sans text-left">
+                        {renderMarkdown(currentCard.content)}
+                    </div>
+                </div>
+            ) : (
+                <div className="w-full text-3xl font-medium leading-normal text-text font-sans text-left">
+                    {renderMarkdown(currentCard.content)}
                 </div>
             )}
-            <div className="text-3xl font-medium leading-normal text-text font-sans">
-                {renderMarkdown(currentCard.content)}
-            </div>
          </div>
 
          {/* Interactive Area */}
