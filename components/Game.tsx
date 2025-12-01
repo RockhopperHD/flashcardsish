@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings } from '../types';
 import { checkAnswer, renderMarkdown } from '../utils';
@@ -286,7 +285,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
   if (!currentCard) return null;
 
   return (
-    <div className="w-full max-w-3xl mx-auto pb-20 pt-0">
+    <div className="w-full max-w-5xl mx-auto pb-20 pt-0">
       
       {/* Top Controls Row */}
       <div className="flex justify-between items-end mb-4 select-none">
