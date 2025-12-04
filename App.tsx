@@ -6,12 +6,12 @@ import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, Image as ImageIcon, LayoutGrid, Type } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, Image as ImageIcon, LayoutGrid, Type, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
-const SESSIONS_KEY = 'flashcard-sessions-v3';
 const SETTINGS_KEY = 'flashcard-settings-v2';
+const STATS_KEY = 'flashcard-stats-v1';
 
 // Settings Modal Component
 const SettingsModal: React.FC<{
@@ -206,8 +206,10 @@ const App: React.FC = () => {
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
 
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
-   const [activeSessions, setActiveSessions] = useState<CardSet[]>([]);
-   const [activeSession, setActiveSession] = useState<CardSet | null>(null);
+   // activeSessions removed
+   const [activeSetId, setActiveSetId] = useState<string | null>(null);
+
+   const activeSession = librarySets.find(s => s.id === activeSetId) || null;
 
    const [settings, setSettings] = useState<Settings>({
       strictSpelling: false,
@@ -231,21 +233,20 @@ const App: React.FC = () => {
    // Renaming State
    const [isRenaming, setIsRenaming] = useState(false);
 
+   // Stats
+   const [lifetimeCorrect, setLifetimeCorrect] = useState(0);
+
    // Load from local storage
    useEffect(() => {
       const savedLibrary = localStorage.getItem(LIBRARY_KEY);
-      const savedSessions = localStorage.getItem(SESSIONS_KEY);
+
 
       if (savedLibrary) {
          try {
             setLibrarySets(JSON.parse(savedLibrary));
          } catch (e) { console.error(e); }
       }
-      if (savedSessions) {
-         try {
-            setActiveSessions(JSON.parse(savedSessions));
-         } catch (e) { console.error(e); }
-      }
+      // Saved sessions loading removed
 
       const savedSettings = localStorage.getItem(SETTINGS_KEY);
       if (savedSettings) {
@@ -260,6 +261,13 @@ const App: React.FC = () => {
             });
          } catch (e) { }
       }
+
+      const savedStats = localStorage.getItem(STATS_KEY);
+      if (savedStats) {
+         try {
+            setLifetimeCorrect(JSON.parse(savedStats).lifetimeCorrect || 0);
+         } catch (e) { }
+      }
    }, []);
 
    // Save Effects
@@ -268,8 +276,14 @@ const App: React.FC = () => {
    }, [librarySets]);
 
    useEffect(() => {
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(activeSessions));
-   }, [activeSessions]);
+      localStorage.setItem(LIBRARY_KEY, JSON.stringify(librarySets));
+   }, [librarySets]);
+
+   // Sessions save effect removed
+
+   useEffect(() => {
+      localStorage.setItem(STATS_KEY, JSON.stringify({ lifetimeCorrect }));
+   }, [lifetimeCorrect]);
 
    useEffect(() => {
       if (settings.darkMode) {
@@ -311,19 +325,11 @@ const App: React.FC = () => {
    // --- ACTIONS ---
 
    const handleStartFromLibrary = (libSet: CardSet) => {
-      // Create a new session based on the library set
-      const newSession: CardSet = {
-         ...libSet,
-         id: generateId(), // New ID for session
-         name: libSet.name,
-         cards: libSet.cards.map(c => ({ ...c, mastery: 0 })), // Reset mastery
-         elapsedTime: 0,
-         topStreak: 0,
-         lastPlayed: Date.now()
-      };
+      // Mark as active session
+      const updatedSet = { ...libSet, isSessionActive: true, lastPlayed: Date.now() };
+      setLibrarySets(prev => prev.map(s => s.id === libSet.id ? updatedSet : s));
 
-      setActiveSessions(prev => [newSession, ...prev]);
-      setActiveSession(newSession);
+      setActiveSetId(libSet.id);
 
       setTimerStart(Date.now());
       setTimerNow(Date.now());
@@ -332,9 +338,7 @@ const App: React.FC = () => {
    };
 
    const handleResumeSession = (session: CardSet) => {
-      setActiveSession(session);
-      // Move to top of list
-      setActiveSessions(prev => [session, ...prev.filter(s => s.id !== session.id)]);
+      setActiveSetId(session.id);
 
       setTimerStart(Date.now());
       setTimerNow(Date.now());
@@ -361,7 +365,24 @@ const App: React.FC = () => {
    };
 
    const handleDeleteSession = (id: string) => {
-      setActiveSessions(prev => prev.filter(s => s.id !== id));
+      // Just mark as inactive
+      setLibrarySets(prev => prev.map(s => s.id === id ? { ...s, isSessionActive: false } : s));
+   };
+
+   const handleDuplicateLibrarySet = (id: string) => {
+      const set = librarySets.find(s => s.id === id);
+      if (set) {
+         const newSet: CardSet = {
+            ...set,
+            id: generateId(),
+            name: `${set.name} (Copy)`,
+            lastPlayed: Date.now(),
+            elapsedTime: 0,
+            topStreak: 0,
+            cards: set.cards.map(c => ({ ...c, mastery: 0 }))
+         };
+         setLibrarySets(prev => [newSet, ...prev]);
+      }
    };
 
    const handleUpdateActiveSession = (updatedSession: CardSet) => {
@@ -380,25 +401,20 @@ const App: React.FC = () => {
          lastPlayed: now
       };
 
-      setActiveSession(newSessionData);
-      setActiveSessions(prev => prev.map(s => s.id === updatedSession.id ? newSessionData : s));
+      // Universal Update: Update the single source of truth
+      setLibrarySets(prev => prev.map(s => s.id === updatedSession.id ? newSessionData : s));
    };
 
    const handleUpdatePreview = (updatedSet: CardSet) => {
       if (!previewSet) return;
       setPreviewSet({ ...previewSet, set: updatedSet });
-      if (previewSet.mode === 'library') {
-         handleUpdateLibrarySet(updatedSet);
-      } else {
-         setActiveSessions(prev => prev.map(s => s.id === updatedSet.id ? updatedSet : s));
-      }
+      handleUpdateLibrarySet(updatedSet);
    };
 
    const handleRenameSession = (newName: string) => {
       if (activeSession) {
          const updated = { ...activeSession, name: newName };
-         setActiveSession(updated);
-         setActiveSessions(prev => prev.map(s => s.id === activeSession.id ? updated : s));
+         setLibrarySets(prev => prev.map(s => s.id === activeSession.id ? updated : s));
       }
       setIsRenaming(false);
    };
@@ -412,8 +428,7 @@ const App: React.FC = () => {
             elapsedTime: activeSession.elapsedTime + delta,
             lastPlayed: now
          };
-         setActiveSession(finalSet);
-         setActiveSessions(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+         setLibrarySets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
       }
       setGameState(GameState.WIN);
    };
@@ -427,10 +442,10 @@ const App: React.FC = () => {
             elapsedTime: activeSession.elapsedTime + delta,
             lastPlayed: now
          };
-         setActiveSessions(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+         setLibrarySets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
       }
       setGameState(GameState.MENU);
-      setActiveSession(null);
+      setActiveSetId(null);
       setIsRenaming(false);
    };
 
@@ -444,8 +459,7 @@ const App: React.FC = () => {
          cards: activeSession.cards.map(c => ({ ...c, mastery: 0 }))
       };
 
-      setActiveSession(resetSession);
-      setActiveSessions(prev => prev.map(s => s.id === resetSession.id ? resetSession : s));
+      setLibrarySets(prev => prev.map(s => s.id === resetSession.id ? resetSession : s));
       setTimerStart(Date.now());
       setTimerNow(Date.now());
       setIsTimerPaused(false);
@@ -570,7 +584,6 @@ const App: React.FC = () => {
             {gameState === GameState.MENU && (
                <StartMenu
                   librarySets={librarySets}
-                  activeSessions={activeSessions}
                   onStartFromLibrary={handleStartFromLibrary}
                   onResumeSession={handleResumeSession}
                   onSaveToLibrary={handleSaveToLibrary}
@@ -579,6 +592,8 @@ const App: React.FC = () => {
                   onViewPreview={setPreviewSet}
                   settings={settings}
                   onUpdateSettings={updateSettings}
+                  lifetimeCorrect={lifetimeCorrect}
+                  onDuplicateLibrarySet={handleDuplicateLibrarySet}
                />
             )}
 
@@ -589,6 +604,7 @@ const App: React.FC = () => {
                   onFinish={handleFinish}
                   settings={settings}
                   onExit={handleBackToMenu}
+                  onCorrect={() => setLifetimeCorrect(p => p + 1)}
                />
             )}
 
@@ -624,6 +640,16 @@ const App: React.FC = () => {
                      >
                         <FolderOpen size={20} /> Save & Back to Menu
                      </button>
+
+                     <button
+                        onClick={() => {
+                           if (activeSession) handleDeleteSession(activeSession.id);
+                           handleBackToMenu();
+                        }}
+                        className="bg-panel-2 border border-outline text-red px-6 py-4 rounded-xl font-bold text-lg hover:border-red hover:bg-red/10 transition-colors shadow-sm flex items-center justify-center gap-2 md:col-span-2"
+                     >
+                        <Trash2 size={20} /> Finish & Remove Session
+                     </button>
                   </div>
                </div>
             )}
@@ -639,4 +665,4 @@ const App: React.FC = () => {
 };
 
 const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+root.render(<App />)

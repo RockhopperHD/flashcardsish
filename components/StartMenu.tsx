@@ -1,51 +1,54 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, X, Image as ImageIcon, Link } from 'lucide-react';
+import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link } from 'lucide-react';
 import { CardSet, Card, Settings } from '../types';
 import { parseInput, generateId, downloadFile, renderMarkdown } from '../utils';
 import clsx from 'clsx';
 
 interface StartMenuProps {
-  librarySets: CardSet[];
-  activeSessions: CardSet[];
-  onStartFromLibrary: (set: CardSet) => void;
-  onResumeSession: (set: CardSet) => void;
-  onSaveToLibrary: (set: CardSet) => void;
-  onDeleteLibrarySet: (id: string) => void;
-  onDeleteSession: (id: string) => void;
-  onViewPreview: (data: {set: CardSet, mode: 'library' | 'session'}) => void;
-  settings: Settings;
-  onUpdateSettings: (s: Settings) => void;
+    librarySets: CardSet[];
+    onStartFromLibrary: (set: CardSet) => void;
+    onResumeSession: (set: CardSet) => void;
+    onSaveToLibrary: (set: CardSet) => void;
+    onDeleteLibrarySet: (id: string) => void;
+    onDeleteSession: (id: string) => void;
+    onViewPreview: (data: { set: CardSet, mode: 'library' | 'session' }) => void;
+    settings: Settings;
+    onUpdateSettings: (s: Settings) => void;
+    lifetimeCorrect: number;
+    onDuplicateLibrarySet: (id: string) => void;
 }
 
 interface BuilderRow {
-  id: string;
-  term: string;
-  def: string;
-  year: string;
-  image: string;
+    id: string;
+    term: string;
+    def: string;
+    year: string;
+    image: string;
+    customFields: { name: string; value: string }[];
+    originalCardId?: string;
 }
 
 const BUILDER_STORAGE_KEY = 'flashcard-builder-rows';
 
 const GREETINGS = [
-  "What are we learning next?",
-  "Who's excited to study?!",
-  "You got this!",
-  "Step 1 is studying.",
-  "Lock in.",
-  "One more set?",
-  "What's up?",
-  "All you.",
-  "Greatness incoming?",
-  "Hey, you're here."
+    "What are we learning next?",
+    "Who's excited to study?!",
+    "You got this!",
+    "Step 1 is studying.",
+    "Lock in.",
+    "One more set?",
+    "What's up?",
+    "All you.",
+    "Greatness incoming?",
+    "Hey, you're here."
 ];
 
 // Unsaved Changes Modal
-const UnsavedChangesModal: React.FC<{ 
-    isOpen: boolean; 
-    onSave: () => void; 
-    onDiscard: () => void; 
-    onCancel: () => void; 
+const UnsavedChangesModal: React.FC<{
+    isOpen: boolean;
+    onSave: () => void;
+    onDiscard: () => void;
+    onCancel: () => void;
 }> = ({ isOpen, onSave, onDiscard, onCancel }) => {
     if (!isOpen) return null;
     return (
@@ -70,10 +73,10 @@ const UnsavedChangesModal: React.FC<{
 };
 
 // Image Modal
-const ImageModal: React.FC<{ 
-    isOpen: boolean; 
-    onClose: () => void; 
-    onSave: (url: string) => void; 
+const ImageModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (url: string) => void;
     initialValue: string;
 }> = ({ isOpen, onClose, onSave, initialValue }) => {
     const [urlInput, setUrlInput] = useState(initialValue);
@@ -88,7 +91,7 @@ const ImageModal: React.FC<{
 
     const handleFile = (file: File) => {
         if (!file.type.startsWith('image/')) return;
-        
+
         const reader = new FileReader();
         reader.onloadend = () => {
             if (typeof reader.result === 'string') {
@@ -112,14 +115,14 @@ const ImageModal: React.FC<{
 
     return (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
-             <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+            <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-6">
                     <h3 className="text-xl font-bold text-text">Add Image</h3>
                     <button onClick={onClose}><X size={24} className="text-muted hover:text-text" /></button>
                 </div>
 
                 {/* Upload Section */}
-                <div 
+                <div
                     className={clsx(
                         "border-2 border-dashed rounded-xl h-36 flex flex-col items-center justify-center cursor-pointer transition-colors",
                         dragActive ? "border-accent bg-accent/10" : "border-outline hover:border-accent hover:bg-panel-2"
@@ -143,76 +146,78 @@ const ImageModal: React.FC<{
 
                 {/* Link Section */}
                 <div className="flex gap-2">
-                     <input 
+                    <input
                         value={urlInput}
                         onChange={(e) => setUrlInput(e.target.value)}
                         placeholder="Paste image link..."
                         className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 focus:outline-none focus:border-accent transition-colors text-sm"
-                     />
-                     <button 
+                    />
+                    <button
                         onClick={() => { onSave(urlInput); onClose(); }}
                         className="px-5 py-3 bg-panel-2 border border-outline hover:bg-accent hover:text-bg rounded-xl font-bold transition-all text-sm whitespace-nowrap"
-                     >
-                         Save
-                     </button>
+                    >
+                        Save
+                    </button>
                 </div>
-             </div>
+            </div>
         </div>
     );
 };
 
 // Markdown Help Modal
 const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-   if (!isOpen) return null;
-   return (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
-         <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-               <h3 className="font-bold text-2xl text-text">Formatting Guide</h3>
-               <button onClick={onClose}><X size={24} className="text-muted hover:text-text" /></button>
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+            <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="font-bold text-2xl text-text">Formatting Guide</h3>
+                    <button onClick={onClose}><X size={24} className="text-muted hover:text-text" /></button>
+                </div>
+                <div className="space-y-4 text-base">
+                    <div className="flex justify-between pb-2">
+                        <span className="text-muted">Italics</span>
+                        <span className="font-mono text-yellow">*italic*</span>
+                    </div>
+                    <div className="flex justify-between pb-2">
+                        <span className="text-muted">Bold</span>
+                        <span className="font-mono text-yellow">**bold**</span>
+                    </div>
+                    <div className="flex justify-between pb-2">
+                        <span className="text-muted">Bold & Italic</span>
+                        <span className="font-mono text-yellow">***text***</span>
+                    </div>
+                    <div className="flex justify-between pb-2">
+                        <span className="text-muted">Underline</span>
+                        <span className="font-mono text-yellow">__text__</span>
+                    </div>
+                    <div className="flex justify-between pb-2">
+                        <span className="text-muted">Code</span>
+                        <span className="font-mono text-yellow">`code`</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pb-2">
+                        <span className="text-muted">Bulleted List</span>
+                        <span className="font-mono text-yellow text-right">- Item 1<br />- Item 2</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <span className="text-muted">Exit List / New Para</span>
+                        <span className="font-mono text-yellow text-right">&lt;p&gt;</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-outline/50">
+                        <span className="text-muted font-bold text-accent">Image Link</span>
+                        <span className="font-mono text-yellow text-right">**ADD TO RAW TEXT:** <br /> `... ||| http://link/image.jpg`</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <span className="text-muted font-bold text-accent">Year</span>
+                        <span className="font-mono text-yellow text-right">**ADD TO RAW TEXT:** <br /> `... /// Year`</span>
+                    </div>
+                </div>
             </div>
-            <div className="space-y-4 text-base">
-               <div className="flex justify-between pb-2">
-                  <span className="text-muted">Italics</span>
-                  <span className="font-mono text-yellow">*italic*</span>
-               </div>
-               <div className="flex justify-between pb-2">
-                  <span className="text-muted">Bold</span>
-                  <span className="font-mono text-yellow">**bold**</span>
-               </div>
-               <div className="flex justify-between pb-2">
-                  <span className="text-muted">Bold & Italic</span>
-                  <span className="font-mono text-yellow">***text***</span>
-               </div>
-               <div className="flex justify-between pb-2">
-                  <span className="text-muted">Underline</span>
-                  <span className="font-mono text-yellow">__text__</span>
-               </div>
-               <div className="flex justify-between pb-2">
-                  <span className="text-muted">Code</span>
-                  <span className="font-mono text-yellow">`code`</span>
-               </div>
-               <div className="grid grid-cols-2 gap-2 pb-2">
-                  <span className="text-muted">Bulleted List</span>
-                  <span className="font-mono text-yellow text-right">- Item 1<br/>- Item 2</span>
-               </div>
-               <div className="grid grid-cols-2 gap-2">
-                  <span className="text-muted">Exit List / New Para</span>
-                  <span className="font-mono text-yellow text-right">&lt;p&gt;</span>
-               </div>
-               <div className="grid grid-cols-2 gap-2 pt-2 border-t border-outline/50">
-                  <span className="text-muted font-bold text-accent">Image Link</span>
-                  <span className="font-mono text-yellow text-right">**ADD TO RAW TEXT:** <br/> `... ||| http://link/image.jpg`</span>
-               </div>
-               <div className="grid grid-cols-2 gap-2">
-                  <span className="text-muted font-bold text-accent">Year</span>
-                  <span className="font-mono text-yellow text-right">**ADD TO RAW TEXT:** <br/> `... /// Year`</span>
-               </div>
-            </div>
-         </div>
-      </div>
-   );
+        </div>
+    );
 };
+
+
 
 // Builder Row Component
 const BuilderRowItem: React.FC<{
@@ -221,11 +226,12 @@ const BuilderRowItem: React.FC<{
     showYear: boolean;
     isDuplicate: boolean;
     isLast: boolean;
-    updateRow: (id: string, field: keyof BuilderRow, value: string) => void;
+    customFieldNames: string[];
+    updateRow: (id: string, field: keyof BuilderRow, value: any) => void;
     removeRow: (id: string) => void;
     onAddNext: () => void;
     onOpenImageModal: () => void;
-}> = ({ row, index, showYear, isDuplicate, isLast, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
+}> = ({ row, index, showYear, isDuplicate, isLast, customFieldNames, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
     const [isEditingDef, setIsEditingDef] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -253,7 +259,7 @@ const BuilderRowItem: React.FC<{
                 const insertion = '\n- ';
                 const newVal = val.substring(0, selectionStart) + insertion + val.substring(textareaRef.current?.selectionEnd || selectionStart);
                 updateRow(row.id, 'def', newVal);
-                
+
                 // Move cursor
                 requestAnimationFrame(() => {
                     if (textareaRef.current) {
@@ -281,11 +287,11 @@ const BuilderRowItem: React.FC<{
             "p-3 mb-3 bg-panel-2/10 border border-outline rounded-xl"
         )}>
             <div className="flex flex-col md:flex-row gap-3">
-                
+
                 {/* Left Column: Term & Toolbar */}
                 <div className="w-full md:w-[35%] flex flex-col gap-2">
                     <div className="relative">
-                        <input 
+                        <input
                             id={`term-${row.id}`}
                             value={row.term}
                             onChange={(e) => updateRow(row.id, 'term', e.target.value)}
@@ -318,7 +324,7 @@ const BuilderRowItem: React.FC<{
                         </button>
 
                         {/* Delete Button */}
-                        <button 
+                        <button
                             onClick={() => removeRow(row.id)}
                             tabIndex={-1}
                             className="p-2.5 text-muted hover:text-red transition-all shrink-0"
@@ -329,13 +335,33 @@ const BuilderRowItem: React.FC<{
 
                         {/* Year Input (if enabled) */}
                         {showYear && (
-                            <input 
+                            <input
                                 value={row.year}
                                 onChange={(e) => updateRow(row.id, 'year', e.target.value)}
                                 placeholder="Year"
                                 className="w-24 bg-panel-2 border border-outline rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-accent transition-colors text-center placeholder:text-muted/50 h-[42px]"
                             />
                         )}
+
+                        {/* Custom Fields Inputs */}
+                        {customFieldNames.map(fieldName => {
+                            const val = row.customFields.find(f => f.name === fieldName)?.value || '';
+                            return (
+                                <input
+                                    key={fieldName}
+                                    value={val}
+                                    onChange={(e) => {
+                                        const newFields = row.customFields.filter(f => f.name !== fieldName);
+                                        if (e.target.value) {
+                                            newFields.push({ name: fieldName, value: e.target.value });
+                                        }
+                                        updateRow(row.id, 'customFields', newFields);
+                                    }}
+                                    placeholder={fieldName}
+                                    className="w-24 bg-panel-2 border border-outline rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-accent transition-colors text-center placeholder:text-muted/50 h-[42px]"
+                                />
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -344,7 +370,7 @@ const BuilderRowItem: React.FC<{
                     <div className="w-full relative group/def">
                         {isEditingDef ? (
                             <div className="bg-panel-2 border border-accent rounded-lg min-h-[42px] relative">
-                                <textarea 
+                                <textarea
                                     ref={textareaRef}
                                     value={row.def}
                                     onChange={(e) => updateRow(row.id, 'def', e.target.value)}
@@ -361,7 +387,7 @@ const BuilderRowItem: React.FC<{
                                 />
                             </div>
                         ) : (
-                            <div 
+                            <div
                                 tabIndex={0}
                                 onFocus={() => setIsEditingDef(true)}
                                 onClick={() => setIsEditingDef(true)}
@@ -386,758 +412,851 @@ const BuilderRowItem: React.FC<{
 };
 
 
-export const StartMenu: React.FC<StartMenuProps> = ({ 
-  librarySets,
-  activeSessions,
-  onStartFromLibrary,
-  onResumeSession,
-  onSaveToLibrary,
-  onDeleteLibrarySet,
-  onDeleteSession,
-  onViewPreview,
-  settings,
-  onUpdateSettings
+export const StartMenu: React.FC<StartMenuProps> = ({
+    librarySets,
+    onStartFromLibrary,
+    onResumeSession,
+    onSaveToLibrary,
+    onDeleteLibrarySet,
+    onDeleteSession,
+    onViewPreview,
+    settings,
+    onUpdateSettings,
+    lifetimeCorrect,
+    onDuplicateLibrarySet
 }) => {
-  const [view, setView] = useState<'menu' | 'builder'>('menu');
-  const [builderMode, setBuilderMode] = useState<'visual' | 'raw'>('visual');
-  const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
-  const [showYears, setShowYears] = useState(false);
-  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
-  
-  // Image Modal State
-  const [showImageModal, setShowImageModal] = useState(false);
-  const [editingImageRowId, setEditingImageRowId] = useState<string | null>(null);
+    const [view, setView] = useState<'menu' | 'builder'>('menu');
+    const [builderMode, setBuilderMode] = useState<'visual' | 'raw'>('visual');
+    const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
 
-  // Builder State
-  const [builderRows, setBuilderRows] = useState<BuilderRow[]>(() => {
-    const saved = localStorage.getItem(BUILDER_STORAGE_KEY);
-    try {
-        return saved ? JSON.parse(saved) : [
-            { id: '1', term: '', def: '', year: '', image: '' },
-            { id: '2', term: '', def: '', year: '', image: '' },
-            { id: '3', term: '', def: '', year: '', image: '' }
-        ];
-    } catch {
-        return [
-            { id: '1', term: '', def: '', year: '', image: '' },
-            { id: '2', term: '', def: '', year: '', image: '' },
-            { id: '3', term: '', def: '', year: '', image: '' }
-        ];
-    }
-  });
-  const [rawText, setRawText] = useState('');
-  const [setName, setSetName] = useState('');
-  
-  // Focus Management for new rows
-  const prevRowCount = useRef(builderRows.length);
-  useEffect(() => {
-    if (builderRows.length > prevRowCount.current) {
-        // Row added, find the last row's term input and focus it
-        const lastRow = builderRows[builderRows.length - 1];
-        const el = document.getElementById(`term-${lastRow.id}`);
-        if (el) el.focus();
-    }
-    prevRowCount.current = builderRows.length;
-  }, [builderRows.length]);
+    const [showYears, setShowYears] = useState(false);
+    const [customFieldNames, setCustomFieldNames] = useState<string[]>([]);
+    const [newCustomFieldName, setNewCustomFieldName] = useState('');
+    const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
-  // Delete Confirmation State
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    // Image Modal State
+    const [showImageModal, setShowImageModal] = useState(false);
+    const [editingImageRowId, setEditingImageRowId] = useState<string | null>(null);
+    const [editingSetId, setEditingSetId] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const greeting = useMemo(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)], []);
-  const currentDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    // Builder State
+    const [builderRows, setBuilderRows] = useState<BuilderRow[]>(() => {
+        const saved = localStorage.getItem(BUILDER_STORAGE_KEY);
+        try {
+            return saved ? JSON.parse(saved) : [
+                { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
+                { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
+                { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+            ];
+        } catch {
+            return [
+                { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
+                { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
+                { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+            ];
+        }
+    });
+    const [rawText, setRawText] = useState('');
+    const [setName, setSetName] = useState('');
 
-  // Persist builder rows only in visual mode
-  useEffect(() => {
-     if (builderMode === 'visual') {
-         localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(builderRows));
-     }
-  }, [builderRows, builderMode]);
+    // Focus Management for new rows
+    const prevRowCount = useRef(builderRows.length);
+    useEffect(() => {
+        if (builderRows.length > prevRowCount.current) {
+            // Row added, find the last row's term input and focus it
+            const lastRow = builderRows[builderRows.length - 1];
+            const el = document.getElementById(`term-${lastRow.id}`);
+            if (el) el.focus();
+        }
+        prevRowCount.current = builderRows.length;
+    }, [builderRows.length]);
 
-  const handleCreateNew = () => {
-    setSetName('');
-    setBuilderRows([
-        { id: '1', term: '', def: '', year: '', image: '' },
-        { id: '2', term: '', def: '', year: '', image: '' },
-        { id: '3', term: '', def: '', year: '', image: '' }
-    ]);
-    const defaultName = "New Set " + new Date().toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}).replace(',', '');
-    setSetName(defaultName);
-    setView('builder');
-  };
+    // Delete Confirmation State
+    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const handleBackToLibrary = () => {
-      // Check for unsaved changes
-      let isDirty = false;
-      if (builderMode === 'raw') {
-          isDirty = !!rawText.trim();
-      } else {
-          isDirty = builderRows.some(r => r.term.trim() || r.def.trim());
-      }
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const greeting = useMemo(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)], []);
+    const currentDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-      if (isDirty) {
-          setShowUnsavedModal(true);
-      } else {
-          setView('menu');
-      }
-  };
+    // Persist builder rows only in visual mode
+    useEffect(() => {
+        if (builderMode === 'visual') {
+            localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(builderRows));
+        }
+    }, [builderRows, builderMode]);
 
-  const handleDiscard = () => {
-      setShowUnsavedModal(false);
-      setView('menu');
-      setSetName('');
-      setBuilderRows([]); // Reset handled by next enter
-  };
+    const handleCreateNew = () => {
+        setSetName('');
+        setEditingSetId(null);
+        setCustomFieldNames([]);
+        setBuilderRows([
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+        ]);
+        const defaultName = "New Set " + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '');
+        setSetName(defaultName);
+        setView('builder');
+    };
 
-  const handleSaveAndExit = () => {
-      handleSaveToLibraryAction();
-      setShowUnsavedModal(false);
-  };
+    const handleBackToLibrary = () => {
+        // Check for unsaved changes
+        let isDirty = false;
+        if (builderMode === 'raw') {
+            isDirty = !!rawText.trim();
+        } else {
+            isDirty = builderRows.some(r => r.term.trim() || r.def.trim());
+        }
 
-  // --- BUILDER SYNC LOGIC ---
+        if (isDirty) {
+            setShowUnsavedModal(true);
+        } else {
+            setView('menu');
+        }
+    };
 
-  const syncToRaw = () => {
-    const text = builderRows
-         .filter(r => r.term.trim() || r.def.trim())
-         .map(r => {
-             let line = `${r.term.trim()} / ${r.def.trim()}`;
-             if (r.year.trim()) line += ` /// ${r.year.trim()}`;
-             if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
-             return line;
-         })
-         .join('\n\n&&&\n\n'); // New Separator
-    setRawText(text);
-  };
+    const handleDiscard = () => {
+        setShowUnsavedModal(false);
+        setView('menu');
+        setSetName('');
+        setBuilderRows([]); // Reset handled by next enter
+    };
 
-  const syncToRows = () => {
-    const parsed = parseInput(rawText);
-    const rows: BuilderRow[] = parsed.map((c, i) => ({
-        id: generateId() + i,
-        term: c.term?.[0] || '',
-        def: c.content || '',
-        year: c.year || '',
-        image: c.image || ''
-    }));
-    // Ensure at least 3 rows
-    while (rows.length < 3) {
-        rows.push({ id: generateId(), term: '', def: '', year: '', image: '' });
-    }
-    setBuilderRows(rows);
-  };
+    const handleSaveAndExit = () => {
+        handleSaveToLibraryAction();
+        setShowUnsavedModal(false);
+    };
 
-  const switchMode = (newMode: 'visual' | 'raw') => {
-      if (newMode === builderMode) return;
-      
-      if (newMode === 'raw') {
-          syncToRaw();
-      } else {
-          syncToRows();
-      }
-      setBuilderMode(newMode);
-  };
+    // --- BUILDER SYNC LOGIC ---
 
-  const handleLoadSetToBuilder = (set: CardSet) => {
-      setSetName(set.name);
-      const rows = set.cards.map((c, i) => ({
-          id: generateId() + i,
-          term: c.term[0] || '',
-          def: c.content || '',
-          year: c.year || '',
-          image: c.image || ''
-      }));
-      setBuilderRows(rows);
-      setView('builder');
-      setBuilderMode('visual');
-  };
-
-  // --- ACTIONS ---
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const text = await e.target.files[0].text();
-      // Detect if it's JSON or TXT
-      let loadedName = e.target.files[0].name.replace('.json', '').replace('.flashcards', '').replace('.txt', '');
-      let cards = [];
-
-      try {
-         const json = JSON.parse(text);
-         if (json.name) loadedName = json.name;
-         cards = parseInput(text); // parseInput handles both JSON structure and raw
-      } catch {
-         // Raw text
-         setRawText(text);
-         // If we are in visual mode, we need to sync immediately
-         const parsed = parseInput(text);
-         const rows = parsed.map((c, i) => ({
-             id: generateId() + i,
-             term: c.term?.[0] || '',
-             def: c.content || '',
-             year: c.year || '',
-             image: c.image || ''
-         }));
-         setBuilderRows(rows);
-      }
-      
-      if (cards.length > 0 && builderMode === 'visual') {
-           const rows = cards.map((c, i) => ({
-             id: generateId() + i,
-             term: c.term?.[0] || '',
-             def: c.content || '',
-             year: c.year || '',
-             image: c.image || ''
-         }));
-         setBuilderRows(rows);
-      } else if (builderMode === 'raw') {
-          setRawText(text);
-      }
-
-      setSetName(loadedName);
-      setView('builder'); // Force to builder view
-    }
-  };
-
-  const getCardsFromState = (): Partial<Card>[] => {
-      if (builderMode === 'visual') {
-          return builderRows
+    const syncToRaw = () => {
+        const text = builderRows
             .filter(r => r.term.trim() || r.def.trim())
-            .map(r => ({
-                term: [r.term.trim()],
-                content: r.def.trim(),
-                year: r.year.trim() || undefined,
-                image: r.image.trim() || undefined,
-                star: false,
-                mastery: 0
-            }));
-      } else {
-          return parseInput(rawText);
-      }
-  };
+            .map(r => {
+                let line = `${r.term.trim()} / ${r.def.trim()}`;
+                if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+                if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
 
-  const handleStartSessionNow = () => {
-      const cards = getCardsFromState();
-      if (cards.length === 0) return;
-      
-      const fullCards: Card[] = cards.map((c, i) => ({
-        id: generateId() + i,
-        term: c.term || ['?'],
-        content: c.content || '',
-        year: c.year,
-        image: c.image,
-        mastery: 0,
-        star: c.star || false
-     }));
+                // Add Custom Fields
+                if (r.customFields.length > 0) {
+                    // Ensure comma separator if not already present? 
+                    // The parser expects "image , (field)" or just ", (field)" if no image?
+                    // Let's use the standard format: " ||| image , (Name)(Value)"
+                    // If no image: " ||| , (Name)(Value)"
+                    if (!r.image.trim()) line += ` ||| `;
+                    line += ` , `;
+                    r.customFields.forEach(f => {
+                        line += `(${f.name})(${f.value})`;
+                    });
+                }
+                return line;
+            })
+            .join('\n\n&&&\n\n'); // New Separator
+        setRawText(text);
+    };
 
-     const newSet: CardSet = {
-        id: generateId(),
-        name: setName || `Set ${librarySets.length + 1}`,
-        cards: fullCards,
-        lastPlayed: Date.now(),
-        elapsedTime: 0,
-        topStreak: 0
-     };
-     
-     // Save to Library first to ensure persistence
-     onSaveToLibrary(newSet);
-     // Start Session
-     onStartFromLibrary(newSet);
+    const syncToRows = () => {
+        const parsed = parseInput(rawText);
+        const rows: BuilderRow[] = parsed.map((c, i) => ({
+            id: generateId() + i,
+            term: c.term?.[0] || '',
+            def: c.content || '',
+            year: c.year || '',
+            image: c.image || '',
+            customFields: c.customFields || []
+        }));
+        // Extract unique custom field names from parsed rows
+        const allNames = new Set<string>();
+        rows.forEach(r => r.customFields.forEach(f => allNames.add(f.name)));
+        setCustomFieldNames(Array.from(allNames));
 
-     // Clear Builder State
-     setSetName('');
-     setRawText('');
-     const emptyRows = [
-        { id: '1', term: '', def: '', year: '', image: '' },
-        { id: '2', term: '', def: '', year: '', image: '' },
-        { id: '3', term: '', def: '', year: '', image: '' }
-     ];
-     setBuilderRows(emptyRows);
-     // Explicitly clear local storage to prevent builder restoration on next visit
-     localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(emptyRows));
-     setShowUnsavedModal(false);
-  };
+        // Ensure at least 3 rows
+        while (rows.length < 3) {
+            rows.push({ id: generateId(), term: '', def: '', year: '', image: '', customFields: [] });
+        }
+        setBuilderRows(rows);
+    };
 
-  const handleSaveToLibraryAction = () => {
-      const cards = getCardsFromState();
-      if (cards.length === 0) return;
-      
-      const fullCards: Card[] = cards.map((c, i) => ({
-        id: generateId() + i,
-        term: c.term || ['?'],
-        content: c.content || '',
-        year: c.year,
-        image: c.image,
-        mastery: 0,
-        star: c.star || false
-     }));
+    const switchMode = (newMode: 'visual' | 'raw') => {
+        if (newMode === builderMode) return;
 
-     const newSet: CardSet = {
-        id: generateId(), 
-        name: setName || `Set ${librarySets.length + 1}`,
-        cards: fullCards,
-        lastPlayed: Date.now(),
-        elapsedTime: 0,
-        topStreak: 0
-     };
-     
-     onSaveToLibrary(newSet);
-     setView('menu');
-     setSetName('');
-     setRawText('');
-     setBuilderRows([
-        { id: '1', term: '', def: '', year: '', image: '' },
-        { id: '2', term: '', def: '', year: '', image: '' },
-        { id: '3', term: '', def: '', year: '', image: '' }
-     ]);
-  };
+        if (newMode === 'raw') {
+            syncToRaw();
+        } else {
+            syncToRows();
+        }
+        setBuilderMode(newMode);
+    };
 
-  const handleDownloadFlashcards = () => {
-      let content = rawText;
-      if (builderMode === 'visual') {
-          content = builderRows
-             .filter(r => r.term.trim() || r.def.trim())
-             .map(r => {
-                 let line = `${r.term.trim()} / ${r.def.trim()}`;
-                 if (r.year.trim()) line += ` /// ${r.year.trim()}`;
-                 if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
-                 return line;
-             })
-             .join('\n\n&&&\n\n');
-      }
-      downloadFile((setName || 'deck') + '.flashcards', content, 'text');
-  };
+    const handleLoadSetToBuilder = (set: CardSet) => {
+        setSetName(set.name);
+        setEditingSetId(set.id);
+        const rows = set.cards.map((c, i) => ({
+            id: generateId() + i,
+            term: c.term[0] || '',
+            def: c.content || '',
+            year: c.year || '',
+            image: c.image || '',
+            customFields: c.customFields || [],
+            originalCardId: c.id
+        }));
 
-  const handleCopyCode = () => {
-      let content = rawText;
-      if (builderMode === 'visual') {
-          content = builderRows
-             .filter(r => r.term.trim() || r.def.trim())
-             .map(r => {
-                 let line = `${r.term.trim()} / ${r.def.trim()}`;
-                 if (r.year.trim()) line += ` /// ${r.year.trim()}`;
-                 if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
-                 return line;
-             })
-             .join('\n\n&&&\n\n');
-      }
-      navigator.clipboard.writeText(content);
-      alert("Copied to clipboard!");
-  };
+        // Extract custom field names
+        const allNames = new Set<string>();
+        if (set.customFieldNames) {
+            set.customFieldNames.forEach(n => allNames.add(n));
+        } else {
+            rows.forEach(r => r.customFields.forEach(f => allNames.add(f.name)));
+        }
+        setCustomFieldNames(Array.from(allNames));
 
-  // --- HELPER FOR VISUAL BUILDER ---
-  
-  const addRow = () => {
-     setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '' }]);
-  };
+        setBuilderRows(rows);
+        setView('builder');
+        setBuilderMode('visual');
+    };
 
-  const updateRow = (id: string, field: keyof BuilderRow, value: string) => {
-     setBuilderRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-  };
+    // --- ACTIONS ---
 
-  const removeRow = (id: string) => {
-     setBuilderRows(prev => prev.filter(r => r.id !== id));
-  };
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const text = await e.target.files[0].text();
+            // Detect if it's JSON or TXT
+            let loadedName = e.target.files[0].name.replace('.json', '').replace('.flashcards', '').replace('.txt', '');
+            let cards = [];
 
-  const openImageModal = (rowId: string) => {
-      setEditingImageRowId(rowId);
-      setShowImageModal(true);
-  };
+            try {
+                const json = JSON.parse(text);
+                if (json.name) loadedName = json.name;
+                cards = parseInput(text); // parseInput handles both JSON structure and raw
+            } catch {
+                // Raw text
+                setRawText(text);
+                // If we are in visual mode, we need to sync immediately
+                const parsed = parseInput(text);
+                const rows = parsed.map((c, i) => ({
+                    id: generateId() + i,
+                    term: c.term?.[0] || '',
+                    def: c.content || '',
+                    year: c.year || '',
+                    image: c.image || '',
+                    customFields: c.customFields || []
+                }));
+                setBuilderRows(rows);
+            }
 
-  const handleSaveImage = (url: string) => {
-      if (editingImageRowId) {
-          updateRow(editingImageRowId, 'image', url);
-      }
-  };
+            if (cards.length > 0 && builderMode === 'visual') {
+                const rows = cards.map((c, i) => ({
+                    id: generateId() + i,
+                    term: c.term?.[0] || '',
+                    def: c.content || '',
+                    year: c.year || '',
+                    image: c.image || '',
+                    customFields: c.customFields || []
+                }));
+                setBuilderRows(rows);
+            } else if (builderMode === 'raw') {
+                setRawText(text);
+            }
 
-  const duplicateIds = useMemo(() => {
-     const counts = new Map<string, number>();
-     const ids = new Set<string>();
-     builderRows.forEach(r => {
-         const t = r.term.trim().toLowerCase();
-         if (!t) return;
-         counts.set(t, (counts.get(t) || 0) + 1);
-     });
-     builderRows.forEach(r => {
-         const t = r.term.trim().toLowerCase();
-         if (t && (counts.get(t) || 0) > 1) {
-             ids.add(r.id);
-         }
-     });
-     return ids;
-  }, [builderRows]);
+            setSetName(loadedName);
+            setView('builder'); // Force to builder view
+        }
+    };
 
-  const handleDeleteClick = (id: string, type: 'session' | 'library') => {
-      if (deleteConfirmId === id) {
-          if (type === 'session') onDeleteSession(id);
-          else onDeleteLibrarySet(id);
-          setDeleteConfirmId(null);
-      } else {
-          setDeleteConfirmId(id);
-          setTimeout(() => setDeleteConfirmId(null), 3000);
-      }
-  };
+    const getCardsFromState = (): Partial<Card>[] => {
+        if (builderMode === 'visual') {
+            return builderRows
+                .filter(r => r.term.trim() || r.def.trim())
+                .map(r => ({
+                    term: [r.term.trim()],
+                    content: r.def.trim(),
+                    year: r.year.trim() || undefined,
+                    image: r.image.trim() || undefined,
+                    customFields: r.customFields,
+                    star: false,
+                    mastery: 0
+                }));
+        } else {
+            return parseInput(rawText);
+        }
+    };
 
-  // Check for uploaded images (Base64)
-  const hasUploadedImages = useMemo(() => {
-      return builderRows.some(r => r.image && r.image.startsWith('data:'));
-  }, [builderRows]);
+    const handleStartSessionNow = () => {
+        const cards = getCardsFromState();
+        if (cards.length === 0) return;
 
-  return (
-    <div className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700">
-      
-      <UnsavedChangesModal 
-        isOpen={showUnsavedModal}
-        onSave={handleSaveAndExit}
-        onDiscard={handleDiscard}
-        onCancel={() => setShowUnsavedModal(false)}
-      />
+        const fullCards: Card[] = cards.map((c, i) => ({
+            id: generateId() + i,
+            term: c.term || ['?'],
+            content: c.content || '',
+            year: c.year,
+            image: c.image,
+            mastery: 0,
+            star: c.star || false,
+            customFields: c.customFields || []
+        }));
 
-      <ImageModal 
-        isOpen={showImageModal}
-        onClose={() => setShowImageModal(false)}
-        onSave={handleSaveImage}
-        initialValue={editingImageRowId ? (builderRows.find(r => r.id === editingImageRowId)?.image || '') : ''}
-      />
+        const newSet: CardSet = {
+            id: generateId(),
+            name: setName || `Set ${librarySets.length + 1}`,
+            cards: fullCards,
+            lastPlayed: Date.now(),
+            elapsedTime: 0,
+            topStreak: 0,
+            customFieldNames: customFieldNames
+        };
 
-      <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
-      <input ref={fileInputRef} type="file" accept=".json,.txt,.flashcards" className="hidden" onChange={handleFileUpload} />
+        // Save to Library first to ensure persistence
+        onSaveToLibrary(newSet);
+        // Start Session
+        onStartFromLibrary(newSet);
 
-      {/* Header */}
-      <div className={clsx("mb-10", view === 'builder' ? "text-center" : "text-left")}>
-         {view === 'menu' && (
-             <div className="text-accent font-mono text-sm mb-1 tracking-widest uppercase opacity-80">{currentDate}</div>
-         )}
-         <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
-            {view === 'menu' ? greeting : 'List Builder'}
-         </h1>
-         <p className="text-muted text-lg">
-            {view === 'menu' ? 'Study a deck or create a new one below.' : 'Build decks here!'}
-         </p>
-      </div>
+        // Clear Builder State
+        setSetName('');
+        setRawText('');
+        const emptyRows = [
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+        ];
+        setCustomFieldNames([]);
+        setBuilderRows(emptyRows);
+        // Explicitly clear local storage to prevent builder restoration on next visit
+        localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(emptyRows));
+        setShowUnsavedModal(false);
+    };
 
-      {view === 'builder' && (
-         <button 
-           onClick={handleBackToLibrary}
-           className="mb-6 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
-         >
-            <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-               <ArrowLeft size={16} /> 
-            </div>
-            Back to Library
-         </button>
-      )}
+    const handleSaveToLibraryAction = () => {
+        const cards = getCardsFromState();
+        if (cards.length === 0) return;
 
-      <div className="space-y-12">
-        
-        {/* MENU MODE */}
-        {view === 'menu' && (
-            <div className="grid lg:grid-cols-[1fr_1fr] gap-8 items-start">
-                {/* ACTIVE SESSIONS COLUMN */}
-                <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
-                           Active Sessions
-                        </h3>
-                        <div className="flex gap-2 opacity-0 pointer-events-none" aria-hidden>
-                            <button className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold">
-                                <Upload size={14} /> Import
-                            </button>
-                            <button className="flex items-center gap-2 px-3 py-1.5 bg-text text-bg rounded-lg text-xs font-bold">
-                                <Plus size={14} /> Create
-                            </button>
-                        </div>
-                    </div>
+        // Find existing set to preserve stats
+        const existingSet = editingSetId ? librarySets.find(s => s.id === editingSetId) : null;
 
-                    {activeSessions.length === 0 ? (
-                        <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
-                            <p className="text-muted italic text-sm">No ongoing sessions.</p>
-                            <p className="text-muted/50 text-xs mt-1">Start one from your Library.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {activeSessions.map(session => {
-                                const progress = Math.round((session.cards.filter(c => c.mastery === 2).length / session.cards.length) * 100);
-                                return (
-                                    <div key={session.id} className="group flex items-center justify-between bg-panel-2 border border-outline p-4 rounded-2xl hover:border-accent/50 transition-all shadow-sm">
-                                        <div className="flex-1 flex items-center gap-4">
-                                            <div className="relative shrink-0">
-                                                <div className="w-10 h-10 rounded-full bg-panel border border-outline flex items-center justify-center text-accent font-bold text-xs">
-                                                    {progress}%
-                                                </div>
-                                            </div>
-                                            <div className="min-w-0">
-                                                <div className="font-bold text-text group-hover:text-accent transition-colors truncate">{session.name}</div>
-                                                <div className="text-xs text-muted font-mono">
-                                                    {session.cards.length} cards &bull; {new Date(session.lastPlayed).toLocaleDateString()}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2 pl-2">
-                                             <button 
-                                                onClick={() => handleDeleteClick(session.id, 'session')}
-                                                className={clsx(
-                                                    "p-2 rounded-lg bg-panel border transition-all text-xs font-bold",
-                                                    deleteConfirmId === session.id ? "border-red text-red w-16" : "border-outline text-muted hover:text-red hover:border-red"
-                                                )}
-                                                title="Delete Session"
-                                            >
-                                                {deleteConfirmId === session.id ? "Sure?" : <Trash2 size={16} />}
-                                            </button>
-                                            <button 
-                                                onClick={() => onResumeSession(session)}
-                                                className="p-2 bg-accent text-bg rounded-lg hover:scale-105 active:scale-95 transition-all"
-                                                title="Resume"
-                                            >
-                                                <Play size={16} fill="currentColor" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+        const fullCards: Card[] = cards.map((c, i) => {
+            // Try to find original card to preserve mastery/star
+            let originalCard: Card | undefined;
+            if (builderMode === 'visual') {
+                const row = builderRows.find(r => r.term.trim() === c.term?.[0]?.trim() && r.def.trim() === c.content?.trim()); // Heuristic match if ID lost?
+                // Actually, getCardsFromState for visual mode constructs from rows. 
+                // But we need the originalCardId from the row corresponding to this card.
+                // Since getCardsFromState maps rows directly, we can access the row by index if we trust order?
+                // Better: Let's look up the row.
+                const rowByIndex = builderRows.filter(r => r.term.trim() || r.def.trim())[i];
+                if (rowByIndex?.originalCardId && existingSet) {
+                    originalCard = existingSet.cards.find(ec => ec.id === rowByIndex.originalCardId);
+                }
+            }
+
+            return {
+                id: originalCard?.id || generateId() + i,
+                term: c.term || ['?'],
+                content: c.content || '',
+                year: c.year,
+                image: c.image,
+                mastery: originalCard?.mastery || 0,
+                star: originalCard?.star || c.star || false,
+                customFields: c.customFields || []
+            };
+        });
+
+        const newSet: CardSet = {
+            id: editingSetId || generateId(),
+            name: setName || `Set ${librarySets.length + 1}`,
+            cards: fullCards,
+            lastPlayed: existingSet?.lastPlayed || Date.now(),
+            elapsedTime: existingSet?.elapsedTime || 0,
+            topStreak: existingSet?.topStreak || 0,
+            customFieldNames: customFieldNames,
+            isSessionActive: existingSet?.isSessionActive,
+            sourceId: existingSet?.sourceId
+        };
+
+        onSaveToLibrary(newSet);
+        setView('menu');
+        setSetName('');
+        setRawText('');
+        setEditingSetId(null);
+        setBuilderRows([
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+        ]);
+        setCustomFieldNames([]);
+    };
+
+    const handleDownloadFlashcards = () => {
+        let content = rawText;
+        if (builderMode === 'visual') {
+            content = builderRows
+                .filter(r => r.term.trim() || r.def.trim())
+                .map(r => {
+                    let line = `${r.term.trim()} / ${r.def.trim()}`;
+                    if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+                    if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
+
+                    if (r.customFields.length > 0) {
+                        if (!r.image.trim()) line += ` ||| `;
+                        line += ` , `;
+                        r.customFields.forEach(f => {
+                            line += `(${f.name})(${f.value})`;
+                        });
+                    }
+                    return line;
+                })
+                .join('\n\n&&&\n\n');
+        }
+        downloadFile((setName || 'deck') + '.flashcards', content, 'text');
+    };
+
+    const handleCopyCode = () => {
+        let content = rawText;
+        if (builderMode === 'visual') {
+            content = builderRows
+                .filter(r => r.term.trim() || r.def.trim())
+                .map(r => {
+                    let line = `${r.term.trim()} / ${r.def.trim()}`;
+                    if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+                    if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
+
+                    if (r.customFields.length > 0) {
+                        if (!r.image.trim()) line += ` ||| `;
+                        line += ` , `;
+                        r.customFields.forEach(f => {
+                            line += `(${f.name})(${f.value})`;
+                        });
+                    }
+                    return line;
+                })
+                .join('\n\n&&&\n\n');
+        }
+        navigator.clipboard.writeText(content);
+        alert("Copied to clipboard!");
+    };
+
+    // --- HELPER FOR VISUAL BUILDER ---
+
+    const addRow = () => {
+        setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '', customFields: [] }]);
+    };
+
+    const updateRow = (id: string, field: keyof BuilderRow, value: any) => {
+        setBuilderRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+    };
+
+    const removeRow = (id: string) => {
+        setBuilderRows(prev => prev.filter(r => r.id !== id));
+    };
+
+    const openImageModal = (rowId: string) => {
+        setEditingImageRowId(rowId);
+        setShowImageModal(true);
+    };
+
+    const handleSaveImage = (url: string) => {
+        if (editingImageRowId) {
+            updateRow(editingImageRowId, 'image', url);
+        }
+    };
+
+    const duplicateIds = useMemo(() => {
+        const counts = new Map<string, number>();
+        const ids = new Set<string>();
+        builderRows.forEach(r => {
+            const t = r.term.trim().toLowerCase();
+            if (!t) return;
+            counts.set(t, (counts.get(t) || 0) + 1);
+        });
+        builderRows.forEach(r => {
+            const t = r.term.trim().toLowerCase();
+            if (t && (counts.get(t) || 0) > 1) {
+                ids.add(r.id);
+            }
+        });
+        return ids;
+    }, [builderRows]);
+
+    const handleDeleteClick = (id: string, type: 'session' | 'library') => {
+        if (deleteConfirmId === id) {
+            if (type === 'session') onDeleteSession(id);
+            else onDeleteLibrarySet(id);
+            setDeleteConfirmId(null);
+        } else {
+            setDeleteConfirmId(id);
+            setTimeout(() => setDeleteConfirmId(null), 3000);
+        }
+    };
+
+    // Check for uploaded images (Base64)
+    const hasUploadedImages = useMemo(() => {
+        return builderRows.some(r => r.image && r.image.startsWith('data:'));
+    }, [builderRows]);
+
+    return (
+        <div className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700">
+
+            <UnsavedChangesModal
+                isOpen={showUnsavedModal}
+                onSave={handleSaveAndExit}
+                onDiscard={handleDiscard}
+                onCancel={() => setShowUnsavedModal(false)}
+            />
+
+            <ImageModal
+                isOpen={showImageModal}
+                onClose={() => setShowImageModal(false)}
+                onSave={handleSaveImage}
+                initialValue={editingImageRowId ? (builderRows.find(r => r.id === editingImageRowId)?.image || '') : ''}
+            />
+
+
+
+            <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
+            <input ref={fileInputRef} type="file" accept=".json,.txt,.flashcards" className="hidden" onChange={handleFileUpload} />
+
+            {/* Header */}
+            <div className="mb-10 text-left">
+                {view === 'menu' && (
+                    <div className="text-accent font-mono text-sm mb-1 tracking-widest uppercase opacity-80">{currentDate}</div>
+                )}
+                <div className="flex items-center justify-between">
+                    <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
+                        {view === 'menu' ? greeting : 'List Builder'}
+                    </h1>
+
                 </div>
+                <p className="text-muted text-lg">
+                    {view === 'menu' ? 'Study a deck or create a new one below.' : 'Build decks here!'}
+                </p>
+            </div>
 
-                {/* LIBRARY COLUMN */}
-                <div className="space-y-4">
-                     <div className="flex justify-between items-center">
-                        <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
-                            Library
-                        </h3>
-                        <div className="flex gap-2">
-                            <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold text-muted hover:text-text hover:border-accent transition-colors"
-                            >
-                                <Upload size={14} /> Import
-                            </button>
-                            <button 
-                                onClick={handleCreateNew}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-text text-bg rounded-lg text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
-                            >
-                                <Plus size={14} /> Create
-                            </button>
+            {view === 'builder' && (
+                <button
+                    onClick={handleBackToLibrary}
+                    className="mb-6 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
+                >
+                    <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
+                        <ArrowLeft size={16} />
+                    </div>
+                    Back to Library
+                </button>
+            )}
+
+            <div className="space-y-12">
+
+                {/* MENU MODE */}
+                {view === 'menu' && (
+                    <div className="max-w-4xl mx-auto">
+                        {/* LIBRARY COLUMN */}
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
+                                    Library
+                                </h3>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold text-muted hover:text-text hover:border-accent transition-colors"
+                                    >
+                                        <Upload size={14} /> Import
+                                    </button>
+                                    <button
+                                        onClick={handleCreateNew}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-text text-bg rounded-lg text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
+                                    >
+                                        <Plus size={14} /> Create
+                                    </button>
+                                </div>
+                            </div>
+
+
+
+                            {librarySets.length === 0 ? (
+                                <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
+                                    <p className="text-muted italic mb-4">Your library is empty.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {librarySets.map(set => (
+                                        <div key={set.id} className="group bg-panel border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full">
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
+                                                    <div className="text-xs text-muted font-mono">{set.cards.length} card{set.cards.length === 1 ? '' : 's'}</div>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => handleLoadSetToBuilder(set)}
+                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                        title="Edit"
+                                                    >
+                                                        <Pencil size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => onViewPreview({ set, mode: 'library' })}
+                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                        title="Preview"
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
+                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                        title="Export JSON"
+                                                    >
+                                                        <Download size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => onDuplicateLibrarySet(set.id)}
+                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                        title="Duplicate Set"
+                                                    >
+                                                        <Copy size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleDeleteClick(set.id, 'library');
+                                                        }}
+                                                        className={clsx(
+                                                            "p-1.5 rounded transition-all flex items-center justify-center",
+                                                            deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
+                                                        )}
+                                                        title="Delete Set"
+                                                    >
+                                                        {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-2 mt-2 flex gap-2">
+                                                {set.isSessionActive ? (
+                                                    <>
+                                                        <button
+                                                            onClick={() => onResumeSession(set)}
+                                                            className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
+                                                        >
+                                                            <Play size={14} fill="currentColor" /> Resume
+                                                        </button>
+                                                        <button
+                                                            onClick={() => onStartFromLibrary(set)}
+                                                            className="px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-panel-3 transition-all flex items-center justify-center gap-2"
+                                                            title="Restart Session"
+                                                        >
+                                                            <RotateCcw size={14} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => onStartFromLibrary(set)}
+                                                        className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
+                                                    >
+                                                        <Play size={14} fill="currentColor" /> Play
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
+                )}
 
-                    {librarySets.length === 0 ? (
-                        <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
-                            <p className="text-muted italic mb-4">Your library is empty.</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {librarySets.map(set => (
-                                <div key={set.id} className="group bg-panel border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
-                                            <div className="text-xs text-muted font-mono">{set.cards.length} card{set.cards.length === 1 ? '' : 's'}</div>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                             <button 
-                                                onClick={() => handleLoadSetToBuilder(set)}
-                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                title="Edit"
-                                            >
-                                                <Pencil size={16} />
-                                            </button>
-                                            <button 
-                                                onClick={() => onViewPreview({set, mode: 'library'})}
-                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                title="Preview"
-                                            >
-                                                <Eye size={16} />
-                                            </button>
-                                            <button 
-                                                onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
-                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                title="Export JSON"
-                                            >
-                                                <Download size={16} />
-                                            </button>
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteClick(set.id, 'library');
-                                                }}
+                {/* BUILDER MODE */}
+                {view === 'builder' && (
+                    <div className="animate-in zoom-in-95 duration-300">
+                        <div className="bg-panel border border-outline rounded-2xl p-6 shadow-lg">
+                            {/* Builder Header/Toolbar */}
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 border-b border-outline pb-6">
+                                <input
+                                    value={setName}
+                                    onChange={(e) => setSetName(e.target.value)}
+                                    placeholder="Set Name"
+                                    className="bg-panel-2 border border-outline rounded-xl px-4 py-2 text-text w-full md:w-auto min-w-[300px] focus:outline-none focus:border-accent transition-colors font-bold"
+                                />
+
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer group select-none">
+                                        <div
+                                            onClick={() => setShowYears(!showYears)}
+                                            className={clsx(
+                                                "w-10 h-6 rounded-full p-1 transition-colors border border-transparent",
+                                                showYears ? "bg-accent" : "bg-outline"
+                                            )}
+                                        >
+                                            <div
                                                 className={clsx(
-                                                    "p-1.5 rounded transition-all flex items-center justify-center",
-                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
+                                                    "w-3.5 h-3.5 bg-bg rounded-full shadow-sm transition-transform duration-200",
+                                                    showYears ? "translate-x-4" : "translate-x-0"
                                                 )}
-                                                title="Delete Set"
-                                            >
-                                                {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
+                                            />
+                                        </div>
+                                        <span className="text-sm text-muted group-hover:text-text transition-colors font-medium">Show Years</span>
+                                    </label>
+
+                                    {/* Custom Fields Manager */}
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative group/cf">
+                                            <button className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-sm font-medium text-muted hover:text-text hover:border-accent transition-all">
+                                                <Plus size={16} /> Custom Fields
                                             </button>
+                                            <div className="absolute top-full right-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl p-4 hidden group-hover/cf:block z-50">
+                                                <h4 className="text-xs font-bold text-muted uppercase mb-2">Manage Fields</h4>
+                                                <div className="space-y-2 mb-3">
+                                                    {customFieldNames.map(name => (
+                                                        <div key={name} className="flex justify-between items-center bg-panel-2 px-2 py-1 rounded">
+                                                            <span className="text-sm">{name}</span>
+                                                            <button onClick={() => setCustomFieldNames(prev => prev.filter(n => n !== name))} className="text-red hover:text-red/80"><X size={14} /></button>
+                                                        </div>
+                                                    ))}
+                                                    {customFieldNames.length === 0 && <div className="text-xs text-muted italic">No custom fields</div>}
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        value={newCustomFieldName}
+                                                        onChange={(e) => setNewCustomFieldName(e.target.value)}
+                                                        placeholder="New Field"
+                                                        className="flex-1 bg-panel-2 border border-outline rounded px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                                                    />
+                                                    <button
+                                                        onClick={() => {
+                                                            if (newCustomFieldName.trim() && !customFieldNames.includes(newCustomFieldName.trim())) {
+                                                                setCustomFieldNames(prev => [...prev, newCustomFieldName.trim()]);
+                                                                setNewCustomFieldName('');
+                                                            }
+                                                        }}
+                                                        className="p-1 bg-accent text-bg rounded hover:scale-105 transition-transform"
+                                                    >
+                                                        <Plus size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    
-                                    <div className="pt-2 mt-2">
-                                        <button 
-                                            onClick={() => onStartFromLibrary(set)}
-                                            className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
+
+                                    <div className="h-6 w-px bg-outline"></div>
+
+                                    <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1">
+                                        <button
+                                            onClick={() => switchMode('visual')}
+                                            className={clsx(
+                                                "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                                                builderMode === 'visual' ? "bg-panel shadow-sm text-accent" : "text-muted hover:text-text"
+                                            )}
                                         >
-                                            <Play size={14} fill="currentColor" /> Play
+                                            <LayoutList size={16} /> Visual
+                                        </button>
+                                        <button
+                                            onClick={() => switchMode('raw')}
+                                            className={clsx(
+                                                "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
+                                                builderMode === 'raw' ? "bg-panel shadow-sm text-accent" : "text-muted hover:text-text"
+                                            )}
+                                        >
+                                            <FileText size={16} /> Raw Text
                                         </button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        )}
+                            </div>
 
-        {/* BUILDER MODE */}
-        {view === 'builder' && (
-            <div className="animate-in zoom-in-95 duration-300">
-                <div className="bg-panel border border-outline rounded-2xl p-6 shadow-lg">
-                    {/* Builder Header/Toolbar */}
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 border-b border-outline pb-6">
-                        <input 
-                        value={setName}
-                        onChange={(e) => setSetName(e.target.value)}
-                        placeholder="Set Name"
-                        className="bg-panel-2 border border-outline rounded-xl px-4 py-2 text-text w-full md:w-auto min-w-[300px] focus:outline-none focus:border-accent transition-colors font-bold"
-                        />
+                            {/* Content Area */}
+                            <div className="mb-6">
+                                {builderMode === 'visual' ? (
+                                    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                                        <div className="flex justify-end mb-2">
+                                            <button onClick={() => setShowMarkdownHelp(true)} className="text-xs text-muted hover:text-accent flex items-center gap-1">
+                                                <HelpCircle size={12} /> Formatting Help
+                                            </button>
+                                        </div>
+                                        {builderRows.map((row, index) => (
+                                            <BuilderRowItem
+                                                key={row.id}
+                                                row={row}
+                                                index={index}
+                                                showYear={showYears}
+                                                isDuplicate={duplicateIds.has(row.id)}
+                                                isLast={index === builderRows.length - 1}
+                                                customFieldNames={customFieldNames}
+                                                updateRow={updateRow}
+                                                removeRow={removeRow}
+                                                onAddNext={addRow}
+                                                onOpenImageModal={() => openImageModal(row.id)}
+                                            />
+                                        ))}
+                                        <button
+                                            onClick={addRow}
+                                            className="w-full py-3 border border-dashed border-outline rounded-xl text-muted hover:text-accent hover:border-accent hover:bg-panel-2 transition-all flex items-center justify-center gap-2 text-sm font-bold mt-4"
+                                        >
+                                            <Plus size={16} /> Add Card
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <div className="flex justify-end mb-2">
+                                            <button onClick={() => setShowMarkdownHelp(true)} className="text-xs text-muted hover:text-accent flex items-center gap-1">
+                                                <HelpCircle size={12} /> Formatting Help
+                                            </button>
+                                        </div>
+                                        <textarea
+                                            value={rawText}
+                                            onChange={(e) => setRawText(e.target.value)}
+                                            placeholder={`Term / Definition /// Year ||| ImageURL\n\n&&&\n\nNext Term / Definition`}
+                                            className="w-full bg-panel-2 border border-outline rounded-xl p-4 min-h-[400px] font-mono text-sm focus:outline-none focus:border-accent resize-y leading-relaxed"
+                                        />
+                                    </div>
+                                )}
+                            </div>
 
-                        <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer group select-none">
-                                <div
-                                    onClick={() => setShowYears(!showYears)}
-                                    className={clsx(
-                                        "w-10 h-6 rounded-full p-1 transition-colors border border-transparent",
-                                        showYears ? "bg-accent" : "bg-outline"
-                                    )}
-                                >
-                                    <div 
-                                        className={clsx(
-                                            "w-3.5 h-3.5 bg-bg rounded-full shadow-sm transition-transform duration-200",
-                                            showYears ? "translate-x-4" : "translate-x-0"
-                                        )} 
-                                    />
+                            {/* Footer Actions */}
+                            <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-outline gap-4">
+                                <div className="flex gap-2 w-full md:w-auto">
+                                    <button
+                                        onClick={handleCopyCode}
+                                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
+                                    >
+                                        <Copy size={18} />
+                                        <span className="inline">Copy</span>
+                                    </button>
+                                    <button
+                                        onClick={handleDownloadFlashcards}
+                                        className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
+                                    >
+                                        <Download size={18} />
+                                        <span className="inline">.flashcards</span>
+                                    </button>
                                 </div>
-                                <span className="text-sm text-muted group-hover:text-text transition-colors font-medium">Show Years</span>
-                            </label>
 
-                            <div className="h-6 w-px bg-outline"></div>
-                            
-                            <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1">
-                                <button
-                                onClick={() => switchMode('visual')}
-                                className={clsx(
-                                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                                    builderMode === 'visual' ? "bg-panel shadow-sm text-accent" : "text-muted hover:text-text"
-                                )}
-                                >
-                                <LayoutList size={16} /> Visual
-                                </button>
-                                <button
-                                onClick={() => switchMode('raw')}
-                                className={clsx(
-                                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                                    builderMode === 'raw' ? "bg-panel shadow-sm text-accent" : "text-muted hover:text-text"
-                                )}
-                                >
-                                <FileText size={16} /> Raw Text
-                                </button>
+                                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                                    <button
+                                        onClick={handleSaveToLibraryAction}
+                                        className="flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text hover:border-accent transition-all"
+                                    >
+                                        <FolderOpen size={18} /> Save to Library
+                                    </button>
+                                    <button
+                                        onClick={handleStartSessionNow}
+                                        className="flex items-center justify-center gap-2 bg-accent text-bg px-8 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
+                                    >
+                                        <Play size={18} fill="currentColor" /> Study Now
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Content Area */}
-                    <div className="mb-6">
-                    {builderMode === 'visual' ? (
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                            <div className="flex justify-end mb-2">
-                                <button onClick={() => setShowMarkdownHelp(true)} className="text-xs text-muted hover:text-accent flex items-center gap-1">
-                                    <HelpCircle size={12} /> Formatting Help
-                                </button>
-                            </div>
-                            {builderRows.map((row, index) => (
-                                <BuilderRowItem 
-                                    key={row.id}
-                                    row={row}
-                                    index={index}
-                                    showYear={showYears}
-                                    isDuplicate={duplicateIds.has(row.id)}
-                                    isLast={index === builderRows.length - 1}
-                                    updateRow={updateRow}
-                                    removeRow={removeRow}
-                                    onAddNext={addRow}
-                                    onOpenImageModal={() => openImageModal(row.id)}
-                                />
-                            ))}
-                            <button 
-                            onClick={addRow}
-                            className="w-full py-3 border border-dashed border-outline rounded-xl text-muted hover:text-accent hover:border-accent hover:bg-panel-2 transition-all flex items-center justify-center gap-2 text-sm font-bold mt-4"
-                            >
-                                <Plus size={16} /> Add Card
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="relative">
-                            <div className="flex justify-end mb-2">
-                                <button onClick={() => setShowMarkdownHelp(true)} className="text-xs text-muted hover:text-accent flex items-center gap-1">
-                                    <HelpCircle size={12} /> Formatting Help
-                                </button>
-                            </div>
-                            <textarea
-                            value={rawText}
-                            onChange={(e) => setRawText(e.target.value)}
-                            placeholder={`Term / Definition /// Year ||| ImageURL\n\n&&&\n\nNext Term / Definition`}
-                            className="w-full bg-panel-2 border border-outline rounded-xl p-4 min-h-[400px] font-mono text-sm focus:outline-none focus:border-accent resize-y leading-relaxed"
-                            />
-                        </div>
-                    )}
-                    </div>
-
-                    {/* Footer Actions */}
-                    <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-outline gap-4">
-                        <div className="flex gap-2 w-full md:w-auto">
-                            <button 
-                            onClick={handleCopyCode}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
-                            >
-                                <Copy size={18} />
-                                <span className="inline">Copy</span>
-                            </button>
-                            <button 
-                            onClick={handleDownloadFlashcards}
-                            className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
-                            >
-                                <Download size={18} />
-                                <span className="inline">.flashcards</span>
-                            </button>
-                        </div>
-
-                        <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                            <button 
-                            onClick={handleSaveToLibraryAction}
-                            className="flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text hover:border-accent transition-all"
-                            >
-                                <FolderOpen size={18} /> Save to Library
-                            </button>
-                            <button 
-                            onClick={handleStartSessionNow}
-                            className="flex items-center justify-center gap-2 bg-accent text-bg px-8 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
-                            >
-                            <Play size={18} fill="currentColor" /> Study Now
-                            </button>
+                        <div className="text-center mt-6 text-sm opacity-80 space-y-1">
+                            <p className="text-red font-bold">
+                                Cards are saved per device in local storage: if you clear your cookies, you can lose them. It is highly recommended you download important sets!
+                            </p>
+                            {hasUploadedImages && (
+                                <p className="text-blue font-bold">
+                                    You've uploaded images directly to this set. If you download your set, they won't be saved. To save them, put images in your set with image URLs.
+                                </p>
+                            )}
                         </div>
                     </div>
-                </div>
-                
-                <div className="text-center mt-6 text-sm opacity-80 space-y-1">
-                    <p className="text-red font-bold">
-                        Cards are saved per device in local storage: if you clear your cookies, you can lose them. It is highly recommended you download important sets!
-                    </p>
-                    {hasUploadedImages && (
-                        <p className="text-blue font-bold">
-                            You've uploaded images directly to this set. If you download your set, they won't be saved. To save them, put images in your set with image URLs.
-                        </p>
-                    )}
-                </div>
+                )}
             </div>
-        )}
-      </div>
-    </div>
-  );
+        </div>
+    );
 };

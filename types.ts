@@ -5,17 +5,21 @@ export interface Card {
   content: string;
   year?: string; // Optional year field
   image?: string; // Optional image URL or Base64
+  customFields?: { name: string; value: string }[]; // Optional custom fields
   mastery: number; // 0: Unseen, 1: Learning, 2: Learned
   star: boolean;
 }
 
 export interface CardSet {
   id: string;
+  sourceId?: string; // Link to original library set
   name: string;
   cards: Card[];
+  customFieldNames?: string[]; // Names of custom fields
   lastPlayed: number; // Timestamp
   elapsedTime: number; // Time spent in ms
   topStreak: number;
+  isSessionActive?: boolean;
 }
 
 export interface Settings {

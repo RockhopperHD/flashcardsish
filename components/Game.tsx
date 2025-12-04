@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings } from '../types';
 import { checkAnswer, renderMarkdown } from '../utils';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Pencil, X } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -10,14 +10,17 @@ interface GameProps {
    onFinish: () => void;
    settings: Settings;
    onExit: () => void;
+   onCorrect: () => void;
 }
 
-export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit }) => {
+export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect }) => {
    // Game State
    const [currentId, setCurrentId] = useState<string | null>(null);
    const [inputTerm, setInputTerm] = useState('');
    const [inputYear, setInputYear] = useState('');
+   const [inputCustom, setInputCustom] = useState<Record<string, string>>({});
    const [feedback, setFeedback] = useState<FeedbackState>({ type: 'idle' });
+   const [isEditOpen, setIsEditOpen] = useState(false);
 
    // Streak state needs to track if it's "pending break"
    const [streak, setStreak] = useState(0);
@@ -65,8 +68,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       return c;
    }, [set.cards]);
 
-   // Initialize
+   // Initialize & Stable Card Selection
    useEffect(() => {
+      // FIX: Do not switch card if we are showing feedback (correct/incorrect/reveal)
+      if (feedback.type === 'correct' || feedback.type === 'incorrect' || feedback.type === 'reveal') return;
+
       const currentInQueue = activeQueue.find(c => c.id === currentId);
 
       if (!currentInQueue) {
@@ -133,11 +139,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setConfirmResetLevel(null);
    };
 
-   const nextCard = () => {
-      if (pendingStreakBreak) {
+   const nextCard = (keepStreak = false) => {
+      if (pendingStreakBreak && !keepStreak) {
          setStreak(0);
-         setPendingStreakBreak(false);
       }
+      setPendingStreakBreak(false);
 
       const next = activeQueue.find(c => c.id !== currentId);
       if (next) {
@@ -151,13 +157,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setFeedback({ type: 'idle' });
       setInputTerm('');
       setInputYear('');
+      setInputCustom({});
    };
 
    const handleAttempt = () => {
       if (!currentCard) return;
-      if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim())) return;
+      // Check if any input is provided
+      const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
+      if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
 
-      const result = checkAnswer(inputTerm, inputYear, currentCard, settings.strictSpelling);
+      const result = checkAnswer(inputTerm, inputYear, inputCustom, currentCard, settings.strictSpelling);
 
       if (result.isMatch) {
          // CORRECT
@@ -190,6 +199,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             setPendingStreakBreak(true);
          }
 
+         onCorrect(); // Update lifetime stats
          setFeedback({
             type: 'correct',
             correction: (!settings.strictSpelling && result.bestDist > 0) ? result.bestTerm : undefined
@@ -202,17 +212,25 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             setFeedback({ type: 'retype_needed' });
             setInputTerm('');
             setInputYear('');
+            setInputCustom({});
          } else {
             let msg = `Answer: ${currentCard.term.join(' / ')}`;
             if (currentCard.year && !result.isYearMatch && result.isTermMatch) {
                msg = `Term correct, but year is ${currentCard.year}`;
+            } else if (result.isTermMatch && result.isYearMatch && !result.isCustomMatch) {
+               // Find which custom field is wrong
+               const wrongField = Object.keys(result.customResults || {}).find(k => !result.customResults[k]);
+               if (wrongField) {
+                  const correctVal = currentCard.customFields?.find(f => f.name === wrongField)?.value;
+                  msg = `Term/Year correct, but ${wrongField} is ${correctVal}`;
+               }
             }
             setFeedback({ type: 'incorrect', message: msg });
          }
          // Don't break streak YET. Wait for continue.
          setPendingStreakBreak(true);
       }
-   }
+   };
 
 
    const handleOptionClick = (option: string) => {
@@ -238,6 +256,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          onUpdateSet({ ...set, cards: newCards, topStreak: newTopStreak });
          setPendingStreakBreak(false);
 
+         onCorrect(); // Update lifetime stats
          setFeedback({ type: 'correct' });
 
          // Auto advance after short delay if correct? Or wait for user?
@@ -297,7 +316,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             // topStreak unchanged
          });
       }
-      nextCard();
+      nextCard(wasActuallyCorrect);
    };
 
    // Keyboard Shortcuts
@@ -414,7 +433,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                </button>
 
                {/* Mastery Dots (Top Right) - Larger */}
-               <div className="flex gap-3">
+               <div className="flex gap-3 items-center">
+                  <button
+                     onClick={() => setIsEditOpen(true)}
+                     className="p-2 text-muted hover:text-text hover:bg-panel-2 rounded-lg transition-colors mr-2"
+                     title="Edit Card"
+                  >
+                     <Pencil size={18} />
+                  </button>
                   <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 1 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
                   <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 2 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
                </div>
@@ -528,6 +554,27 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            autoComplete="off"
                         />
                      )}
+
+                     {/* Custom Fields Inputs */}
+                     {set.customFieldNames?.map(fieldName => (
+                        <input
+                           key={fieldName}
+                           type="text"
+                           value={inputCustom[fieldName] || ''}
+                           onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                           onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                 e.preventDefault();
+                                 e.stopPropagation();
+                                 if (isInteractive) handleAttempt();
+                              }
+                           }}
+                           disabled={!isInteractive}
+                           placeholder={fieldName}
+                           className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text min-w-[120px]"
+                           autoComplete="off"
+                        />
+                     ))}
                   </div>
                )}
 
@@ -552,7 +599,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      ) : (
                         <button
                            autoFocus
-                           onClick={nextCard}
+                           onClick={() => nextCard()}
                            className="bg-text text-bg font-extrabold px-12 py-4 rounded-xl animate-in zoom-in duration-200 shadow-lg hover:scale-105 transition-transform"
                         >
                            Continue
@@ -580,6 +627,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         <div className="text-red font-bold flex flex-col">
                            <span>{feedback.message}</span>
                            {currentCard.year && <span className="text-sm opacity-80">Year: {currentCard.year}</span>}
+                           {currentCard.customFields?.map(f => (
+                              <span key={f.name} className="text-sm opacity-80">{f.name}: {f.value}</span>
+                           ))}
                         </div>
                         <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
                            Actually, I was right (O)
@@ -597,6 +647,80 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                <span className="px-6 py-2 rounded-full font-bold tracking-widest transition-colors text-accent bg-bg border border-accent/50 shadow-[0_0_15px_rgba(208,164,94,0.2)]">
                   {streak} CARD STREAK
                </span>
+            </div>
+         )}
+         {/* Edit Modal */}
+         {isEditOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsEditOpen(false)}>
+               <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-6">
+                     <h2 className="text-xl font-bold text-text">Edit Card</h2>
+                     <button onClick={() => setIsEditOpen(false)}><X size={24} className="text-muted hover:text-text" /></button>
+                  </div>
+                  <div className="space-y-4">
+                     <div>
+                        <label className="block text-xs font-bold text-muted uppercase mb-1">Term</label>
+                        <input
+                           value={currentCard.term.join(' / ')}
+                           onChange={(e) => handleUpdateCard(currentCard.id, { term: e.target.value.split('/').map(t => t.trim()) })}
+                           className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                        />
+                     </div>
+                     <div>
+                        <label className="block text-xs font-bold text-muted uppercase mb-1">Definition</label>
+                        <textarea
+                           value={currentCard.content}
+                           onChange={(e) => handleUpdateCard(currentCard.id, { content: e.target.value })}
+                           rows={3}
+                           className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none resize-none"
+                        />
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div>
+                           <label className="block text-xs font-bold text-muted uppercase mb-1">Year</label>
+                           <input
+                              value={currentCard.year || ''}
+                              onChange={(e) => handleUpdateCard(currentCard.id, { year: e.target.value })}
+                              className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                           />
+                        </div>
+                        <div>
+                           <label className="block text-xs font-bold text-muted uppercase mb-1">Image URL</label>
+                           <input
+                              value={currentCard.image || ''}
+                              onChange={(e) => handleUpdateCard(currentCard.id, { image: e.target.value })}
+                              className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                           />
+                        </div>
+                     </div>
+                     {/* Custom Fields Editing */}
+                     {set.customFieldNames?.map(fieldName => {
+                        const val = currentCard.customFields?.find(f => f.name === fieldName)?.value || '';
+                        return (
+                           <div key={fieldName}>
+                              <label className="block text-xs font-bold text-muted uppercase mb-1">{fieldName}</label>
+                              <input
+                                 value={val}
+                                 onChange={(e) => {
+                                    const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
+                                    if (e.target.value) {
+                                       newFields.push({ name: fieldName, value: e.target.value });
+                                    }
+                                    handleUpdateCard(currentCard.id, { customFields: newFields });
+                                 }}
+                                 className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                              />
+                           </div>
+                        );
+                     })}
+                     <button
+                        onClick={() => setIsEditOpen(false)}
+                        className="w-full py-3 bg-accent text-bg rounded-xl font-bold mt-4 hover:scale-105 transition-transform"
+                     >
+                        Save Changes
+                     </button>
+                  </div>
+               </div>
             </div>
          )}
       </div>
