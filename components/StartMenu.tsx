@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link } from 'lucide-react';
 import { CardSet, Card, Settings } from '../types';
-import { parseInput, generateId, downloadFile, renderMarkdown } from '../utils';
+import { parseInput, generateId, downloadFile, renderMarkdown, renderInline } from '../utils';
 import clsx from 'clsx';
 
 interface StartMenuProps {
@@ -25,6 +25,7 @@ interface BuilderRow {
     year: string;
     image: string;
     customFields: { name: string; value: string }[];
+    tags: string[]; // Kept for internal state if needed, but primarily derived from term
     originalCardId?: string;
 }
 
@@ -219,6 +220,8 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
 
 
 
+
+
 // Builder Row Component
 const BuilderRowItem: React.FC<{
     row: BuilderRow;
@@ -233,7 +236,37 @@ const BuilderRowItem: React.FC<{
     onOpenImageModal: () => void;
 }> = ({ row, index, showYear, isDuplicate, isLast, customFieldNames, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
     const [isEditingDef, setIsEditingDef] = useState(false);
+    const [isEditingTerm, setIsEditingTerm] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const termInputRef = useRef<HTMLInputElement>(null);
+
+    // Highlight Toolbar State
+    const [highlightToolbar, setHighlightToolbar] = useState<{ x: number, y: number, field: 'term' | 'def' } | null>(null);
+    const [selectionRange, setSelectionRange] = useState<{ start: number, end: number } | null>(null);
+
+    const handleMouseUp = (e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>, field: 'term' | 'def') => {
+        const target = e.target as HTMLInputElement | HTMLTextAreaElement;
+        if (target.selectionStart !== target.selectionEnd) {
+            setSelectionRange({ start: target.selectionStart || 0, end: target.selectionEnd || 0 });
+            setHighlightToolbar({ x: e.clientX, y: e.clientY - 50, field });
+        } else {
+            setHighlightToolbar(null);
+        }
+    };
+
+    const applyHighlight = (color: string) => {
+        if (!highlightToolbar || !selectionRange) return;
+        const field = highlightToolbar.field;
+        const text = field === 'term' ? row.term : row.def;
+        const before = text.substring(0, selectionRange.start);
+        const selected = text.substring(selectionRange.start, selectionRange.end);
+        const after = text.substring(selectionRange.end);
+
+        const newText = `${before}<h=${color}>${selected}</h>${after}`;
+        updateRow(row.id, field, newText);
+        setHighlightToolbar(null);
+        setSelectionRange(null);
+    };
 
     // Auto-focus textarea when entering edit mode
     useEffect(() => {
@@ -244,6 +277,13 @@ const BuilderRowItem: React.FC<{
             textareaRef.current.style.height = (textareaRef.current.scrollHeight) + 'px';
         }
     }, [isEditingDef]);
+
+    // Auto-focus term input when entering edit mode
+    useEffect(() => {
+        if (isEditingTerm && termInputRef.current) {
+            termInputRef.current.focus();
+        }
+    }, [isEditingTerm]);
 
     // Handle Definition Keydown (Bullets & Tab)
     const handleDefKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -286,22 +326,75 @@ const BuilderRowItem: React.FC<{
             "group relative w-full animate-in fade-in slide-in-from-left-2 duration-300",
             "p-3 mb-3 bg-panel-2/10 border border-outline rounded-xl"
         )}>
+            {/* Highlight Toolbar */}
+            {highlightToolbar && (
+                <div
+                    className="fixed z-[100] bg-panel border border-outline shadow-xl rounded-lg p-1.5 flex gap-1.5 animate-in fade-in zoom-in-95"
+                    style={{ top: highlightToolbar.y, left: highlightToolbar.x, transform: 'translateX(-50%)' }}
+                    onMouseDown={(e) => e.preventDefault()}
+                >
+                    {[
+                        { name: 'y', class: 'bg-yellow border-yellow' },
+                        { name: 'r', class: 'bg-red border-red' },
+                        { name: 'b', class: 'bg-blue border-blue' },
+                        { name: 'g', class: 'bg-green border-green' },
+                        { name: 'p', class: 'bg-purple border-purple' }
+                    ].map(c => (
+                        <button
+                            key={c.name}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); applyHighlight(c.name); }}
+                            className={`w-6 h-6 rounded-full border ${c.class} hover:scale-110 transition-transform`}
+                            title={c.name === 'r' ? 'Red' : c.name === 'b' ? 'Blue' : c.name === 'g' ? 'Green' : c.name === 'p' ? 'Purple' : 'Yellow'}
+                        />
+                    ))}
+                </div>
+            )}
             <div className="flex flex-col md:flex-row gap-3">
 
                 {/* Left Column: Term & Toolbar */}
                 <div className="w-full md:w-[35%] flex flex-col gap-2">
                     <div className="relative">
-                        <input
-                            id={`term-${row.id}`}
-                            value={row.term}
-                            onChange={(e) => updateRow(row.id, 'term', e.target.value)}
-                            placeholder="Term"
-                            className={clsx(
-                                "w-full bg-panel-2 border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-accent transition-all min-h-[42px]",
-                                isDuplicate ? "border-red" : "border-outline"
-                            )}
-                        />
-                        {isDuplicate && <div className="absolute right-2 top-3 text-red"><AlertCircle size={14} /></div>}
+                        {isEditingTerm ? (
+                            <div className="bg-panel-2 border border-accent rounded-lg min-h-[42px] relative">
+                                <input
+                                    ref={termInputRef}
+                                    id={`term-${row.id}`}
+                                    value={row.term}
+                                    onChange={(e) => updateRow(row.id, 'term', e.target.value)}
+                                    onMouseUp={(e) => handleMouseUp(e, 'term')}
+                                    onBlur={() => setIsEditingTerm(false)}
+                                    placeholder="Term"
+                                    className={clsx(
+                                        "w-full bg-transparent border-none focus:outline-none px-3 py-2.5 text-sm transition-all min-h-[42px]",
+                                        isDuplicate && "text-red"
+                                    )}
+                                />
+                            </div>
+                        ) : (
+                            <div
+                                tabIndex={0}
+                                onFocus={() => setIsEditingTerm(true)}
+                                onClick={() => setIsEditingTerm(true)}
+                                className={clsx(
+                                    "w-full min-h-[42px] px-3 py-2.5 text-sm bg-panel-2 border rounded-lg cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed flex items-center",
+                                    isDuplicate ? "border-red" : "border-outline",
+                                    !row.term && "text-muted italic"
+                                )}
+                            >
+                                {row.term ? (
+                                    <span className="whitespace-pre-wrap break-words">
+                                        {/* We need to render markdown here but be careful about tags which are part of the term string */}
+                                        {/* The term string might contain (Tag) at the start. We should probably render that too or let renderInline handle it? */}
+                                        {/* renderInline doesn't handle tags like (Tag). But we want to show the term as it will appear. */}
+                                        {/* Let's just render the whole thing with renderInline which handles bold/italic/highlight */}
+                                        {renderInline(row.term, `term-view-${row.id}`)}
+                                    </span>
+                                ) : (
+                                    "Term"
+                                )}
+                            </div>
+                        )}
+                        {isDuplicate && !isEditingTerm && <div className="absolute right-2 top-3 text-red"><AlertCircle size={14} /></div>}
                     </div>
 
                     {/* Toolbar Row: Image | Delete | Year */}
@@ -374,6 +467,7 @@ const BuilderRowItem: React.FC<{
                                     ref={textareaRef}
                                     value={row.def}
                                     onChange={(e) => updateRow(row.id, 'def', e.target.value)}
+                                    onMouseUp={(e) => handleMouseUp(e, 'def')}
                                     onBlur={() => setIsEditingDef(false)}
                                     onKeyDown={handleDefKeyDown}
                                     placeholder="Definition"
@@ -437,6 +531,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     // Image Modal State
     const [showImageModal, setShowImageModal] = useState(false);
     const [editingImageRowId, setEditingImageRowId] = useState<string | null>(null);
+
     const [editingSetId, setEditingSetId] = useState<string | null>(null);
 
     // Builder State
@@ -444,20 +539,34 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         const saved = localStorage.getItem(BUILDER_STORAGE_KEY);
         try {
             return saved ? JSON.parse(saved) : [
-                { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
-                { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
-                { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+                { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+                { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+                { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
             ];
         } catch {
             return [
-                { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
-                { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
-                { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+                { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+                { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+                { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
             ];
         }
     });
     const [rawText, setRawText] = useState('');
     const [setName, setSetName] = useState('');
+
+    // Custom Fields Dropdown State
+    const [isCustomFieldsOpen, setIsCustomFieldsOpen] = useState(false);
+    const customFieldsRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (customFieldsRef.current && !customFieldsRef.current.contains(event.target as Node)) {
+                setIsCustomFieldsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // Focus Management for new rows
     const prevRowCount = useRef(builderRows.length);
@@ -490,9 +599,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setEditingSetId(null);
         setCustomFieldNames([]);
         setBuilderRows([
-            { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
-            { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
-            { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
         ]);
         const defaultName = "New Set " + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '');
         setSetName(defaultName);
@@ -533,22 +642,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         const text = builderRows
             .filter(r => r.term.trim() || r.def.trim())
             .map(r => {
+                // Prepend tags to term if they exist (though in visual mode, tags are likely already in term if typed manually)
+                // But if we have tags in r.tags (from loading), we should ensure they are in the raw text.
+                // However, if the user typed "(Tag) Term" in the input, r.term already has it.
+                // If we separate them, we need to reconstruct.
+                // Let's assume r.term is the source of truth for visual builder.
+
                 let line = `${r.term.trim()} / ${r.def.trim()}`;
                 if (r.year.trim()) line += ` /// ${r.year.trim()}`;
                 if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
 
                 // Add Custom Fields
                 if (r.customFields.length > 0) {
-                    // Ensure comma separator if not already present? 
-                    // The parser expects "image , (field)" or just ", (field)" if no image?
-                    // Let's use the standard format: " ||| image , (Name)(Value)"
-                    // If no image: " ||| , (Name)(Value)"
                     if (!r.image.trim()) line += ` ||| `;
                     line += ` , `;
                     r.customFields.forEach(f => {
                         line += `(${f.name})(${f.value})`;
                     });
                 }
+
+                // Tags are now part of the term in markdown, so we don't need %%TAGS%% syntax anymore for export/raw
+                // unless we want to support legacy? No, user said "use markdown to add tags".
+
                 return line;
             })
             .join('\n\n&&&\n\n'); // New Separator
@@ -557,14 +672,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const syncToRows = () => {
         const parsed = parseInput(rawText);
-        const rows: BuilderRow[] = parsed.map((c, i) => ({
-            id: generateId() + i,
-            term: c.term?.[0] || '',
-            def: c.content || '',
-            year: c.year || '',
-            image: c.image || '',
-            customFields: c.customFields || []
-        }));
+        const rows: BuilderRow[] = parsed.map((c, i) => {
+            // When syncing to rows, we put the tags back into the term for visual editing
+            let term = c.term?.[0] || '';
+            if (c.tags && c.tags.length > 0) {
+                const tagPrefix = c.tags.map(t => `(${t})`).join(' ');
+                term = `${tagPrefix} ${term}`;
+            }
+
+            return {
+                id: generateId() + i,
+                term: term,
+                def: c.content || '',
+                year: c.year || '',
+                image: c.image || '',
+                customFields: c.customFields || [],
+                tags: c.tags || []
+            };
+        });
         // Extract unique custom field names from parsed rows
         const allNames = new Set<string>();
         rows.forEach(r => r.customFields.forEach(f => allNames.add(f.name)));
@@ -572,7 +697,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         // Ensure at least 3 rows
         while (rows.length < 3) {
-            rows.push({ id: generateId(), term: '', def: '', year: '', image: '', customFields: [] });
+            rows.push({ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [] });
         }
         setBuilderRows(rows);
     };
@@ -591,15 +716,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const handleLoadSetToBuilder = (set: CardSet) => {
         setSetName(set.name);
         setEditingSetId(set.id);
-        const rows = set.cards.map((c, i) => ({
-            id: generateId() + i,
-            term: c.term[0] || '',
-            def: c.content || '',
-            year: c.year || '',
-            image: c.image || '',
-            customFields: c.customFields || [],
-            originalCardId: c.id
-        }));
+        const rows = set.cards.map((c, i) => {
+            let term = c.term[0] || '';
+            if (c.tags && c.tags.length > 0) {
+                const tagPrefix = c.tags.map(t => `(${t})`).join(' ');
+                term = `${tagPrefix} ${term}`;
+            }
+
+            return {
+                id: generateId() + i,
+                term: term,
+                def: c.content || '',
+                year: c.year || '',
+                image: c.image || '',
+                customFields: c.customFields || [],
+                tags: c.tags || [],
+                originalCardId: c.id
+            };
+        });
 
         // Extract custom field names
         const allNames = new Set<string>();
@@ -639,7 +773,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     def: c.content || '',
                     year: c.year || '',
                     image: c.image || '',
-                    customFields: c.customFields || []
+                    customFields: c.customFields || [],
+                    tags: c.tags || []
                 }));
                 setBuilderRows(rows);
             }
@@ -651,7 +786,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     def: c.content || '',
                     year: c.year || '',
                     image: c.image || '',
-                    customFields: c.customFields || []
+                    customFields: c.customFields || [],
+                    tags: c.tags || []
                 }));
                 setBuilderRows(rows);
             } else if (builderMode === 'raw') {
@@ -667,15 +803,32 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         if (builderMode === 'visual') {
             return builderRows
                 .filter(r => r.term.trim() || r.def.trim())
-                .map(r => ({
-                    term: [r.term.trim()],
-                    content: r.def.trim(),
-                    year: r.year.trim() || undefined,
-                    image: r.image.trim() || undefined,
-                    customFields: r.customFields,
-                    star: false,
-                    mastery: 0
-                }));
+                .map(r => {
+                    // Parse tags from term string for the Card object
+                    let termRaw = r.term.trim();
+                    let tags: string[] = [];
+
+                    const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+                    const tagMatch = termRaw.match(tagRegex);
+
+                    if (tagMatch) {
+                        const fullTagString = tagMatch[0];
+                        const extractedTags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
+                        tags = extractedTags;
+                        termRaw = termRaw.replace(tagRegex, '').trim();
+                    }
+
+                    return {
+                        term: [termRaw],
+                        content: r.def.trim(),
+                        year: r.year.trim() || undefined,
+                        image: r.image.trim() || undefined,
+                        customFields: r.customFields,
+                        tags: tags, // Use extracted tags
+                        star: false,
+                        mastery: 0
+                    };
+                });
         } else {
             return parseInput(rawText);
         }
@@ -693,7 +846,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             image: c.image,
             mastery: 0,
             star: c.star || false,
-            customFields: c.customFields || []
+            customFields: c.customFields || [],
+            tags: c.tags || []
         }));
 
         const newSet: CardSet = {
@@ -715,9 +869,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setSetName('');
         setRawText('');
         const emptyRows = [
-            { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
-            { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
-            { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
         ];
         setCustomFieldNames([]);
         setBuilderRows(emptyRows);
@@ -756,7 +910,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 image: c.image,
                 mastery: originalCard?.mastery || 0,
                 star: originalCard?.star || c.star || false,
-                customFields: c.customFields || []
+                customFields: c.customFields || [],
+                tags: c.tags || []
             };
         });
 
@@ -778,9 +933,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setRawText('');
         setEditingSetId(null);
         setBuilderRows([
-            { id: '1', term: '', def: '', year: '', image: '', customFields: [] },
-            { id: '2', term: '', def: '', year: '', image: '', customFields: [] },
-            { id: '3', term: '', def: '', year: '', image: '', customFields: [] }
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
         ]);
         setCustomFieldNames([]);
     };
@@ -802,6 +957,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             line += `(${f.name})(${f.value})`;
                         });
                     }
+
+                    if (r.tags.length > 0) {
+                        line += ` %%TAGS%%${r.tags.join('%%')}`;
+                    }
+
                     return line;
                 })
                 .join('\n\n&&&\n\n');
@@ -826,6 +986,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             line += `(${f.name})(${f.value})`;
                         });
                     }
+                    if (r.tags.length > 0) {
+                        line += ` %%TAGS%%${r.tags.join('%%')}`;
+                    }
                     return line;
                 })
                 .join('\n\n&&&\n\n');
@@ -837,7 +1000,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     // --- HELPER FOR VISUAL BUILDER ---
 
     const addRow = () => {
-        setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '', customFields: [] }]);
+        setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [] }]);
     };
 
     const updateRow = (id: string, field: keyof BuilderRow, value: any) => {
@@ -845,6 +1008,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     };
 
     const removeRow = (id: string) => {
+        if (builderRows.length <= 1) {
+            // Don't delete last row, just clear it
+            setBuilderRows([{ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [] }]);
+            return;
+        }
         setBuilderRows(prev => prev.filter(r => r.id !== id));
     };
 
@@ -908,8 +1076,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 onSave={handleSaveImage}
                 initialValue={editingImageRowId ? (builderRows.find(r => r.id === editingImageRowId)?.image || '') : ''}
             />
-
-
 
             <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
             <input ref={fileInputRef} type="file" accept=".json,.txt,.flashcards" className="hidden" onChange={handleFileUpload} />
@@ -1096,42 +1262,54 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                     </label>
 
                                     {/* Custom Fields Manager */}
-                                    <div className="flex items-center gap-2">
-                                        <div className="relative group/cf">
-                                            <button className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-sm font-medium text-muted hover:text-text hover:border-accent transition-all">
+                                    <div className="flex items-center gap-2" ref={customFieldsRef}>
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setIsCustomFieldsOpen(!isCustomFieldsOpen)}
+                                                className={clsx(
+                                                    "flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-sm font-medium transition-all",
+                                                    isCustomFieldsOpen ? "text-accent border-accent" : "text-muted hover:text-text hover:border-accent"
+                                                )}
+                                            >
                                                 <Plus size={16} /> Custom Fields
                                             </button>
-                                            <div className="absolute top-full right-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl p-4 hidden group-hover/cf:block z-50">
-                                                <h4 className="text-xs font-bold text-muted uppercase mb-2">Manage Fields</h4>
-                                                <div className="space-y-2 mb-3">
-                                                    {customFieldNames.map(name => (
-                                                        <div key={name} className="flex justify-between items-center bg-panel-2 px-2 py-1 rounded">
-                                                            <span className="text-sm">{name}</span>
-                                                            <button onClick={() => setCustomFieldNames(prev => prev.filter(n => n !== name))} className="text-red hover:text-red/80"><X size={14} /></button>
-                                                        </div>
-                                                    ))}
-                                                    {customFieldNames.length === 0 && <div className="text-xs text-muted italic">No custom fields</div>}
+                                            {isCustomFieldsOpen && (
+                                                <div className="absolute top-full right-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl p-4 z-50 animate-in fade-in zoom-in-95">
+                                                    <h4 className="text-xs font-bold text-muted uppercase mb-2">Manage Fields</h4>
+                                                    <div className="space-y-2 mb-3">
+                                                        {customFieldNames.map(name => (
+                                                            <div key={name} className="flex justify-between items-center bg-panel-2 px-2 py-1 rounded">
+                                                                <span className="text-sm">{name}</span>
+                                                                <button onClick={() => setCustomFieldNames(prev => prev.filter(n => n !== name))} className="text-red hover:text-red/80"><X size={14} /></button>
+                                                            </div>
+                                                        ))}
+                                                        {customFieldNames.length === 0 && <div className="text-xs text-muted italic">No custom fields</div>}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            value={newCustomFieldName}
+                                                            onChange={(e) => setNewCustomFieldName(e.target.value)}
+                                                            placeholder="New Field"
+                                                            className="flex-1 bg-panel-2 border border-outline rounded px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                                                        />
+                                                        <button
+                                                            onClick={() => {
+                                                                if (newCustomFieldName.trim() && !customFieldNames.includes(newCustomFieldName.trim())) {
+                                                                    if (customFieldNames.length >= 2) {
+                                                                        alert("Max 2 custom fields allowed.");
+                                                                        return;
+                                                                    }
+                                                                    setCustomFieldNames(prev => [...prev, newCustomFieldName.trim()]);
+                                                                    setNewCustomFieldName('');
+                                                                }
+                                                            }}
+                                                            className="p-1 bg-accent text-bg rounded hover:scale-105 transition-transform"
+                                                        >
+                                                            <Plus size={16} />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        value={newCustomFieldName}
-                                                        onChange={(e) => setNewCustomFieldName(e.target.value)}
-                                                        placeholder="New Field"
-                                                        className="flex-1 bg-panel-2 border border-outline rounded px-2 py-1 text-sm focus:border-accent focus:outline-none"
-                                                    />
-                                                    <button
-                                                        onClick={() => {
-                                                            if (newCustomFieldName.trim() && !customFieldNames.includes(newCustomFieldName.trim())) {
-                                                                setCustomFieldNames(prev => [...prev, newCustomFieldName.trim()]);
-                                                                setNewCustomFieldName('');
-                                                            }
-                                                        }}
-                                                        className="p-1 bg-accent text-bg rounded hover:scale-105 transition-transform"
-                                                    >
-                                                        <Plus size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1181,7 +1359,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                 updateRow={updateRow}
                                                 removeRow={removeRow}
                                                 onAddNext={addRow}
-                                                onOpenImageModal={() => openImageModal(row.id)}
+                                                onOpenImageModal={() => {
+                                                    setEditingImageRowId(row.id);
+                                                    setShowImageModal(true);
+                                                }}
                                             />
                                         ))}
                                         <button
@@ -1257,6 +1438,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };

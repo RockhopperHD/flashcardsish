@@ -6,6 +6,7 @@ export interface Card {
   year?: string; // Optional year field
   image?: string; // Optional image URL or Base64
   customFields?: { name: string; value: string }[]; // Optional custom fields
+  tags?: string[]; // Optional tags
   mastery: number; // 0: Unseen, 1: Learning, 2: Learned
   star: boolean;
 }

@@ -233,6 +233,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    };
 
 
+
+
    const handleOptionClick = (option: string) => {
       if (!currentCard) return;
 
@@ -422,15 +424,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          )}>
 
             {/* Top Controls */}
-            <div className="flex justify-between items-start mb-8">
-               {/* Star Top Left */}
-               <button
-                  onClick={toggleStar}
-                  className="text-2xl hover:scale-110 transition-transform"
-                  title="Toggle Star"
-               >
-                  {currentCard.star ? <span className="text-yellow">★</span> : <span className="text-outline hover:text-muted">☆</span>}
-               </button>
+            <div className="flex justify-end items-start mb-8">
 
                {/* Mastery Dots (Top Right) - Larger */}
                <div className="flex gap-3 items-center">
@@ -443,6 +437,33 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   </button>
                   <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 1 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
                   <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 2 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
+               </div>
+            </div>
+
+            {/* Card Header */}
+            <div className="flex justify-between items-start mb-6">
+               <div className="flex items-center gap-2">
+                  <button
+                     onClick={() => toggleStar()}
+                     className={clsx(
+                        "transition-all hover:scale-110 active:scale-95",
+                        currentCard.star ? "text-yellow" : "text-muted hover:text-yellow"
+                     )}
+                  >
+                     <svg width="24" height="24" viewBox="0 0 24 24" fill={currentCard.star ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                     </svg>
+                  </button>
+                  {/* Tags */}
+                  {currentCard.tags && currentCard.tags.length > 0 && (
+                     <div className="flex gap-1 ml-2">
+                        {currentCard.tags.map(tag => (
+                           <span key={tag} className="px-2 py-0.5 bg-accent/10 border border-accent rounded-full text-[10px] font-bold text-accent uppercase tracking-wider">
+                              {tag}
+                           </span>
+                        ))}
+                     </div>
+                  )}
                </div>
             </div>
 
@@ -642,87 +663,91 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          </div>
 
          {/* Streak Footer */}
-         {streak >= 2 && (
-            <div className="text-center mt-8 animate-in fade-in duration-500">
-               <span className="px-6 py-2 rounded-full font-bold tracking-widest transition-colors text-accent bg-bg border border-accent/50 shadow-[0_0_15px_rgba(208,164,94,0.2)]">
-                  {streak} CARD STREAK
-               </span>
-            </div>
-         )}
+         {
+            streak >= 2 && (
+               <div className="text-center mt-8 animate-in fade-in duration-500">
+                  <span className="px-6 py-2 rounded-full font-bold tracking-widest transition-colors text-accent bg-bg border border-accent/50 shadow-[0_0_15px_rgba(208,164,94,0.2)]">
+                     {streak} CARD STREAK
+                  </span>
+               </div>
+            )
+         }
          {/* Edit Modal */}
-         {isEditOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsEditOpen(false)}>
-               <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-between items-center mb-6">
-                     <h2 className="text-xl font-bold text-text">Edit Card</h2>
-                     <button onClick={() => setIsEditOpen(false)}><X size={24} className="text-muted hover:text-text" /></button>
-                  </div>
-                  <div className="space-y-4">
-                     <div>
-                        <label className="block text-xs font-bold text-muted uppercase mb-1">Term</label>
-                        <input
-                           value={currentCard.term.join(' / ')}
-                           onChange={(e) => handleUpdateCard(currentCard.id, { term: e.target.value.split('/').map(t => t.trim()) })}
-                           className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
-                        />
+         {
+            isEditOpen && (
+               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsEditOpen(false)}>
+                  <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                     <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold text-text">Edit Card</h2>
+                        <button onClick={() => setIsEditOpen(false)}><X size={24} className="text-muted hover:text-text" /></button>
                      </div>
-                     <div>
-                        <label className="block text-xs font-bold text-muted uppercase mb-1">Definition</label>
-                        <textarea
-                           value={currentCard.content}
-                           onChange={(e) => handleUpdateCard(currentCard.id, { content: e.target.value })}
-                           rows={3}
-                           className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none resize-none"
-                        />
-                     </div>
-                     <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-4">
                         <div>
-                           <label className="block text-xs font-bold text-muted uppercase mb-1">Year</label>
+                           <label className="block text-xs font-bold text-muted uppercase mb-1">Term</label>
                            <input
-                              value={currentCard.year || ''}
-                              onChange={(e) => handleUpdateCard(currentCard.id, { year: e.target.value })}
+                              value={currentCard.term.join(' / ')}
+                              onChange={(e) => handleUpdateCard(currentCard.id, { term: e.target.value.split('/').map(t => t.trim()) })}
                               className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
                            />
                         </div>
                         <div>
-                           <label className="block text-xs font-bold text-muted uppercase mb-1">Image URL</label>
-                           <input
-                              value={currentCard.image || ''}
-                              onChange={(e) => handleUpdateCard(currentCard.id, { image: e.target.value })}
-                              className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                           <label className="block text-xs font-bold text-muted uppercase mb-1">Definition</label>
+                           <textarea
+                              value={currentCard.content}
+                              onChange={(e) => handleUpdateCard(currentCard.id, { content: e.target.value })}
+                              rows={3}
+                              className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none resize-none"
                            />
                         </div>
-                     </div>
-                     {/* Custom Fields Editing */}
-                     {set.customFieldNames?.map(fieldName => {
-                        const val = currentCard.customFields?.find(f => f.name === fieldName)?.value || '';
-                        return (
-                           <div key={fieldName}>
-                              <label className="block text-xs font-bold text-muted uppercase mb-1">{fieldName}</label>
+                        <div className="grid grid-cols-2 gap-4">
+                           <div>
+                              <label className="block text-xs font-bold text-muted uppercase mb-1">Year</label>
                               <input
-                                 value={val}
-                                 onChange={(e) => {
-                                    const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
-                                    if (e.target.value) {
-                                       newFields.push({ name: fieldName, value: e.target.value });
-                                    }
-                                    handleUpdateCard(currentCard.id, { customFields: newFields });
-                                 }}
+                                 value={currentCard.year || ''}
+                                 onChange={(e) => handleUpdateCard(currentCard.id, { year: e.target.value })}
                                  className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
                               />
                            </div>
-                        );
-                     })}
-                     <button
-                        onClick={() => setIsEditOpen(false)}
-                        className="w-full py-3 bg-accent text-bg rounded-xl font-bold mt-4 hover:scale-105 transition-transform"
-                     >
-                        Save Changes
-                     </button>
+                           <div>
+                              <label className="block text-xs font-bold text-muted uppercase mb-1">Image URL</label>
+                              <input
+                                 value={currentCard.image || ''}
+                                 onChange={(e) => handleUpdateCard(currentCard.id, { image: e.target.value })}
+                                 className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                              />
+                           </div>
+                        </div>
+                        {/* Custom Fields Editing */}
+                        {set.customFieldNames?.map(fieldName => {
+                           const val = currentCard.customFields?.find(f => f.name === fieldName)?.value || '';
+                           return (
+                              <div key={fieldName}>
+                                 <label className="block text-xs font-bold text-muted uppercase mb-1">{fieldName}</label>
+                                 <input
+                                    value={val}
+                                    onChange={(e) => {
+                                       const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
+                                       if (e.target.value) {
+                                          newFields.push({ name: fieldName, value: e.target.value });
+                                       }
+                                       handleUpdateCard(currentCard.id, { customFields: newFields });
+                                    }}
+                                    className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                                 />
+                              </div>
+                           );
+                        })}
+                        <button
+                           onClick={() => setIsEditOpen(false)}
+                           className="w-full py-3 bg-accent text-bg rounded-xl font-bold mt-4 hover:scale-105 transition-transform"
+                        >
+                           Save Changes
+                        </button>
+                     </div>
                   </div>
                </div>
-            </div>
-         )}
-      </div>
+            )
+         }
+      </div >
    );
 };

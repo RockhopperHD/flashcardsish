@@ -33,7 +33,22 @@ export const distance = (a: string, b: string): number => {
 
 // Check answer logic
 export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: Record<string, string>, card: Card, strict: boolean = false) => {
-  const strip = (s: string) => s.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
+  const strip = (s: string) => {
+    // Strip markdown: **, *, __, `, <h=...>
+    let clean = s
+      .replace(/<h=[^>]+>/g, '')
+      .replace(/<\/h>/g, '')
+      .replace(/\*\*\*/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/__/g, '')
+      .replace(/`/g, '')
+      .replace(/<u>/g, '')
+      .replace(/<\/u>/g, '')
+      .replace(/_/g, ''); // Also strip underscores if used for italics
+
+    return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
+  };
 
   // 1. Check Term
   const strippedInput = strip(inputTerm);
@@ -97,6 +112,8 @@ export const parseInput = (text: string): Partial<Card>[] => {
       content: Array.isArray(c.content) ? c.content.join('\n') : String(c.content || ''),
       year: c.year ? String(c.year) : undefined,
       image: c.image ? String(c.image) : undefined,
+
+      tags: Array.isArray(c.tags) ? c.tags : [],
       mastery: Number(c.mastery || 0),
       star: Boolean(c.star || 0)
     }));
@@ -154,6 +171,17 @@ export const parseInput = (text: string): Partial<Card>[] => {
         }
       }
 
+      // 1.5 Extract Tags (%%TAGS%%)
+      // Format: ... %%TAGS%%tag1%%tag2
+      let tags: string[] = [];
+      const tagSplit = contentPart.split('%%TAGS%%');
+      if (tagSplit.length > 1) {
+        contentPart = tagSplit[0].trim();
+        const tagString = tagSplit[1];
+        // Split by %%
+        tags = tagString.split('%%').map(t => t.trim()).filter(Boolean);
+      }
+
       // 2. Split year (///) from the remaining content
       const parts = contentPart.split('///');
       const mainPart = parts[0].trim();
@@ -171,6 +199,21 @@ export const parseInput = (text: string): Partial<Card>[] => {
         termRaw = mainPart;
       }
 
+      // 1.5 Extract Tags from Term (e.g. "(Tag) Term")
+      // We look for leading (Tag) patterns in the termRaw
+      const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+      const tagMatch = termRaw.match(tagRegex);
+
+      if (tagMatch) {
+        const fullTagString = tagMatch[0];
+        // Extract individual tags: (Tag1) (Tag2)
+        const extractedTags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
+        tags = [...tags, ...extractedTags];
+
+        // Remove tags from term
+        termRaw = termRaw.replace(tagRegex, '').trim();
+      }
+
       if (!termRaw && !defRaw) return null;
 
       return {
@@ -178,6 +221,7 @@ export const parseInput = (text: string): Partial<Card>[] => {
         content: defRaw,
         year: yearPart,
         image: imagePart,
+        tags: tags.length > 0 ? tags : undefined,
         customFields: customFields.length > 0 ? customFields : undefined,
         mastery: 0,
         star: false
@@ -201,17 +245,37 @@ export const downloadFile = (filename: string, content: string, type: 'text' | '
 
 // --- MARKDOWN RENDERING ---
 
-const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
+export const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
   // 1. Code: `text`
-  // 2. BoldItalic: ***text***
-  // 3. Bold: **text**
-  // 4. Italic: *text*
-  // 5. Underline: __text__
+  // 1. Highlight: <h=c>text</h>
+  // 2. Code: `text`
+  // 3. BoldItalic: ***text***
+  // 4. Bold: **text**
+  // 5. Italic: *text* or _text_
+  // 6. Underline: __text__ or <u>text</u>
 
-  const parts = text.split(/(`[^`]+`)|(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(__[^_]+__)/g).filter(p => p !== undefined && p !== '');
+  const parts = text.split(/(<h=[^>]+>.*?<\/h>)|(`[^`]+`)|(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(__[^_]+__)|(<u>[^<]+<\/u>)|(_[^_]+_)/g).filter(p => p !== undefined && p !== '');
 
   return parts.map((part, idx) => {
     const key = `${keyPrefix}-${idx}`;
+
+    // Highlight
+    if (part.startsWith('<h=')) {
+      const match = part.match(/<h=([^>]+)>(.*?)<\/h>/);
+      if (match) {
+        const colorCode = match[1].toLowerCase();
+        const content = match[2];
+
+        let bgClass = "bg-yellow/20 text-yellow";
+        if (colorCode === 'r') bgClass = "bg-red/20 text-red";
+        if (colorCode === 'b') bgClass = "bg-blue/20 text-blue";
+        if (colorCode === 'g') bgClass = "bg-green/20 text-green";
+        if (colorCode === 'p') bgClass = "bg-purple/20 text-purple";
+        if (colorCode === 'y') bgClass = "bg-yellow/20 text-yellow";
+
+        return React.createElement('span', { key, className: `${bgClass} px-1 rounded font-medium` }, content);
+      }
+    }
 
     // Code
     if (part.startsWith('`') && part.endsWith('`')) {
@@ -226,12 +290,13 @@ const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
       return React.createElement('strong', { key, className: "font-bold text-accent" }, part.slice(2, -2));
     }
     // Italic
-    if (part.startsWith('*') && part.endsWith('*')) {
+    if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
       return React.createElement('em', { key, className: "italic text-muted/90" }, part.slice(1, -1));
     }
     // Underline
-    if (part.startsWith('__') && part.endsWith('__')) {
-      return React.createElement('u', { key, className: "underline decoration-accent underline-offset-4" }, part.slice(2, -2));
+    if ((part.startsWith('__') && part.endsWith('__')) || (part.startsWith('<u>') && part.endsWith('</u>'))) {
+      const content = part.startsWith('__') ? part.slice(2, -2) : part.slice(3, -4);
+      return React.createElement('u', { key, className: "underline decoration-accent underline-offset-4" }, content);
     }
 
     return React.createElement('span', { key }, part);
