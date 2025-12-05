@@ -245,7 +245,7 @@ export const downloadFile = (filename: string, content: string, type: 'text' | '
 
 // --- MARKDOWN RENDERING ---
 
-export const renderInline = (text: string, keyPrefix: string): React.ReactNode[] => {
+export const renderInline = (text: string, keyPrefix: string, isHighlighted: boolean = false): React.ReactNode[] => {
   // 1. Code: `text`
   // 1. Highlight: <h=c>text</h>
   // 2. Code: `text`
@@ -273,7 +273,8 @@ export const renderInline = (text: string, keyPrefix: string): React.ReactNode[]
         if (colorCode === 'p') bgClass = "bg-purple/20 text-purple";
         if (colorCode === 'y') bgClass = "bg-yellow/20 text-yellow";
 
-        return React.createElement('span', { key, className: `${bgClass} px-1 rounded font-medium` }, content);
+        // Recursively render content inside highlight, passing isHighlighted=true
+        return React.createElement('span', { key, className: `${bgClass} px-1 rounded font-medium` }, renderInline(content, `${key}-inner`, true));
       }
     }
 
@@ -287,7 +288,9 @@ export const renderInline = (text: string, keyPrefix: string): React.ReactNode[]
     }
     // Bold
     if (part.startsWith('**') && part.endsWith('**')) {
-      return React.createElement('strong', { key, className: "font-bold text-accent" }, part.slice(2, -2));
+      // If highlighted, use text-current (inherit color from highlight). Otherwise use text-accent.
+      const className = `font-extrabold ${isHighlighted ? 'text-current' : 'text-accent'}`;
+      return React.createElement('strong', { key, className }, part.slice(2, -2));
     }
     // Italic
     if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {

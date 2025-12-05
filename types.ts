@@ -41,4 +41,5 @@ export interface FeedbackState {
   type: 'idle' | 'correct' | 'incorrect' | 'reveal' | 'retype_needed';
   message?: string;
   correction?: string; // "Did you mean..."
+  customResults?: { year?: boolean; custom?: Record<string, boolean> };
 }

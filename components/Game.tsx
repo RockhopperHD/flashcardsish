@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings } from '../types';
-import { checkAnswer, renderMarkdown } from '../utils';
+import { checkAnswer, renderMarkdown, renderInline } from '../utils';
 import { ArrowLeft, Pencil, X } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -225,15 +225,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   msg = `Term/Year correct, but ${wrongField} is ${correctVal}`;
                }
             }
-            setFeedback({ type: 'incorrect', message: msg });
+            setFeedback({ type: 'incorrect', message: msg, customResults: result.customResults });
          }
          // Don't break streak YET. Wait for continue.
          setPendingStreakBreak(true);
       }
    };
-
-
-
 
    const handleOptionClick = (option: string) => {
       if (!currentCard) return;
@@ -319,6 +316,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          });
       }
       nextCard(wasActuallyCorrect);
+   };
+
+   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+         e.preventDefault();
+         e.stopPropagation();
+         if (isInteractive) handleAttempt();
+      }
    };
 
    // Keyboard Shortcuts
@@ -424,24 +429,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          )}>
 
             {/* Top Controls */}
-            <div className="flex justify-end items-start mb-8">
-
-               {/* Mastery Dots (Top Right) - Larger */}
-               <div className="flex gap-3 items-center">
-                  <button
-                     onClick={() => setIsEditOpen(true)}
-                     className="p-2 text-muted hover:text-text hover:bg-panel-2 rounded-lg transition-colors mr-2"
-                     title="Edit Card"
-                  >
-                     <Pencil size={18} />
-                  </button>
-                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 1 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
-                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 2 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
-               </div>
-            </div>
-
-            {/* Card Header */}
-            <div className="flex justify-between items-start mb-6">
+            <div className="flex justify-between items-start mb-8">
                <div className="flex items-center gap-2">
                   <button
                      onClick={() => toggleStar()}
@@ -458,14 +446,30 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   {currentCard.tags && currentCard.tags.length > 0 && (
                      <div className="flex gap-1 ml-2">
                         {currentCard.tags.map(tag => (
-                           <span key={tag} className="px-2 py-0.5 bg-accent/10 border border-accent rounded-full text-[10px] font-bold text-accent uppercase tracking-wider">
+                           <span key={tag} className="px-2 py-0.5 bg-accent/10 border border-accent rounded-full text-xs font-bold text-accent uppercase tracking-wider">
                               {tag}
                            </span>
                         ))}
                      </div>
                   )}
                </div>
+
+               {/* Mastery Dots (Top Right) - Larger */}
+               <div className="flex gap-3 items-center">
+                  <button
+                     onClick={() => setIsEditOpen(true)}
+                     className="p-2 text-muted hover:text-text hover:bg-panel-2 rounded-lg transition-colors mr-2"
+                     title="Edit Card"
+                  >
+                     <Pencil size={18} />
+                  </button>
+                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 1 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
+                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 2 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
+               </div>
             </div>
+
+            {/* Card Header (Empty now but keeping div for spacing if needed, or remove) */}
+            <div className="mb-6"></div>
 
             {/* Content Area - WIDE + SIDE-BY-SIDE MODE */}
             <div className="min-h-[200px] mb-10 flex items-center">
@@ -493,8 +497,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             <div className="space-y-6">
 
                {feedback.type === 'retype_needed' && (
-                  <div className="text-red font-bold mb-2">
-                     Incorrect. Type: <span className="text-text bg-white/10 px-2 py-1 rounded ml-2 select-all">{currentCard.term.join(' / ')}</span>
+                  <div className="text-red font-bold mb-2 flex items-center gap-2">
+                     Incorrect. Type: <span className="text-text bg-white/10 px-2 py-1 rounded select-all">{renderInline(currentCard.term[0], 'retype-feedback')}</span>
                   </div>
                )}
 
@@ -536,17 +540,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         type="text"
                         value={inputTerm}
                         onChange={(e) => setInputTerm(e.target.value)}
-                        onKeyDown={(e) => {
-                           if (e.key === 'Enter') {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (currentCard.year && !inputYear && isInteractive) {
-                                 yearInputRef.current?.focus();
-                              } else if (isInteractive) {
-                                 handleAttempt();
-                              }
-                           }
-                        }}
+                        onKeyDown={handleInputKeyDown}
                         disabled={!isInteractive}
                         placeholder={feedback.type === 'retype_needed' ? "Type the correct term..." : "Type the term..."}
                         className={clsx(
@@ -556,46 +550,48 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         autoComplete="off"
                      />
 
+                     {/* Year Input */}
                      {currentCard.year && (
-                        <input
-                           ref={yearInputRef}
-                           type="text"
-                           value={inputYear}
-                           onChange={(e) => setInputYear(e.target.value)}
-                           onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                 e.preventDefault();
-                                 e.stopPropagation();
-                                 if (isInteractive) handleAttempt();
-                              }
-                           }}
-                           disabled={!isInteractive}
-                           placeholder="Year"
-                           className="w-32 bg-panel-2 border border-outline rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text"
-                           autoComplete="off"
-                        />
+                        <div className="relative">
+                           <input
+                              ref={yearInputRef}
+                              type="text"
+                              value={inputYear}
+                              onChange={(e) => setInputYear(e.target.value)}
+                              onKeyDown={handleInputKeyDown}
+                              placeholder="Year"
+                              disabled={!isInteractive}
+                              className={clsx(
+                                 "w-32 bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
+                                 feedback.type === 'incorrect' || feedback.type === 'retype_needed' ? (feedback.customResults?.year ? "border-green text-green" : "border-red text-red") : "border-outline text-text"
+                              )}
+                              autoComplete="off"
+                           />
+                        </div>
                      )}
 
                      {/* Custom Fields Inputs */}
-                     {set.customFieldNames?.map(fieldName => (
-                        <input
-                           key={fieldName}
-                           type="text"
-                           value={inputCustom[fieldName] || ''}
-                           onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
-                           onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                 e.preventDefault();
-                                 e.stopPropagation();
-                                 if (isInteractive) handleAttempt();
-                              }
-                           }}
-                           disabled={!isInteractive}
-                           placeholder={fieldName}
-                           className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text min-w-[120px]"
-                           autoComplete="off"
-                        />
-                     ))}
+                     {set.customFieldNames?.map(fieldName => {
+                        const field = currentCard.customFields?.find(f => f.name === fieldName);
+                        if (!field) return null; // Only render if the card actually has this custom field
+                        return (
+                           <div key={fieldName} className="relative">
+                              <input
+                                 type="text"
+                                 value={inputCustom[fieldName] || ''}
+                                 onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                                 onKeyDown={handleInputKeyDown}
+                                 placeholder={fieldName}
+                                 disabled={!isInteractive}
+                                 className={clsx(
+                                    "flex-1 bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text min-w-[120px]",
+                                    feedback.type === 'incorrect' || feedback.type === 'retype_needed' ? (feedback.customResults?.custom?.[fieldName] ? "border-green text-green" : "border-red text-red") : "border-outline text-text"
+                                 )}
+                                 autoComplete="off"
+                              />
+                           </div>
+                        );
+                     })}
                   </div>
                )}
 

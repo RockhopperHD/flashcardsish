@@ -217,6 +217,31 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
         </div>
     );
 };
+// Warning Modal
+const WarningModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    message: string;
+}> = ({ isOpen, onClose, onConfirm, message }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+            <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-4 text-yellow">
+                    <AlertCircle size={24} />
+                    <h3 className="text-lg font-bold text-text">Warning</h3>
+                </div>
+                <p className="text-muted mb-6">{message}</p>
+                <div className="flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg text-muted hover:text-text hover:bg-panel-2 transition-colors">Cancel</button>
+                    <button onClick={() => { onConfirm(); onClose(); }} className="px-4 py-2 rounded-lg bg-yellow text-bg font-bold hover:bg-yellow/90 transition-colors">Confirm</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 
 
@@ -251,6 +276,7 @@ const BuilderRowItem: React.FC<{
             setHighlightToolbar({ x: e.clientX, y: e.clientY - 50, field });
         } else {
             setHighlightToolbar(null);
+            setSelectionRange(null);
         }
     };
 
@@ -534,6 +560,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const [editingSetId, setEditingSetId] = useState<string | null>(null);
 
+    // Warning Modal State
+    const [warningModal, setWarningModal] = useState<{ isOpen: boolean, message: string, onConfirm: () => void }>({ isOpen: false, message: '', onConfirm: () => { } });
+
     // Builder State
     const [builderRows, setBuilderRows] = useState<BuilderRow[]>(() => {
         const saved = localStorage.getItem(BUILDER_STORAGE_KEY);
@@ -799,7 +828,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         }
     };
 
-    const getCardsFromState = (): Partial<Card>[] => {
+    const getCardsFromState = (): (Partial<Card> & { originalCardId?: string })[] => {
         if (builderMode === 'visual') {
             return builderRows
                 .filter(r => r.term.trim() || r.def.trim())
@@ -826,7 +855,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         customFields: r.customFields,
                         tags: tags, // Use extracted tags
                         star: false,
-                        mastery: 0
+                        mastery: 0,
+                        originalCardId: r.originalCardId
                     };
                 });
         } else {
@@ -838,6 +868,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         const cards = getCardsFromState();
         if (cards.length === 0) return;
 
+        if (!setName.trim()) {
+            alert("Please enter a set name.");
+            return;
+        }
+
+        // Validation: Check for empty terms or definitions
+        const hasEmptyFields = cards.some(c => !c.term?.[0]?.trim() || !c.content?.trim());
+        if (hasEmptyFields) {
+            setWarningModal({
+                isOpen: true,
+                message: "Some cards have empty terms or definitions. Are you sure you want to start?",
+                onConfirm: () => {
+                    proceedStartSession(cards);
+                }
+            });
+            return;
+        }
+
+        proceedStartSession(cards);
+    };
+
+    const proceedStartSession = (cards: (Partial<Card> & { originalCardId?: string })[]) => {
         const fullCards: Card[] = cards.map((c, i) => ({
             id: generateId() + i,
             term: c.term || ['?'],
@@ -852,64 +904,56 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         const newSet: CardSet = {
             id: generateId(),
-            name: setName || `Set ${librarySets.length + 1}`,
+            name: setName || 'Untitled Set',
             cards: fullCards,
+            customFieldNames: customFieldNames,
             lastPlayed: Date.now(),
             elapsedTime: 0,
             topStreak: 0,
-            customFieldNames: customFieldNames
+            isSessionActive: true
         };
 
-        // Save to Library first to ensure persistence
-        onSaveToLibrary(newSet);
-        // Start Session
         onStartFromLibrary(newSet);
-
-        // Clear Builder State
-        setSetName('');
-        setRawText('');
-        const emptyRows = [
-            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
-        ];
-        setCustomFieldNames([]);
-        setBuilderRows(emptyRows);
-        // Explicitly clear local storage to prevent builder restoration on next visit
-        localStorage.setItem(BUILDER_STORAGE_KEY, JSON.stringify(emptyRows));
-        setShowUnsavedModal(false);
     };
 
     const handleSaveToLibraryAction = () => {
         const cards = getCardsFromState();
-        if (cards.length === 0) return;
+        if (!setName.trim()) {
+            alert("Please enter a set name.");
+            return;
+        }
 
-        // Find existing set to preserve stats
+        // Validation: Check for empty terms or definitions
+        const hasEmptyFields = cards.some(c => !c.term?.[0]?.trim() || !c.content?.trim());
         const existingSet = editingSetId ? librarySets.find(s => s.id === editingSetId) : null;
 
+        if (hasEmptyFields) {
+            setWarningModal({
+                isOpen: true,
+                message: "Some cards have empty terms or definitions. Are you sure you want to save?",
+                onConfirm: () => {
+                    proceedSaveToLibrary(cards, existingSet);
+                }
+            });
+            return;
+        }
+
+        proceedSaveToLibrary(cards, existingSet);
+    };
+
+    const proceedSaveToLibrary = (cards: (Partial<Card> & { originalCardId?: string })[], existingSet: CardSet | null | undefined) => {
         const fullCards: Card[] = cards.map((c, i) => {
             // Try to find original card to preserve mastery/star
-            let originalCard: Card | undefined;
-            if (builderMode === 'visual') {
-                const row = builderRows.find(r => r.term.trim() === c.term?.[0]?.trim() && r.def.trim() === c.content?.trim()); // Heuristic match if ID lost?
-                // Actually, getCardsFromState for visual mode constructs from rows. 
-                // But we need the originalCardId from the row corresponding to this card.
-                // Since getCardsFromState maps rows directly, we can access the row by index if we trust order?
-                // Better: Let's look up the row.
-                const rowByIndex = builderRows.filter(r => r.term.trim() || r.def.trim())[i];
-                if (rowByIndex?.originalCardId && existingSet) {
-                    originalCard = existingSet.cards.find(ec => ec.id === rowByIndex.originalCardId);
-                }
-            }
+            const original = existingSet?.cards.find(oc => oc.id === c.originalCardId);
 
             return {
-                id: originalCard?.id || generateId() + i,
+                id: c.originalCardId || generateId() + i,
                 term: c.term || ['?'],
                 content: c.content || '',
                 year: c.year,
                 image: c.image,
-                mastery: originalCard?.mastery || 0,
-                star: originalCard?.star || c.star || false,
+                mastery: original ? original.mastery : 0,
+                star: original ? original.star : (c.star || false),
                 customFields: c.customFields || [],
                 tags: c.tags || []
             };
@@ -917,18 +961,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         const newSet: CardSet = {
             id: editingSetId || generateId(),
-            name: setName || `Set ${librarySets.length + 1}`,
+            name: setName || 'Untitled Set',
             cards: fullCards,
-            lastPlayed: existingSet?.lastPlayed || Date.now(),
-            elapsedTime: existingSet?.elapsedTime || 0,
-            topStreak: existingSet?.topStreak || 0,
             customFieldNames: customFieldNames,
-            isSessionActive: existingSet?.isSessionActive,
-            sourceId: existingSet?.sourceId
+            lastPlayed: existingSet ? existingSet.lastPlayed : Date.now(),
+            elapsedTime: existingSet ? existingSet.elapsedTime : 0,
+            topStreak: existingSet ? existingSet.topStreak : 0,
+            isSessionActive: false // Saving to library always resets active state unless we want to preserve it?
+            // Actually, if we are editing an active session, we might want to keep it active?
+            // But usually saving means committing changes.
         };
 
         onSaveToLibrary(newSet);
+        setEditingSetId(null);
         setView('menu');
+
+        // Cleanup Builder State
         setSetName('');
         setRawText('');
         setEditingSetId(null);
@@ -1075,6 +1123,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 onClose={() => setShowImageModal(false)}
                 onSave={handleSaveImage}
                 initialValue={editingImageRowId ? (builderRows.find(r => r.id === editingImageRowId)?.image || '') : ''}
+            />
+
+            <WarningModal
+                isOpen={warningModal.isOpen}
+                onClose={() => setWarningModal(prev => ({ ...prev, isOpen: false }))}
+                onConfirm={warningModal.onConfirm}
+                message={warningModal.message}
             />
 
             <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />

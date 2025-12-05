@@ -327,7 +327,15 @@ const App: React.FC = () => {
    const handleStartFromLibrary = (libSet: CardSet) => {
       // Mark as active session
       const updatedSet = { ...libSet, isSessionActive: true, lastPlayed: Date.now() };
-      setLibrarySets(prev => prev.map(s => s.id === libSet.id ? updatedSet : s));
+
+      setLibrarySets(prev => {
+         const exists = prev.some(s => s.id === libSet.id);
+         if (exists) {
+            return prev.map(s => s.id === libSet.id ? updatedSet : s);
+         } else {
+            return [updatedSet, ...prev];
+         }
+      });
 
       setActiveSetId(libSet.id);
 
