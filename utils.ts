@@ -47,6 +47,9 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
       .replace(/<\/u>/g, '')
       .replace(/_/g, ''); // Also strip underscores if used for italics
 
+    // Normalize and remove diacritics
+    clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
     return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
   };
 
@@ -70,7 +73,7 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
   // 2. Check Year (if applicable)
   let isYearMatch = true;
   if (card.year) {
-    isYearMatch = inputYear.trim() === card.year.trim();
+    isYearMatch = strip(inputYear) === strip(card.year);
   }
 
   // 3. Check Custom Fields
@@ -80,7 +83,7 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
   if (card.customFields) {
     for (const field of card.customFields) {
       const input = inputCustom[field.name] || '';
-      const match = input.trim().toLowerCase() === field.value.trim().toLowerCase();
+      const match = strip(input) === strip(field.value);
       customResults[field.name] = match;
       if (!match) isCustomMatch = false;
     }

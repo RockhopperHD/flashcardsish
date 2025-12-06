@@ -4,6 +4,7 @@ This work is licensed under a [Creative Commons Attribution-NonCommercial 4.0 In
 This means you can take all my code and do whatever you want with it, except: 
 * Try to make money off of it
 * Claim it as 100% your own
+* Completely remove my name from the code and credit
 
 I ask for credit where logical. Thank you!
 
