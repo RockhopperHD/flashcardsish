@@ -21,6 +21,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [inputCustom, setInputCustom] = useState<Record<string, string>>({});
    const [feedback, setFeedback] = useState<FeedbackState>({ type: 'idle' });
    const [isEditOpen, setIsEditOpen] = useState(false);
+   const [isShaking, setIsShaking] = useState(false);
 
    // Streak state needs to track if it's "pending break"
    const [streak, setStreak] = useState(0);
@@ -206,13 +207,33 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          });
       } else {
          // INCORRECT
-         if (feedback.type === 'retype_needed') return; // Keep trying
+         if (feedback.type === 'retype_needed') {
+            // Shake if still wrong
+            setIsShaking(true);
+            setTimeout(() => setIsShaking(false), 500);
+            return;
+         }
 
          if (settings.retypeOnMistake) {
-            setFeedback({ type: 'retype_needed' });
-            setInputTerm('');
-            setInputYear('');
-            setInputCustom({});
+            setFeedback({
+               type: 'retype_needed',
+               results: {
+                  isTermMatch: result.isTermMatch,
+                  isYearMatch: result.isYearMatch,
+                  isCustomMatch: result.isCustomMatch,
+                  customResults: result.customResults
+               }
+            });
+            // Clear ONLY wrong fields
+            if (!result.isTermMatch) setInputTerm('');
+            if (!result.isYearMatch) setInputYear('');
+            if (!result.isCustomMatch) {
+               const newCustom = { ...inputCustom };
+               Object.keys(result.customResults).forEach(key => {
+                  if (!result.customResults[key]) newCustom[key] = '';
+               });
+               setInputCustom(newCustom);
+            }
          } else {
             let msg = `Answer: ${currentCard.term.join(' / ')}`;
             if (currentCard.year && !result.isYearMatch && result.isTermMatch) {
@@ -225,7 +246,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   msg = `Term/Year correct, but ${wrongField} is ${correctVal}`;
                }
             }
-            setFeedback({ type: 'incorrect', message: msg, customResults: result.customResults });
+            setFeedback({
+               type: 'incorrect',
+               message: msg,
+               customResults: { year: !result.isYearMatch, custom: result.customResults }
+            });
          }
          // Don't break streak YET. Wait for continue.
          setPendingStreakBreak(true);
@@ -271,8 +296,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       if (!currentCard) return;
       setPendingStreakBreak(true); // Will break on continue
 
-      if (settings.retypeOnMistake) {
-         setFeedback({ type: 'retype_needed' });
+      if (settings.retypeOnMistake && feedback.type !== 'retype_needed') {
+         setFeedback({
+            type: 'retype_needed',
+            results: {
+               isTermMatch: false,
+               isYearMatch: false,
+               isCustomMatch: false,
+               customResults: {}
+            }
+         });
          return;
       }
       setFeedback({ type: 'reveal', message: `Answer: ${currentCard.term.join(' / ')}` });
@@ -340,7 +373,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             if (feedback.type === 'retype_needed') return;
 
             e.preventDefault();
-            if (feedback.type === 'incorrect' || feedback.type === 'retype_needed' || feedback.type === 'reveal') {
+            if (feedback.type === 'incorrect' || feedback.type === 'reveal') {
                handleOverride(true);
             } else if (feedback.type === 'correct') {
                handleOverride(false);
@@ -498,7 +531,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                {feedback.type === 'retype_needed' && (
                   <div className="flex justify-between items-center mb-2">
                      <div className="text-red font-bold flex items-center gap-2">
-                        Incorrect. Type: <span className="text-text bg-white/10 px-2 py-1 rounded select-all">{renderInline(currentCard.term[0], 'retype-feedback')}</span>
+                        Retype the incorrect fields.
                      </div>
                      <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
                         Actually, I was right
@@ -538,25 +571,38 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      })}
                   </div>
                ) : (
-                  <div className="flex gap-4 items-stretch">
-                     <input
-                        ref={termInputRef}
-                        type="text"
-                        value={inputTerm}
-                        onChange={(e) => setInputTerm(e.target.value)}
-                        onKeyDown={handleInputKeyDown}
-                        disabled={!isInteractive}
-                        placeholder={feedback.type === 'retype_needed' ? "Type the correct term..." : "Type the term..."}
-                        className={clsx(
-                           "flex-1 bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
-                           feedback.type === 'retype_needed' ? "border-red text-red" : "border-outline text-text"
+                  <div className={clsx("flex gap-4 items-stretch", isShaking && "animate-shake")}>
+                     <div className="flex-1 relative">
+                        {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
+                           <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
+                              Answer: {currentCard.term[0]}
+                           </div>
                         )}
-                        autoComplete="off"
-                     />
+                        <input
+                           ref={termInputRef}
+                           type="text"
+                           value={inputTerm}
+                           onChange={(e) => setInputTerm(e.target.value)}
+                           onKeyDown={handleInputKeyDown}
+                           disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
+                           placeholder={feedback.type === 'retype_needed' ? "Retype term..." : "Type the term..."}
+                           className={clsx(
+                              "w-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
+                              feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
+                              feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green text-green bg-green/5"
+                           )}
+                           autoComplete="off"
+                        />
+                     </div>
 
                      {/* Year Input */}
                      {currentCard.year && (
                         <div className="relative">
+                           {feedback.type === 'retype_needed' && !feedback.results?.isYearMatch && (
+                              <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
+                                 {currentCard.year}
+                              </div>
+                           )}
                            <input
                               ref={yearInputRef}
                               type="text"
@@ -564,10 +610,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               onChange={(e) => setInputYear(e.target.value)}
                               onKeyDown={handleInputKeyDown}
                               placeholder="Year"
-                              disabled={!isInteractive}
+                              disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isYearMatch)}
                               className={clsx(
                                  "w-32 bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
-                                 feedback.type === 'incorrect' || feedback.type === 'retype_needed' ? (feedback.customResults?.year ? "border-green text-green" : "border-red text-red") : "border-outline text-text"
+                                 (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !feedback.results?.isYearMatch)) ? "border-red text-red" : "border-outline text-text",
+                                 feedback.type === 'retype_needed' && feedback.results?.isYearMatch && "border-green text-green bg-green/5"
                               )}
                               autoComplete="off"
                            />
@@ -578,18 +625,26 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      {set.customFieldNames?.map(fieldName => {
                         const field = currentCard.customFields?.find(f => f.name === fieldName);
                         if (!field) return null; // Only render if the card actually has this custom field
+                        const isCorrect = feedback.type === 'retype_needed' && feedback.results?.customResults?.[fieldName];
+
                         return (
                            <div key={fieldName} className="relative">
+                              {feedback.type === 'retype_needed' && !isCorrect && (
+                                 <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
+                                    {field.value}
+                                 </div>
+                              )}
                               <input
                                  type="text"
                                  value={inputCustom[fieldName] || ''}
                                  onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
                                  onKeyDown={handleInputKeyDown}
                                  placeholder={fieldName}
-                                 disabled={!isInteractive}
+                                 disabled={!isInteractive || (feedback.type === 'retype_needed' && isCorrect)}
                                  className={clsx(
                                     "flex-1 bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text min-w-[120px]",
-                                    feedback.type === 'incorrect' || feedback.type === 'retype_needed' ? (feedback.customResults?.custom?.[fieldName] ? "border-green text-green" : "border-red text-red") : "border-outline text-text"
+                                    (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red text-red" : "border-outline text-text",
+                                    feedback.type === 'retype_needed' && isCorrect && "border-green text-green bg-green/5"
                                  )}
                                  autoComplete="off"
                               />

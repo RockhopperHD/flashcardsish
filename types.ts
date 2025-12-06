@@ -37,9 +37,17 @@ export enum GameState {
   WIN = 'WIN'
 }
 
-export interface FeedbackState {
-  type: 'idle' | 'correct' | 'incorrect' | 'reveal' | 'retype_needed';
-  message?: string;
-  correction?: string; // "Did you mean..."
-  customResults?: { year?: boolean; custom?: Record<string, boolean> };
-}
+export type FeedbackState =
+  | { type: 'idle' }
+  | { type: 'correct'; correction?: string }
+  | { type: 'incorrect'; message: string; customResults?: { year?: boolean; custom?: Record<string, boolean> } }
+  | { type: 'reveal'; message: string }
+  | {
+    type: 'retype_needed';
+    results?: {
+      isTermMatch: boolean;
+      isYearMatch: boolean;
+      isCustomMatch: boolean;
+      customResults: Record<string, boolean>;
+    };
+  };
