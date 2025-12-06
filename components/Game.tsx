@@ -329,16 +329,15 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Keyboard Shortcuts
    useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
+         if (isEditOpen) return;
+
          // 'O' for Override
          if (e.key.toLowerCase() === 'o') {
             const isFeedbackActive = feedback.type !== 'idle';
             if (!isFeedbackActive) return;
 
-            // Retype Mode constraint
-            if (feedback.type === 'retype_needed' && currentCard) {
-               const firstLetter = currentCard.term[0].trim().charAt(0).toLowerCase();
-               if (firstLetter === 'o') return;
-            }
+            // Retype Mode constraint: Disable shortcut entirely to prevent accidental triggers while typing
+            if (feedback.type === 'retype_needed') return;
 
             e.preventDefault();
             if (feedback.type === 'incorrect' || feedback.type === 'retype_needed' || feedback.type === 'reveal') {
@@ -359,7 +358,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       };
       window.addEventListener('keydown', handleKeyDown);
       return () => window.removeEventListener('keydown', handleKeyDown);
-   }, [feedback, currentCard, nextCard, handleOverride]);
+   }, [feedback, currentCard, nextCard, handleOverride, isEditOpen]);
 
 
    const toggleStar = () => {
@@ -497,8 +496,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             <div className="space-y-6">
 
                {feedback.type === 'retype_needed' && (
-                  <div className="text-red font-bold mb-2 flex items-center gap-2">
-                     Incorrect. Type: <span className="text-text bg-white/10 px-2 py-1 rounded select-all">{renderInline(currentCard.term[0], 'retype-feedback')}</span>
+                  <div className="flex justify-between items-center mb-2">
+                     <div className="text-red font-bold flex items-center gap-2">
+                        Incorrect. Type: <span className="text-text bg-white/10 px-2 py-1 rounded select-all">{renderInline(currentCard.term[0], 'retype-feedback')}</span>
+                     </div>
+                     <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
+                        Actually, I was right
+                     </button>
                   </div>
                )}
 
