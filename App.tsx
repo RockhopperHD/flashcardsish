@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CardSet, GameState, Settings, Card } from './types';
+import { CardSet, GameState, Settings, Card, Folder } from './types';
 import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
@@ -10,6 +10,7 @@ import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, Rotat
 import clsx from 'clsx';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
+const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const STATS_KEY = 'flashcard-stats-v1';
 
@@ -206,6 +207,7 @@ const App: React.FC = () => {
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
 
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
+   const [folders, setFolders] = useState<Folder[]>([]);
    // activeSessions removed
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
 
@@ -246,6 +248,13 @@ const App: React.FC = () => {
             setLibrarySets(JSON.parse(savedLibrary));
          } catch (e) { console.error(e); }
       }
+
+      const savedFolders = localStorage.getItem(FOLDERS_KEY);
+      if (savedFolders) {
+         try {
+            setFolders(JSON.parse(savedFolders));
+         } catch (e) { console.error(e); }
+      }
       // Saved sessions loading removed
 
       const savedSettings = localStorage.getItem(SETTINGS_KEY);
@@ -276,8 +285,12 @@ const App: React.FC = () => {
    }, [librarySets]);
 
    useEffect(() => {
-      localStorage.setItem(LIBRARY_KEY, JSON.stringify(librarySets));
-   }, [librarySets]);
+      localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
+   }, [folders]);
+
+   useEffect(() => {
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+   }, [settings]);
 
    // Sessions save effect removed
 
@@ -410,7 +423,38 @@ const App: React.FC = () => {
       };
 
       // Universal Update: Update the single source of truth
-      setLibrarySets(prev => prev.map(s => s.id === updatedSession.id ? newSessionData : s));
+      setLibrarySets(prev => {
+         let nextLibrary = prev.map(s => s.id === updatedSession.id ? newSessionData : s);
+
+         if (updatedSession.isMultistudy) {
+            // Propagate changes to original sets
+            const updatedCardsMap = new Map(updatedSession.cards.map(c => [c.id, c]));
+
+            nextLibrary = nextLibrary.map(set => {
+               // Skip if this is the multistudy set itself (already updated)
+               if (set.id === updatedSession.id) return set;
+
+               // Check if this set has cards that are in the multistudy session
+               // We assume card IDs are unique across the entire library (generated with generateId)
+               // If they are not unique, this logic might be flawed, but usually they are.
+               const hasUpdates = set.cards.some(c => updatedCardsMap.has(c.id));
+               if (!hasUpdates) return set;
+
+               return {
+                  ...set,
+                  cards: set.cards.map(c => {
+                     const updated = updatedCardsMap.get(c.id);
+                     // Ensure we only update if it matches (it should if IDs are unique)
+                     if (updated) {
+                        return { ...c, ...updated };
+                     }
+                     return c;
+                  })
+               };
+            });
+         }
+         return nextLibrary;
+      });
    };
 
    const handleUpdatePreview = (updatedSet: CardSet) => {
@@ -592,16 +636,19 @@ const App: React.FC = () => {
             {gameState === GameState.MENU && (
                <StartMenu
                   librarySets={librarySets}
+                  setLibrarySets={setLibrarySets}
+                  folders={folders}
+                  setFolders={setFolders}
                   onStartFromLibrary={handleStartFromLibrary}
                   onResumeSession={handleResumeSession}
-                  onSaveToLibrary={handleSaveToLibrary}
                   onDeleteLibrarySet={handleDeleteLibrarySet}
+                  onDuplicateLibrarySet={handleDuplicateLibrarySet}
+                  onViewPreview={({ set, mode }) => setPreviewSet({ set, mode })}
+                  onSaveToLibrary={handleSaveToLibrary}
                   onDeleteSession={handleDeleteSession}
-                  onViewPreview={setPreviewSet}
                   settings={settings}
                   onUpdateSettings={updateSettings}
                   lifetimeCorrect={lifetimeCorrect}
-                  onDuplicateLibrarySet={handleDuplicateLibrarySet}
                />
             )}
 

@@ -1,11 +1,14 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link } from 'lucide-react';
-import { CardSet, Card, Settings } from '../types';
+import { CardSet, Card, Settings, Folder } from '../types';
 import { parseInput, generateId, downloadFile, renderMarkdown, renderInline } from '../utils';
 import clsx from 'clsx';
 
 interface StartMenuProps {
     librarySets: CardSet[];
+    setLibrarySets: React.Dispatch<React.SetStateAction<CardSet[]>>;
+    folders: Folder[];
+    setFolders: React.Dispatch<React.SetStateAction<Folder[]>>;
     onStartFromLibrary: (set: CardSet) => void;
     onResumeSession: (set: CardSet) => void;
     onSaveToLibrary: (set: CardSet) => void;
@@ -543,7 +546,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     settings,
     onUpdateSettings,
     lifetimeCorrect,
-    onDuplicateLibrarySet
+    onDuplicateLibrarySet,
+    setLibrarySets,
+    folders,
+    setFolders
 }) => {
     const [view, setView] = useState<'menu' | 'builder'>('menu');
     const [builderMode, setBuilderMode] = useState<'visual' | 'raw'>('visual');
@@ -611,6 +617,179 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     // Delete Confirmation State
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [selectedSetIds, setSelectedSetIds] = useState<Set<string>>(new Set());
+    const [batchDeleteClicks, setBatchDeleteClicks] = useState(0);
+
+    // Folder State
+    const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+    const [movingSetId, setMovingSetId] = useState<string | null>(null);
+    const [newFolderName, setNewFolderName] = useState('');
+    const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+
+    // Derived Lists
+    const currentFolder = folders.find(f => f.id === currentFolderId);
+
+    // If in a folder, show sets in that folder.
+    // If at root, show root sets (no folderId) AND folders.
+    // Multistudy sets are always at root in their own section.
+
+    const displayedSets = currentFolderId
+        ? librarySets.filter(s => s.folderId === currentFolderId)
+        : librarySets.filter(s => !s.isMultistudy && !s.folderId);
+
+    const displayedFolders = currentFolderId ? [] : folders;
+
+    const multistudySets = librarySets.filter(s => s.isMultistudy);
+
+    // Selection Logic
+    const handleToggleSelect = (id: string) => {
+        const newSet = new Set(selectedSetIds);
+        if (newSet.has(id)) {
+            newSet.delete(id);
+        } else {
+            newSet.add(id);
+        }
+        setSelectedSetIds(newSet);
+        setBatchDeleteClicks(0);
+    };
+
+    const handleSelectAll = () => {
+        if (selectedSetIds.size === displayedSets.length) {
+            setSelectedSetIds(new Set());
+        } else {
+            setSelectedSetIds(new Set(displayedSets.map(s => s.id)));
+        }
+    };
+
+    const handleCreateFolder = () => {
+        if (selectedSetIds.size === 0) return;
+        setIsCreatingFolder(true);
+    };
+
+    const confirmCreateFolder = (color: Folder['color'] = 'brown') => {
+        const newFolder: Folder = {
+            id: generateId(),
+            name: newFolderName || 'New Folder',
+            color,
+            setIds: Array.from(selectedSetIds)
+        };
+
+        setFolders(prev => [...prev, newFolder]);
+        setLibrarySets(prev => prev.map(s => selectedSetIds.has(s.id) ? { ...s, folderId: newFolder.id } : s));
+
+        setSelectedSetIds(new Set());
+        setNewFolderName('');
+        setIsCreatingFolder(false);
+    };
+
+    const handleMoveSet = (setId: string, folderId: string | undefined) => {
+        setLibrarySets(prev => prev.map(s => s.id === setId ? { ...s, folderId } : s));
+        setMovingSetId(null);
+    };
+
+    const handleDeleteFolder = (folderId: string) => {
+        // Move sets out of folder first
+        setLibrarySets(prev => prev.map(s => s.folderId === folderId ? { ...s, folderId: undefined } : s));
+        setFolders(prev => prev.filter(f => f.id !== folderId));
+        if (currentFolderId === folderId) setCurrentFolderId(null);
+    };
+
+    const handleMultistudyFolder = (folderId: string) => {
+        const folderSets = librarySets.filter(s => s.folderId === folderId);
+        if (folderSets.length === 0) return;
+
+        // Select all sets in folder and trigger multistudy creation logic
+        // But we can just reuse the logic directly
+        const allCards: Card[] = [];
+        folderSets.forEach(set => {
+            set.cards.forEach(card => {
+                allCards.push({
+                    ...card,
+                    originalSetId: set.id,
+                    originalSetName: set.name
+                });
+            });
+        });
+
+        const newSet: CardSet = {
+            id: generateId(),
+            name: `Folder Study: ${folders.find(f => f.id === folderId)?.name}`,
+            cards: allCards,
+            lastPlayed: Date.now(),
+            elapsedTime: 0,
+            topStreak: 0,
+            isSessionActive: true,
+            isMultistudy: true,
+            customFieldNames: []
+        };
+
+        const allCustomFields = new Set<string>();
+        folderSets.forEach(s => s.customFieldNames?.forEach(n => allCustomFields.add(n)));
+        newSet.customFieldNames = Array.from(allCustomFields);
+
+        onStartFromLibrary(newSet);
+    };
+
+    const handleMoveSelectedToFolder = (folderId: string) => {
+        setLibrarySets(prev => prev.map(s => selectedSetIds.has(s.id) ? { ...s, folderId } : s));
+        setSelectedSetIds(new Set());
+        setMovingSetId(null); // Close any move UI if open
+    };
+
+    const handleCreateMultistudy = () => {
+        const selectedSets = librarySets.filter(s => selectedSetIds.has(s.id));
+        if (selectedSets.length === 0) return;
+
+        const allCards: Card[] = [];
+        selectedSets.forEach(set => {
+            set.cards.forEach(card => {
+                allCards.push({
+                    ...card,
+                    originalSetId: set.id,
+                    originalSetName: set.name
+                });
+            });
+        });
+
+        // Shuffle cards? Or keep order? Usually multistudy implies shuffling.
+        // Let's shuffle them for good measure, or let the game handle it.
+        // The game shuffles anyway.
+
+        const newSet: CardSet = {
+            id: generateId(),
+            name: `Multistudy (${selectedSets.length} Sets)`,
+            cards: allCards,
+            lastPlayed: Date.now(),
+            elapsedTime: 0,
+            topStreak: 0,
+            isSessionActive: true,
+            isMultistudy: true,
+            customFieldNames: [] // Merge custom fields? Complex. Let's leave empty for now or try to merge unique ones.
+        };
+
+        // Merge custom field names
+        const allCustomFields = new Set<string>();
+        selectedSets.forEach(s => s.customFieldNames?.forEach(n => allCustomFields.add(n)));
+        newSet.customFieldNames = Array.from(allCustomFields);
+
+        onStartFromLibrary(newSet);
+        setSelectedSetIds(new Set());
+    };
+
+    const handleBatchDelete = () => {
+        if (batchDeleteClicks < 2) {
+            setBatchDeleteClicks(prev => prev + 1);
+        } else {
+            // Execute Delete
+            selectedSetIds.forEach(id => handleDeleteClick(id, 'library')); // Reusing existing delete logic which might be single-item focused.
+            // Actually handleDeleteClick sets a confirm ID. We need direct delete.
+            // We need a prop for batch delete or expose setLibrarySets?
+            // The prop `onDeleteLibrarySet` is available.
+            selectedSetIds.forEach(id => onDeleteLibrarySet(id));
+            setSelectedSetIds(new Set());
+            setBatchDeleteClicks(0);
+        }
+    };
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const greeting = useMemo(() => GREETINGS[Math.floor(Math.random() * GREETINGS.length)], []);
@@ -661,7 +840,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     };
 
     const handleSaveAndExit = () => {
-        handleSaveToLibraryAction();
+        handleSaveToLibrary();
         setShowUnsavedModal(false);
     };
 
@@ -916,104 +1095,91 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         onStartFromLibrary(newSet);
     };
 
-    const handleSaveToLibraryAction = () => {
-        const cards = getCardsFromState();
+
+
+    const handleSaveToLibrary = () => {
         if (!setName.trim()) {
-            alert("Please enter a set name.");
+            alert("Please name your set!");
             return;
         }
 
-        // Validation: Check for empty terms or definitions
-        const hasEmptyFields = cards.some(c => !c.term?.[0]?.trim() || !c.content?.trim());
-        const existingSet = editingSetId ? librarySets.find(s => s.id === editingSetId) : null;
+        const cards: Card[] = builderRows
+            .filter(row => row.term.trim() || row.def.trim())
+            .map(row => ({
+                id: generateId(),
+                term: [row.term.trim()],
+                definition: row.def.trim(),
+                year: row.year.trim(),
+                image: row.image,
+                customFields: row.customFields,
+                mastery: 0,
+                content: '',
+                star: false,
+                originalSetId: editingSetId || undefined,
+                originalSetName: setName
+            }));
 
-        if (hasEmptyFields) {
-            setWarningModal({
-                isOpen: true,
-                message: "Some cards have empty terms or definitions. Are you sure you want to save?",
-                onConfirm: () => {
-                    proceedSaveToLibrary(cards, existingSet);
-                }
-            });
+        if (cards.length === 0) {
+            alert("Please add at least one card!");
             return;
         }
-
-        proceedSaveToLibrary(cards, existingSet);
-    };
-
-    const proceedSaveToLibrary = (cards: (Partial<Card> & { originalCardId?: string })[], existingSet: CardSet | null | undefined) => {
-        const fullCards: Card[] = cards.map((c, i) => {
-            // Try to find original card to preserve mastery/star
-            const original = existingSet?.cards.find(oc => oc.id === c.originalCardId);
-
-            return {
-                id: c.originalCardId || generateId() + i,
-                term: c.term || ['?'],
-                content: c.content || '',
-                year: c.year,
-                image: c.image,
-                mastery: original ? original.mastery : 0,
-                star: original ? original.star : (c.star || false),
-                customFields: c.customFields || [],
-                tags: c.tags || []
-            };
-        });
 
         const newSet: CardSet = {
             id: editingSetId || generateId(),
-            name: setName || 'Untitled Set',
-            cards: fullCards,
+            name: setName,
+            cards,
+            lastPlayed: Date.now(),
+            elapsedTime: 0,
+            topStreak: 0,
             customFieldNames: customFieldNames,
-            lastPlayed: existingSet ? existingSet.lastPlayed : Date.now(),
-            elapsedTime: existingSet ? existingSet.elapsedTime : 0,
-            topStreak: existingSet ? existingSet.topStreak : 0,
-            isSessionActive: false // Saving to library always resets active state unless we want to preserve it?
-            // Actually, if we are editing an active session, we might want to keep it active?
-            // But usually saving means committing changes.
+            folderId: currentFolderId || undefined
         };
 
-        onSaveToLibrary(newSet);
-        setEditingSetId(null);
-        setView('menu');
+        if (editingSetId) {
+            const oldSet = librarySets.find(s => s.id === editingSetId);
+            if (oldSet) {
+                newSet.folderId = oldSet.folderId;
+            }
+        }
 
-        // Cleanup Builder State
-        setSetName('');
-        setRawText('');
-        setEditingSetId(null);
+        onSaveToLibrary(newSet);
+
         setBuilderRows([
             { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
             { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
             { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
         ]);
-        setCustomFieldNames([]);
+        setSetName('');
+        setEditingSetId(null);
+        setView('menu');
+        setShowUnsavedModal(false);
     };
 
     const handleDownloadFlashcards = () => {
         let content = rawText;
-        if (builderMode === 'visual') {
-            content = builderRows
-                .filter(r => r.term.trim() || r.def.trim())
-                .map(r => {
-                    let line = `${r.term.trim()} / ${r.def.trim()}`;
-                    if (r.year.trim()) line += ` /// ${r.year.trim()}`;
-                    if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
+        content = builderRows
+            .filter(r => r.term.trim() || r.def.trim())
+            .map(r => {
+                let line = `${r.term.trim()} / ${r.def.trim()}`;
+                if (r.year.trim()) line += ` /// ${r.year.trim()}`;
+                if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
 
-                    if (r.customFields.length > 0) {
-                        if (!r.image.trim()) line += ` ||| `;
-                        line += ` , `;
-                        r.customFields.forEach(f => {
-                            line += `(${f.name})(${f.value})`;
-                        });
-                    }
+                if (r.customFields.length > 0) {
+                    if (!r.image.trim()) line += ` ||| `;
+                    line += ` , `;
+                    r.customFields.forEach(f => {
+                        line += `(${f.name})(${f.value})`;
+                    });
+                }
 
-                    if (r.tags.length > 0) {
-                        line += ` %%TAGS%%${r.tags.join('%%')}`;
-                    }
+                if (r.tags.length > 0) {
+                    line += ` %%TAGS%%${r.tags.join('%%')}`;
+                }
 
-                    return line;
-                })
-                .join('\n\n&&&\n\n');
-        }
+                return line;
+            })
+            .join('\n\n&&&\n\n');
+
         downloadFile((setName || 'deck') + '.flashcards', content, 'text');
     };
 
@@ -1172,9 +1338,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         <div className="space-y-4">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
-                                    Library
+                                    {currentFolderId ? (
+                                        <button onClick={() => setCurrentFolderId(null)} className="flex items-center gap-1 hover:text-text transition-colors">
+                                            <ArrowLeft size={14} /> {currentFolder?.name}
+                                        </button>
+                                    ) : (
+                                        "Library"
+                                    )}
                                 </h3>
                                 <div className="flex gap-2">
+                                    {currentFolderId && (
+                                        <button
+                                            onClick={() => handleMultistudyFolder(currentFolderId)}
+                                            className="flex items-center gap-2 px-3 py-1.5 bg-accent/10 text-accent border border-accent/20 rounded-lg text-xs font-bold hover:bg-accent/20 transition-colors"
+                                        >
+                                            <Play size={14} /> Study Folder
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
                                         className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold text-muted hover:text-text hover:border-accent transition-colors"
@@ -1197,88 +1377,307 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                     <p className="text-muted italic mb-4">Your library is empty.</p>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
-                                    {librarySets.map(set => (
-                                        <div key={set.id} className="group bg-panel border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full">
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div>
-                                                    <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
-                                                    <div className="text-xs text-muted font-mono">{set.cards.length} card{set.cards.length === 1 ? '' : 's'}</div>
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                    <button
-                                                        onClick={() => handleLoadSetToBuilder(set)}
-                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                        title="Edit"
-                                                    >
-                                                        <Pencil size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onViewPreview({ set, mode: 'library' })}
-                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                        title="Preview"
-                                                    >
-                                                        <Eye size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
-                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                        title="Export JSON"
-                                                    >
-                                                        <Download size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => onDuplicateLibrarySet(set.id)}
-                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                        title="Duplicate Set"
-                                                    >
-                                                        <Copy size={16} />
-                                                    </button>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            handleDeleteClick(set.id, 'library');
+                                <div className="space-y-8">
+                                    {/* Folders Section */}
+                                    {!currentFolderId && displayedFolders.length > 0 && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                            {displayedFolders.map(folder => {
+                                                const folderSets = librarySets.filter(s => s.folderId === folder.id);
+                                                const colorMap = {
+                                                    brown: 'bg-accent/20 border-accent text-accent',
+                                                    red: 'bg-red/20 border-red text-red',
+                                                    blue: 'bg-blue/20 border-blue text-blue',
+                                                    yellow: 'bg-yellow/20 border-yellow text-yellow',
+                                                    green: 'bg-green/20 border-green text-green',
+                                                    purple: 'bg-purple/20 border-purple text-purple'
+                                                };
+
+                                                return (
+                                                    <div key={folder.id} className={clsx("border rounded-2xl p-4 transition-all cursor-pointer hover:scale-[1.02]", colorMap[folder.color], movingSetId ? "ring-2 ring-offset-2 ring-offset-bg ring-accent" : "")}
+                                                        onClick={() => {
+                                                            if (movingSetId) handleMoveSet(movingSetId, folder.id);
+                                                            else setCurrentFolderId(folder.id);
                                                         }}
-                                                        className={clsx(
-                                                            "p-1.5 rounded transition-all flex items-center justify-center",
-                                                            deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
-                                                        )}
-                                                        title="Delete Set"
                                                     >
-                                                        {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
-                                                    </button>
+                                                        <div className="flex justify-between items-center">
+                                                            <div className="flex items-center gap-2 font-bold">
+                                                                <FolderOpen size={18} />
+                                                                {folder.name}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-xs opacity-70 font-mono">{folderSets.length} sets</span>
+                                                                <button
+                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                                                                    className="p-1 hover:bg-black/10 rounded"
+                                                                    title="Delete Folder"
+                                                                >
+                                                                    <X size={14} />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* Sets List */}
+                                    <div className="space-y-3">
+                                        {movingSetId && (
+                                            <div
+                                                className="bg-panel-2 border border-dashed border-accent p-4 rounded-xl text-center mb-4 cursor-pointer hover:bg-accent/10 transition-colors"
+                                                onClick={() => handleMoveSet(movingSetId, undefined)}
+                                            >
+                                                <span className="text-sm font-bold text-accent">Move here (Remove from folder)</span>
+                                            </div>
+                                        )}
+
+                                        {displayedSets.map(set => (
+                                            <div key={set.id} className="relative group/row">
+                                                {/* Checkbox - Left Wing */}
+                                                <div className="absolute -left-12 top-1/2 -translate-y-1/2 w-12 flex justify-center">
+                                                    <div
+                                                        onClick={() => handleToggleSelect(set.id)}
+                                                        className={clsx(
+                                                            "w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all",
+                                                            selectedSetIds.has(set.id) ? "bg-accent border-accent" : "border-outline hover:border-accent"
+                                                        )}
+                                                    >
+                                                        {selectedSetIds.has(set.id) && <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />}
+                                                    </div>
+                                                </div>
+
+                                                <div className="group bg-panel border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full">
+                                                    <div className="flex justify-between items-start mb-4">
+                                                        <div>
+                                                            <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
+                                                            <div className="text-xs text-muted font-mono">{set.cards.length} card{set.cards.length === 1 ? '' : 's'}</div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                onClick={() => setMovingSetId(set.id)}
+                                                                className={clsx("p-1.5 rounded hover:bg-panel-2 transition-all", movingSetId === set.id ? "text-accent animate-pulse" : "text-muted hover:text-text")}
+                                                                title="Move to Folder"
+                                                            >
+                                                                <FolderOpen size={16} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleLoadSetToBuilder(set)}
+                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                title="Edit"
+                                                            >
+                                                                <Pencil size={16} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onViewPreview({ set, mode: 'library' })}
+                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                title="Preview"
+                                                            >
+                                                                <Eye size={16} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
+                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                title="Export JSON"
+                                                            >
+                                                                <Download size={16} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => onDuplicateLibrarySet(set.id)}
+                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                title="Duplicate Set"
+                                                            >
+                                                                <Copy size={16} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteClick(set.id, 'library');
+                                                                }}
+                                                                className={clsx(
+                                                                    "p-1.5 rounded transition-all flex items-center justify-center",
+                                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
+                                                                )}
+                                                                title="Delete Set"
+                                                            >
+                                                                {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-2 mt-2 flex gap-2 relative z-10">
+                                                        {set.isSessionActive ? (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => onResumeSession(set)}
+                                                                    className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
+                                                                >
+                                                                    <Play size={14} fill="currentColor" /> Resume
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => onStartFromLibrary(set)}
+                                                                    className="px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-panel-3 transition-all flex items-center justify-center gap-2"
+                                                                    title="Restart Session"
+                                                                >
+                                                                    <RotateCcw size={14} />
+                                                                </button>
+                                                            </>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => onStartFromLibrary(set)}
+                                                                className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
+                                                            >
+                                                                <Play size={14} fill="currentColor" /> Play
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
+                                        ))}
+                                    </div>
 
-                                            <div className="pt-2 mt-2 flex gap-2">
-                                                {set.isSessionActive ? (
-                                                    <>
+                                    {/* Multistudy Sets */}
+                                    {multistudySets.length > 0 && (
+                                        <div className="space-y-3 pt-6 border-t border-outline/50">
+                                            <h3 className="text-xs font-bold uppercase tracking-widest text-muted mb-2">Multistudy Sessions</h3>
+                                            {multistudySets.map(set => (
+                                                <div key={set.id} className="group bg-panel-2 border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full relative overflow-hidden">
+                                                    <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{
+                                                        backgroundImage: 'repeating-linear-gradient(45deg, #000 0, #000 20px, transparent 20px, transparent 40px)'
+                                                    }}></div>
+                                                    <div className="absolute top-0 left-0 w-1 h-full bg-accent/50"></div>
+                                                    <div className="flex justify-between items-start mb-4 pl-2 relative z-10">
+                                                        <div>
+                                                            <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
+                                                            <div className="text-xs text-muted font-mono">{set.cards.length} cards</div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDeleteClick(set.id, 'library');
+                                                                }}
+                                                                className={clsx(
+                                                                    "p-1.5 rounded transition-all flex items-center justify-center",
+                                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
+                                                                )}
+                                                                title="Delete Session"
+                                                            >
+                                                                {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-2 mt-2 flex gap-2 pl-2 relative z-10">
                                                         <button
                                                             onClick={() => onResumeSession(set)}
                                                             className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
                                                         >
                                                             <Play size={14} fill="currentColor" /> Resume
                                                         </button>
-                                                        <button
-                                                            onClick={() => onStartFromLibrary(set)}
-                                                            className="px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-panel-3 transition-all flex items-center justify-center gap-2"
-                                                            title="Restart Session"
-                                                        >
-                                                            <RotateCcw size={14} />
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => onStartFromLibrary(set)}
-                                                        className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
-                                                    >
-                                                        <Play size={14} fill="currentColor" /> Play
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+
+                                    {/* Floating Action Bar */}
+                                    {selectedSetIds.size > 0 && (
+                                        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-panel border border-outline shadow-2xl p-2 rounded-2xl animate-in slide-in-from-bottom-4">
+                                            <div className="pl-4 pr-2 text-sm font-bold text-text">
+                                                {selectedSetIds.size} selected
+                                            </div>
+                                            <div className="h-6 w-px bg-outline"></div>
+                                            <button
+                                                onClick={handleCreateMultistudy}
+                                                className="px-6 py-2 bg-accent text-bg font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg"
+                                            >
+                                                Multistudy
+                                            </button>
+                                            <button
+                                                onClick={handleCreateFolder}
+                                                className="px-6 py-2 bg-panel-2 border border-outline text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg"
+                                            >
+                                                New Folder
+                                            </button>
+                                            {folders.length > 0 && (
+                                                <div className="relative group">
+                                                    <button className="px-6 py-2 bg-panel-2 border border-outline text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg flex items-center gap-2">
+                                                        Move to...
                                                     </button>
+                                                    <div className="absolute bottom-full left-0 mb-2 w-48 bg-panel border border-outline rounded-xl shadow-xl p-2 hidden group-hover:block animate-in fade-in slide-in-from-bottom-2">
+                                                        {folders.map(f => (
+                                                            <button
+                                                                key={f.id}
+                                                                onClick={() => handleMoveSelectedToFolder(f.id)}
+                                                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-panel-2 text-sm font-medium flex items-center gap-2"
+                                                            >
+                                                                <div className={clsx("w-2 h-2 rounded-full", {
+                                                                    'bg-accent': f.color === 'brown',
+                                                                    'bg-red': f.color === 'red',
+                                                                    'bg-blue': f.color === 'blue',
+                                                                    'bg-yellow': f.color === 'yellow',
+                                                                    'bg-green': f.color === 'green',
+                                                                    'bg-purple': f.color === 'purple',
+                                                                })} />
+                                                                {f.name}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={handleBatchDelete}
+                                                className={clsx(
+                                                    "px-6 py-2 font-bold rounded-xl transition-all border border-transparent",
+                                                    batchDeleteClicks > 0 ? "bg-red text-bg animate-pulse" : "bg-panel-2 text-red hover:bg-red/10"
                                                 )}
+                                            >
+                                                {batchDeleteClicks === 0 ? "Delete" : (batchDeleteClicks === 1 ? "Click 2x" : "Click 1x")}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Folder Creation Modal */}
+                                    {isCreatingFolder && (
+                                        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsCreatingFolder(false)}>
+                                            <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                                                <h3 className="text-lg font-bold text-text mb-4">Create Folder</h3>
+                                                <input
+                                                    autoFocus
+                                                    value={newFolderName}
+                                                    onChange={(e) => setNewFolderName(e.target.value)}
+                                                    placeholder="Folder Name"
+                                                    className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text mb-6 focus:outline-none focus:border-accent font-bold"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') confirmCreateFolder();
+                                                    }}
+                                                />
+                                                <div className="grid grid-cols-6 gap-2 mb-6">
+                                                    {(['brown', 'red', 'blue', 'yellow', 'green', 'purple'] as const).map(color => (
+                                                        <button
+                                                            key={color}
+                                                            onClick={() => confirmCreateFolder(color)}
+                                                            className={clsx(
+                                                                "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
+                                                                color === 'brown' && "bg-accent border-accent",
+                                                                color === 'red' && "bg-red border-red",
+                                                                color === 'blue' && "bg-blue border-blue",
+                                                                color === 'yellow' && "bg-yellow border-yellow",
+                                                                color === 'green' && "bg-green border-green",
+                                                                color === 'purple' && "bg-purple border-purple"
+                                                            )}
+                                                            title={color}
+                                                        />
+                                                    ))}
+                                                </div>
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={() => setIsCreatingFolder(false)} className="px-4 py-2 text-muted hover:text-text">Cancel</button>
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    )}    </div>
                             )}
                         </div>
                     </div>
@@ -1465,7 +1864,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                                 <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                                     <button
-                                        onClick={handleSaveToLibraryAction}
+                                        onClick={handleSaveToLibrary}
                                         className="flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text hover:border-accent transition-all"
                                     >
                                         <FolderOpen size={18} /> Save to Library

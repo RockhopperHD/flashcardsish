@@ -9,6 +9,8 @@ export interface Card {
   tags?: string[]; // Optional tags
   mastery: number; // 0: Unseen, 1: Learning, 2: Learned
   star: boolean;
+  originalSetId?: string;
+  originalSetName?: string;
 }
 
 export interface CardSet {
@@ -21,6 +23,15 @@ export interface CardSet {
   elapsedTime: number; // Time spent in ms
   topStreak: number;
   isSessionActive?: boolean;
+  isMultistudy?: boolean;
+  folderId?: string; // If belongs to a folder
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  color: 'brown' | 'red' | 'blue' | 'yellow' | 'green' | 'purple';
+  setIds: string[];
 }
 
 export interface Settings {

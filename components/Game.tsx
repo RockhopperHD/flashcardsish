@@ -34,6 +34,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Multiple Choice State
    const [options, setOptions] = useState<string[]>([]);
 
+   // Multistudy Edit Warning
+   const [showEditWarning, setShowEditWarning] = useState(false);
+   const [suppressEditWarning, setSuppressEditWarning] = useState(false);
+
    // Refs
    const termInputRef = useRef<HTMLInputElement>(null);
    const yearInputRef = useRef<HTMLInputElement>(null);
@@ -489,7 +493,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                {/* Mastery Dots (Top Right) - Larger */}
                <div className="flex gap-3 items-center">
                   <button
-                     onClick={() => setIsEditOpen(true)}
+                     onClick={() => {
+                        if (set.isMultistudy && !suppressEditWarning) {
+                           setShowEditWarning(true);
+                        } else {
+                           setIsEditOpen(true);
+                        }
+                     }}
                      className="p-2 text-muted hover:text-text hover:bg-panel-2 rounded-lg transition-colors mr-2"
                      title="Edit Card"
                   >
@@ -715,6 +725,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                </div>
 
             </div>
+
+            {/* Original Set Name Display (Multistudy) */}
+            {currentCard.originalSetName && (
+               <div className="absolute bottom-4 left-10 text-[10px] font-bold text-muted uppercase tracking-widest opacity-40">
+                  {currentCard.originalSetName}
+               </div>
+            )}
          </div>
 
          {/* Streak Footer */}
@@ -803,6 +820,49 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                </div>
             )
          }
+
+         {/* Multistudy Edit Warning Modal */}
+         {showEditWarning && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
+               <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                  <h3 className="text-lg font-bold text-text mb-2">Edit Original Card?</h3>
+                  <p className="text-sm text-muted mb-6 leading-relaxed">
+                     You are editing a card in a Multistudy session. This will update the card in the <span className="text-accent font-bold">original set</span> as well.
+                  </p>
+
+                  <div className="flex items-center gap-2 mb-6">
+                     <input
+                        type="checkbox"
+                        id="suppress"
+                        className="rounded border-outline bg-panel-2 text-accent focus:ring-accent"
+                        onChange={(e) => {
+                           if (e.target.checked) setSuppressEditWarning(true);
+                           else setSuppressEditWarning(false);
+                        }}
+                     />
+                     <label htmlFor="suppress" className="text-xs text-muted cursor-pointer select-none">Don't warn me again this session</label>
+                  </div>
+
+                  <div className="flex gap-3">
+                     <button
+                        onClick={() => setShowEditWarning(false)}
+                        className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-panel-2 border border-outline hover:bg-panel-3 transition-colors text-text"
+                     >
+                        Cancel
+                     </button>
+                     <button
+                        onClick={() => {
+                           setShowEditWarning(false);
+                           setIsEditOpen(true);
+                        }}
+                        className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-accent text-bg hover:scale-105 transition-transform"
+                     >
+                        Edit Anyway
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
       </div >
    );
 };
