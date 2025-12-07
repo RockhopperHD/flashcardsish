@@ -1108,12 +1108,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             .map(row => ({
                 id: generateId(),
                 term: [row.term.trim()],
-                definition: row.def.trim(),
+                content: row.def.trim(),
                 year: row.year.trim(),
                 image: row.image,
                 customFields: row.customFields,
                 mastery: 0,
-                content: '',
                 star: false,
                 originalSetId: editingSetId || undefined,
                 originalSetName: setName
