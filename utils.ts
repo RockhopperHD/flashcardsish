@@ -44,10 +44,7 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
       .replace(/__/g, '')
       .replace(/`/g, '')
       .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '')
-      .replace(/_/g, ''); // Also strip underscores if used for italics
-
-    // Normalize and remove diacritics
+      .replace(/<\/u>/g, '');    // Normalize and remove diacritics
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
@@ -257,7 +254,7 @@ export const renderInline = (text: string, keyPrefix: string, isHighlighted: boo
   // 5. Italic: *text* or _text_
   // 6. Underline: __text__ or <u>text</u>
 
-  const parts = text.split(/(<h=[^>]+>.*?<\/h>)|(`[^`]+`)|(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(__[^_]+__)|(<u>[^<]+<\/u>)|(_[^_]+_)/g).filter(p => p !== undefined && p !== '');
+  const parts = text.split(/(<h=[^>]+>.*?<\/h>)|(`[^`]+`)|(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(__[^_]+__)|(<u>[^<]+<\/u>)/g).filter(p => p !== undefined && p !== '');
 
   return parts.map((part, idx) => {
     const key = `${keyPrefix}-${idx}`;
@@ -296,7 +293,7 @@ export const renderInline = (text: string, keyPrefix: string, isHighlighted: boo
       return React.createElement('strong', { key, className }, part.slice(2, -2));
     }
     // Italic
-    if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
+    if (part.startsWith('*') && part.endsWith('*')) {
       return React.createElement('em', { key, className: "italic text-muted/90" }, part.slice(1, -1));
     }
     // Underline
