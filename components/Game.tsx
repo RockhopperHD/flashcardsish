@@ -784,8 +784,23 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         <div>
                            <label className="block text-xs font-bold text-muted uppercase mb-1">Term</label>
                            <input
-                              value={currentCard.term.join(' / ')}
-                              onChange={(e) => handleUpdateCard(currentCard.id, { term: e.target.value.split('/').map(t => t.trim()) })}
+                              value={(currentCard.tags && currentCard.tags.length > 0 ? currentCard.tags.map(t => `(${t})`).join(' ') + ' ' : '') + currentCard.term.join(' / ')}
+                              onChange={(e) => {
+                                 const val = e.target.value;
+                                 let text = val;
+                                 let tags: string[] = [];
+                                 const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+                                 const match = text.match(tagRegex);
+                                 if (match) {
+                                    const fullTagString = match[0];
+                                    tags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
+                                    text = text.replace(tagRegex, '');
+                                 }
+                                 handleUpdateCard(currentCard.id, {
+                                    term: text.split('/').map(t => t.trim()),
+                                    tags: tags
+                                 });
+                              }}
                               className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
                            />
                         </div>
