@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings } from '../types';
-import { checkAnswer, renderMarkdown, renderInline } from '../utils';
-import { ArrowLeft, Pencil, X } from 'lucide-react';
+import { checkAnswer, renderMarkdown, renderInline, downloadFile } from '../utils';
+import { ArrowLeft, Pencil, X, Download } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -402,6 +402,17 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       if (currentCard) handleUpdateCard(currentCard.id, { star: !currentCard.star });
    };
 
+   const handleDownloadSession = () => {
+      const exportSet = {
+         ...set,
+         cards: set.cards.map(c => ({
+            ...c,
+            mastery: 0
+         }))
+      };
+      downloadFile(`${set.name}.flashcards`, JSON.stringify(exportSet, null, 2), 'json');
+   };
+
    const isInteractive = feedback.type === 'idle' || feedback.type === 'retype_needed';
 
    if (!currentCard) return null;
@@ -411,16 +422,32 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
          {/* Top Controls Row */}
          <div className="flex justify-between items-end mb-4 select-none">
-            {/* Back Button (Flashcards Mode) */}
-            <button
-               onClick={onExit}
-               className="flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors mb-2"
-            >
-               <div className="p-2 rounded-full border border-outline hover:bg-panel transition-colors">
-                  <ArrowLeft size={16} />
-               </div>
-               Back
-            </button>
+            <div className="flex items-center gap-4 mb-2">
+               {/* Back Button (Flashcards Mode) */}
+               <button
+                  onClick={onExit}
+                  className="flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
+               >
+                  <div className="p-2 rounded-full border border-outline hover:bg-panel transition-colors">
+                     <ArrowLeft size={16} />
+                  </div>
+                  Back
+               </button>
+
+               {/* Download Button (Multistudy Only) */}
+               {set.isMultistudy && (
+                  <button
+                     onClick={handleDownloadSession}
+                     className="flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
+                     title="Download Session as Set"
+                  >
+                     <div className="p-2 rounded-full border border-outline hover:bg-panel transition-colors">
+                        <Download size={16} />
+                     </div>
+                     Save Set
+                  </button>
+               )}
+            </div>
 
             {/* Mastery Stats */}
             <div className="flex gap-3">
