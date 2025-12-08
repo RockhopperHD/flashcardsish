@@ -30,6 +30,7 @@ interface BuilderRow {
     customFields: { name: string; value: string }[];
     tags: string[]; // Kept for internal state if needed, but primarily derived from term
     originalCardId?: string;
+    star: boolean;
 }
 
 const BUILDER_STORAGE_KEY = 'flashcard-builder-rows';
@@ -44,7 +45,13 @@ const GREETINGS = [
     "What's up?",
     "All you.",
     "Greatness incoming?",
-    "Hey, you're here."
+    "Hey, you're here.",
+    "Welcome... or welcome back.",
+    "Ready to study?",
+    "You're in the right place.",
+    "Onward.",
+    "Heyo.",
+    "Flashcards! Hurrah!",
 ];
 
 // Unsaved Changes Modal
@@ -250,6 +257,34 @@ const WarningModal: React.FC<{
 
 
 
+// No Starred Modal
+const NoStarredModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onDisableAndPlay: () => void;
+}> = ({ isOpen, onClose, onDisableAndPlay }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+            <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-4 text-yellow">
+                    <AlertCircle size={24} />
+                    <h3 className="text-lg font-bold text-text">No Starred Cards</h3>
+                </div>
+                <p className="text-muted mb-6">You have "Study Starred Only" enabled, but this set has no starred cards.</p>
+                <div className="flex flex-col gap-3">
+                    <button onClick={onDisableAndPlay} className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:scale-105 transition-transform">
+                        Disable Filter & Play
+                    </button>
+                    <button onClick={onClose} className="w-full py-3 text-muted hover:text-text font-medium">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // Builder Row Component
 const BuilderRowItem: React.FC<{
     row: BuilderRow;
@@ -445,6 +480,19 @@ const BuilderRowItem: React.FC<{
                             )}
                         </button>
 
+                        {/* Star Button */}
+                        <button
+                            onClick={() => updateRow(row.id, 'star', !row.star)}
+                            tabIndex={-1}
+                            className={clsx(
+                                "p-2.5 transition-all shrink-0",
+                                row.star ? "text-yellow hover:text-yellow/80" : "text-muted hover:text-yellow"
+                            )}
+                            title={row.star ? "Unstar Card" : "Star Card"}
+                        >
+                            {row.star ? "★" : "☆"}
+                        </button>
+
                         {/* Delete Button */}
                         <button
                             onClick={() => removeRow(row.id)}
@@ -568,21 +616,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     // Warning Modal State
     const [warningModal, setWarningModal] = useState<{ isOpen: boolean, message: string, onConfirm: () => void }>({ isOpen: false, message: '', onConfirm: () => { } });
+    const [noStarredModalSet, setNoStarredModalSet] = useState<CardSet | null>(null);
+
 
     // Builder State
     const [builderRows, setBuilderRows] = useState<BuilderRow[]>(() => {
         const saved = localStorage.getItem(BUILDER_STORAGE_KEY);
         try {
             return saved ? JSON.parse(saved) : [
-                { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-                { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-                { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
+                { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+                { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+                { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }
             ];
         } catch {
             return [
-                { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-                { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-                { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
+                { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+                { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+                { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }
             ];
         }
     });
@@ -727,7 +777,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         folderSets.forEach(s => s.customFieldNames?.forEach(n => allCustomFields.add(n)));
         newSet.customFieldNames = Array.from(allCustomFields);
 
-        onStartFromLibrary(newSet);
+        handlePlaySet(newSet);
     };
 
     const handleMoveSelectedToFolder = (folderId: string) => {
@@ -772,7 +822,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         selectedSets.forEach(s => s.customFieldNames?.forEach(n => allCustomFields.add(n)));
         newSet.customFieldNames = Array.from(allCustomFields);
 
-        onStartFromLibrary(newSet);
+        handlePlaySet(newSet);
         setSelectedSetIds(new Set());
     };
 
@@ -807,9 +857,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setEditingSetId(null);
         setCustomFieldNames([]);
         setBuilderRows([
-            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }
         ]);
         const defaultName = "New Set " + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).replace(',', '');
         setSetName(defaultName);
@@ -872,6 +922,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 // Tags are now part of the term in markdown, so we don't need %%TAGS%% syntax anymore for export/raw
                 // unless we want to support legacy? No, user said "use markdown to add tags".
 
+                if (r.star) {
+                    line += ` %%STAR%%`;
+                }
+
                 return line;
             })
             .join('\n\n&&&\n\n'); // New Separator
@@ -895,7 +949,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 year: c.year || '',
                 image: c.image || '',
                 customFields: c.customFields || [],
-                tags: c.tags || []
+                tags: c.tags || [],
+                star: c.star || false
             };
         });
         // Extract unique custom field names from parsed rows
@@ -905,7 +960,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         // Ensure at least 3 rows
         while (rows.length < 3) {
-            rows.push({ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [] });
+            rows.push({ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false });
         }
         setBuilderRows(rows);
     };
@@ -939,7 +994,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 image: c.image || '',
                 customFields: c.customFields || [],
                 tags: c.tags || [],
-                originalCardId: c.id
+                originalCardId: c.id,
+                star: c.star || false
             };
         });
 
@@ -982,7 +1038,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     year: c.year || '',
                     image: c.image || '',
                     customFields: c.customFields || [],
-                    tags: c.tags || []
+                    tags: c.tags || [],
+                    star: c.star || false
                 }));
                 setBuilderRows(rows);
             }
@@ -995,7 +1052,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     year: c.year || '',
                     image: c.image || '',
                     customFields: c.customFields || [],
-                    tags: c.tags || []
+                    tags: c.tags || [],
+                    star: c.star || false
                 }));
                 setBuilderRows(rows);
             } else if (builderMode === 'raw') {
@@ -1033,7 +1091,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         image: r.image.trim() || undefined,
                         customFields: r.customFields,
                         tags: tags, // Use extracted tags
-                        star: false,
+                        star: r.star,
                         mastery: 0,
                         originalCardId: r.originalCardId
                     };
@@ -1092,7 +1150,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             isSessionActive: true
         };
 
-        onStartFromLibrary(newSet);
+        handlePlaySet(newSet);
     };
 
 
@@ -1113,7 +1171,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 image: row.image,
                 customFields: row.customFields,
                 mastery: 0,
-                star: false,
+                star: row.star,
                 originalSetId: editingSetId || undefined,
                 originalSetName: setName
             }));
@@ -1144,9 +1202,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         onSaveToLibrary(newSet);
 
         setBuilderRows([
-            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [] },
-            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [] }
+            { id: '1', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+            { id: '2', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false },
+            { id: '3', term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }
         ]);
         setSetName('');
         setEditingSetId(null);
@@ -1173,6 +1231,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                 if (r.tags.length > 0) {
                     line += ` %%TAGS%%${r.tags.join('%%')}`;
+                }
+                if (r.star) {
+                    line += ` %%STAR%%`;
                 }
 
                 return line;
@@ -1202,6 +1263,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     if (r.tags.length > 0) {
                         line += ` %%TAGS%%${r.tags.join('%%')}`;
                     }
+                    if (r.star) {
+                        line += ` %%STAR%%`;
+                    }
                     return line;
                 })
                 .join('\n\n&&&\n\n');
@@ -1213,7 +1277,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     // --- HELPER FOR VISUAL BUILDER ---
 
     const addRow = () => {
-        setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [] }]);
+        setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }]);
     };
 
     const updateRow = (id: string, field: keyof BuilderRow, value: any) => {
@@ -1223,7 +1287,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const removeRow = (id: string) => {
         if (builderRows.length <= 1) {
             // Don't delete last row, just clear it
-            setBuilderRows([{ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [] }]);
+            setBuilderRows([{ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }]);
             return;
         }
         setBuilderRows(prev => prev.filter(r => r.id !== id));
@@ -1273,6 +1337,30 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         return builderRows.some(r => r.image && r.image.startsWith('data:'));
     }, [builderRows]);
 
+    const handlePlaySet = (set: CardSet) => {
+        if (settings.starredOnly) {
+            const hasStarred = set.cards.some(c => c.star);
+            if (!hasStarred) {
+                setNoStarredModalSet(set);
+                return;
+            }
+        }
+        onStartFromLibrary(set);
+    };
+
+    const handleResumeSet = (set: CardSet) => {
+        if (settings.starredOnly) {
+            const hasStarred = set.cards.some(c => c.star);
+            if (!hasStarred) {
+                setNoStarredModalSet(set);
+                return;
+            }
+        }
+        onResumeSession(set);
+    };
+
+
+
     return (
         <div className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700">
 
@@ -1295,6 +1383,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 onClose={() => setWarningModal(prev => ({ ...prev, isOpen: false }))}
                 onConfirm={warningModal.onConfirm}
                 message={warningModal.message}
+            />
+
+
+
+            <NoStarredModal
+                isOpen={!!noStarredModalSet}
+                onClose={() => setNoStarredModalSet(null)}
+                onDisableAndPlay={() => {
+                    if (noStarredModalSet) {
+                        onUpdateSettings({ ...settings, starredOnly: false });
+                        if (noStarredModalSet.isSessionActive) {
+                            onResumeSession(noStarredModalSet);
+                        } else {
+                            onStartFromLibrary(noStarredModalSet);
+                        }
+                        setNoStarredModalSet(null);
+                    }
+                }}
             />
 
             <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
@@ -1508,13 +1614,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                         {set.isSessionActive ? (
                                                             <>
                                                                 <button
-                                                                    onClick={() => onResumeSession(set)}
+                                                                    onClick={() => handleResumeSet(set)}
                                                                     className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
                                                                 >
                                                                     <Play size={14} fill="currentColor" /> Resume
                                                                 </button>
                                                                 <button
-                                                                    onClick={() => onStartFromLibrary(set)}
+                                                                    onClick={() => handlePlaySet(set)}
                                                                     className="px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-panel-3 transition-all flex items-center justify-center gap-2"
                                                                     title="Restart Session"
                                                                 >
@@ -1523,7 +1629,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                             </>
                                                         ) : (
                                                             <button
-                                                                onClick={() => onStartFromLibrary(set)}
+                                                                onClick={() => handlePlaySet(set)}
                                                                 className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
                                                             >
                                                                 <Play size={14} fill="currentColor" /> Play
@@ -1569,7 +1675,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                                                     <div className="pt-2 mt-2 flex gap-2 pl-2 relative z-10">
                                                         <button
-                                                            onClick={() => onResumeSession(set)}
+                                                            onClick={() => handleResumeSet(set)}
                                                             className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
                                                         >
                                                             <Play size={14} fill="currentColor" /> Resume

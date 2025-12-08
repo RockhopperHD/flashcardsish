@@ -69,9 +69,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Counts for header
    const counts = useMemo(() => {
       const c = [0, 0, 0];
-      set.cards.forEach(card => c[card.mastery]++);
+      const cardsToCount = settings.starredOnly ? set.cards.filter(c => c.star) : set.cards;
+      cardsToCount.forEach(card => c[card.mastery]++);
       return c;
-   }, [set.cards]);
+   }, [set.cards, settings.starredOnly]);
 
    // Initialize & Stable Card Selection
    useEffect(() => {

@@ -182,6 +182,13 @@ export const parseInput = (text: string): Partial<Card>[] => {
         tags = tagString.split('%%').map(t => t.trim()).filter(Boolean);
       }
 
+      // 1.6 Extract Star (%%STAR%%)
+      let isStarred = false;
+      if (contentPart.includes('%%STAR%%')) {
+        isStarred = true;
+        contentPart = contentPart.replace('%%STAR%%', '').trim();
+      }
+
       // 2. Split year (///) from the remaining content
       const parts = contentPart.split('///');
       const mainPart = parts[0].trim();
@@ -224,7 +231,7 @@ export const parseInput = (text: string): Partial<Card>[] => {
         tags: tags.length > 0 ? tags : undefined,
         customFields: customFields.length > 0 ? customFields : undefined,
         mastery: 0,
-        star: false
+        star: isStarred
       };
     }).filter(Boolean) as Partial<Card>[];
   }

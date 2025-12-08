@@ -620,14 +620,12 @@ const App: React.FC = () => {
                      </button>
                   )}
 
-                  {gameState === GameState.PLAYING && (
-                     <button
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="p-2 text-muted hover:text-text transition-colors"
-                     >
-                        <SettingsIcon size={20} />
-                     </button>
-                  )}
+                  <button
+                     onClick={() => setIsSettingsOpen(true)}
+                     className="p-2 text-muted hover:text-text transition-colors"
+                  >
+                     <SettingsIcon size={20} />
+                  </button>
                </div>
             </div>
          </header>
