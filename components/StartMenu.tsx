@@ -83,6 +83,64 @@ const UnsavedChangesModal: React.FC<{
     );
 };
 
+const DeleteFolderModal: React.FC<{
+    isOpen: boolean;
+    folderName: string;
+    setCount: number;
+    onClose: () => void;
+    onConfirm: (action: 'move' | 'delete') => void;
+}> = ({ isOpen, folderName, setCount, onClose, onConfirm }) => {
+    const [deleteClicks, setDeleteClicks] = useState(0);
+
+    if (!isOpen) return null;
+
+    const handleDeleteAllClick = () => {
+        if (deleteClicks < 4) {
+            setDeleteClicks(prev => prev + 1);
+        } else {
+            onConfirm('delete');
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+            <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold text-text mb-2">Delete "{folderName}"?</h3>
+                <p className="text-muted mb-6">This folder contains {setCount} set{setCount === 1 ? '' : 's'}. What would you like to do with them?</p>
+
+                <div className="space-y-3">
+                    <button
+                        onClick={() => onConfirm('move')}
+                        className="w-full py-3 bg-panel-2 border border-outline text-text rounded-xl font-bold hover:border-accent transition-colors flex flex-col items-center justify-center gap-1"
+                    >
+                        <span>Delete Folder Only</span>
+                        <span className="text-[10px] text-muted font-normal uppercase tracking-wider">Move sets to main Library</span>
+                    </button>
+
+                    <div className="relative">
+                        <button
+                            onClick={handleDeleteAllClick}
+                            className={clsx(
+                                "w-full py-3 border rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-1",
+                                deleteClicks > 0 ? "bg-red text-bg border-red" : "bg-red/5 text-red border-red/20 hover:bg-red/10"
+                            )}
+                        >
+                            <span>Delete Folder & Sets</span>
+                            <span className={clsx("text-[10px] font-normal uppercase tracking-wider", deleteClicks > 0 ? "text-bg/80" : "text-red/60")}>
+                                {deleteClicks === 0 ? "Just get rid of everything" : `${5 - deleteClicks} clicks remaining`}
+                            </span>
+                        </button>
+                    </div>
+
+                    <button onClick={onClose} className="w-full py-2 text-muted hover:text-text font-medium text-sm mt-2">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // Image Modal
 const ImageModal: React.FC<{
     isOpen: boolean;
@@ -672,8 +730,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     // Folder State
     const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+    const [deleteFolderModal, setDeleteFolderModal] = useState<{ id: string; name: string; count: number } | null>(null);
+    const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+    const [editingFolderName, setEditingFolderName] = useState('');
     const [movingSetId, setMovingSetId] = useState<string | null>(null);
     const [newFolderName, setNewFolderName] = useState('');
+    const [newFolderColor, setNewFolderColor] = useState<Folder['color']>('brown');
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
 
     // Derived Lists
@@ -713,6 +775,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const handleCreateFolder = () => {
         if (selectedSetIds.size === 0) return;
+        setNewFolderColor('brown');
         setIsCreatingFolder(true);
     };
 
@@ -738,10 +801,48 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     };
 
     const handleDeleteFolder = (folderId: string) => {
-        // Move sets out of folder first
-        setLibrarySets(prev => prev.map(s => s.folderId === folderId ? { ...s, folderId: undefined } : s));
+        const folderSets = librarySets.filter(s => s.folderId === folderId);
+        if (folderSets.length > 0) {
+            const folder = folders.find(f => f.id === folderId);
+            if (folder) {
+                setDeleteFolderModal({ id: folderId, name: folder.name, count: folderSets.length });
+            }
+            return;
+        }
+
+        // Empty folder, just delete
         setFolders(prev => prev.filter(f => f.id !== folderId));
         if (currentFolderId === folderId) setCurrentFolderId(null);
+    };
+
+    const confirmDeleteFolder = (action: 'move' | 'delete') => {
+        if (!deleteFolderModal) return;
+
+        if (action === 'move') {
+            // Move sets to library (remove folderId)
+            setLibrarySets(prev => prev.map(s => s.folderId === deleteFolderModal.id ? { ...s, folderId: undefined } : s));
+        } else {
+            // Delete sets
+            const setsToDelete = librarySets.filter(s => s.folderId === deleteFolderModal.id).map(s => s.id);
+            setsToDelete.forEach(id => onDeleteLibrarySet(id));
+        }
+
+        setFolders(prev => prev.filter(f => f.id !== deleteFolderModal.id));
+        if (currentFolderId === deleteFolderModal.id) setCurrentFolderId(null);
+        setDeleteFolderModal(null);
+    };
+
+    const handleStartRenameFolder = (folder: Folder) => {
+        setEditingFolderId(folder.id);
+        setEditingFolderName(folder.name);
+    };
+
+    const handleSaveRenameFolder = () => {
+        if (editingFolderId && editingFolderName.trim()) {
+            setFolders(prev => prev.map(f => f.id === editingFolderId ? { ...f, name: editingFolderName.trim() } : f));
+        }
+        setEditingFolderId(null);
+        setEditingFolderName('');
     };
 
     const handleMultistudyFolder = (folderId: string) => {
@@ -1085,7 +1186,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 .filter(r => r.term.trim() || r.def.trim())
                 .map(r => {
                     // Parse tags from term string for the Card object
-                    let termRaw = r.term.trim();
+                    let termRaw = r.term; // Don't trim yet
                     let tags: string[] = [];
 
                     const tagRegex = /^(\s*\([^)]+\)\s*)+/;
@@ -1095,8 +1196,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         const fullTagString = tagMatch[0];
                         const extractedTags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
                         tags = extractedTags;
-                        termRaw = termRaw.replace(tagRegex, '').trim();
+                        termRaw = termRaw.replace(tagRegex, '');
                     }
+
+                    termRaw = termRaw.trim();
 
                     return {
                         term: [termRaw],
@@ -1430,6 +1533,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 }}
             />
 
+            <DeleteFolderModal
+                isOpen={!!deleteFolderModal}
+                folderName={deleteFolderModal?.name || ''}
+                setCount={deleteFolderModal?.count || 0}
+                onClose={() => setDeleteFolderModal(null)}
+                onConfirm={confirmDeleteFolder}
+            />
+
             <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
             <input ref={fileInputRef} type="file" accept=".json,.txt,.flashcards" className="hidden" onChange={handleFileUpload} />
 
@@ -1527,24 +1638,53 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                 return (
                                                     <div key={folder.id} className={clsx("border rounded-2xl p-4 transition-all cursor-pointer hover:scale-[1.02]", colorMap[folder.color], movingSetId ? "ring-2 ring-offset-2 ring-offset-bg ring-accent" : "")}
                                                         onClick={() => {
+                                                            if (editingFolderId === folder.id) return;
                                                             if (movingSetId) handleMoveSet(movingSetId, folder.id);
                                                             else setCurrentFolderId(folder.id);
                                                         }}
                                                     >
                                                         <div className="flex justify-between items-center">
-                                                            <div className="flex items-center gap-2 font-bold">
+                                                            <div className="flex items-center gap-2 font-bold flex-1">
                                                                 <FolderOpen size={18} />
-                                                                {folder.name}
+                                                                {editingFolderId === folder.id ? (
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editingFolderName}
+                                                                        onChange={(e) => setEditingFolderName(e.target.value)}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === 'Enter') handleSaveRenameFolder();
+                                                                            if (e.key === 'Escape') setEditingFolderId(null);
+                                                                        }}
+                                                                        onBlur={handleSaveRenameFolder}
+                                                                        autoFocus
+                                                                        className="bg-transparent border-b border-current outline-none w-full"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                    />
+                                                                ) : (
+                                                                    <span>{folder.name}</span>
+                                                                )}
                                                             </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-xs opacity-70 font-mono">{folderSets.length} sets</span>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
-                                                                    className="p-1 hover:bg-black/10 rounded"
-                                                                    title="Delete Folder"
-                                                                >
-                                                                    <X size={14} />
-                                                                </button>
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-xs opacity-70 font-mono mr-2">{folderSets.length} sets</span>
+
+                                                                {selectedSetIds.size === 0 && (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); handleStartRenameFolder(folder); }}
+                                                                            className="p-1 hover:bg-black/10 rounded"
+                                                                            title="Rename Folder"
+                                                                        >
+                                                                            <Pencil size={14} />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
+                                                                            className="p-1 hover:bg-black/10 rounded"
+                                                                            title="Delete Folder"
+                                                                        >
+                                                                            <X size={14} />
+                                                                        </button>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1586,54 +1726,58 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                             <div className="text-xs text-muted font-mono">{set.cards.length} card{set.cards.length === 1 ? '' : 's'}</div>
                                                         </div>
                                                         <div className="flex items-center gap-1">
-                                                            <button
-                                                                onClick={() => setMovingSetId(set.id)}
-                                                                className={clsx("p-1.5 rounded hover:bg-panel-2 transition-all", movingSetId === set.id ? "text-accent animate-pulse" : "text-muted hover:text-text")}
-                                                                title="Move to Folder"
-                                                            >
-                                                                <FolderOpen size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleLoadSetToBuilder(set)}
-                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                                title="Edit"
-                                                            >
-                                                                <Pencil size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => onViewPreview({ set, mode: 'library' })}
-                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                                title="Preview"
-                                                            >
-                                                                <Eye size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
-                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                                title="Export JSON"
-                                                            >
-                                                                <Download size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => onDuplicateLibrarySet(set.id)}
-                                                                className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                                title="Duplicate Set"
-                                                            >
-                                                                <Copy size={16} />
-                                                            </button>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDeleteClick(set.id, 'library');
-                                                                }}
-                                                                className={clsx(
-                                                                    "p-1.5 rounded transition-all flex items-center justify-center",
-                                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
-                                                                )}
-                                                                title="Delete Set"
-                                                            >
-                                                                {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
-                                                            </button>
+                                                            {selectedSetIds.size === 0 && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => setMovingSetId(set.id)}
+                                                                        className={clsx("p-1.5 rounded hover:bg-panel-2 transition-all", movingSetId === set.id ? "text-accent animate-pulse" : "text-muted hover:text-text")}
+                                                                        title="Move to Folder"
+                                                                    >
+                                                                        <FolderOpen size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleLoadSetToBuilder(set)}
+                                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                        title="Edit"
+                                                                    >
+                                                                        <Pencil size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => onViewPreview({ set, mode: 'library' })}
+                                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                        title="Preview"
+                                                                    >
+                                                                        <Eye size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
+                                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                        title="Export JSON"
+                                                                    >
+                                                                        <Download size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => onDuplicateLibrarySet(set.id)}
+                                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                                                        title="Duplicate Set"
+                                                                    >
+                                                                        <Copy size={16} />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleDeleteClick(set.id, 'library');
+                                                                        }}
+                                                                        className={clsx(
+                                                                            "p-1.5 rounded transition-all flex items-center justify-center",
+                                                                            deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
+                                                                        )}
+                                                                        title="Delete Set"
+                                                                    >
+                                                                        {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
+                                                                    </button>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -1790,15 +1934,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                     {(['brown', 'red', 'blue', 'yellow', 'green', 'purple'] as const).map(color => (
                                                         <button
                                                             key={color}
-                                                            onClick={() => confirmCreateFolder(color)}
+                                                            onClick={() => setNewFolderColor(color)}
                                                             className={clsx(
-                                                                "w-8 h-8 rounded-full border-2 transition-transform hover:scale-110",
+                                                                "w-8 h-8 rounded-full border-2 transition-all",
                                                                 color === 'brown' && "bg-accent border-accent",
                                                                 color === 'red' && "bg-red border-red",
                                                                 color === 'blue' && "bg-blue border-blue",
                                                                 color === 'yellow' && "bg-yellow border-yellow",
                                                                 color === 'green' && "bg-green border-green",
-                                                                color === 'purple' && "bg-purple border-purple"
+                                                                color === 'purple' && "bg-purple border-purple",
+                                                                newFolderColor === color ? "scale-110 ring-2 ring-offset-2 ring-offset-panel ring-text" : "opacity-70 hover:opacity-100 hover:scale-105"
                                                             )}
                                                             title={color}
                                                         />
@@ -1806,6 +1951,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                 </div>
                                                 <div className="flex justify-end gap-2">
                                                     <button onClick={() => setIsCreatingFolder(false)} className="px-4 py-2 text-muted hover:text-text">Cancel</button>
+                                                    <button onClick={() => confirmCreateFolder(newFolderColor)} className="px-6 py-2 bg-text text-bg font-bold rounded-lg hover:bg-text/90 transition-colors">OK</button>
                                                 </div>
                                             </div>
                                         </div>
