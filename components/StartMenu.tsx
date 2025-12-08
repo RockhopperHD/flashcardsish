@@ -1031,30 +1031,44 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 setRawText(text);
                 // If we are in visual mode, we need to sync immediately
                 const parsed = parseInput(text);
-                const rows = parsed.map((c, i) => ({
-                    id: generateId() + i,
-                    term: c.term?.[0] || '',
-                    def: c.content || '',
-                    year: c.year || '',
-                    image: c.image || '',
-                    customFields: c.customFields || [],
-                    tags: c.tags || [],
-                    star: c.star || false
-                }));
+                const rows = parsed.map((c, i) => {
+                    let term = c.term?.[0] || '';
+                    if (c.tags && c.tags.length > 0) {
+                        const tagPrefix = c.tags.map(t => `(${t})`).join(' ');
+                        term = `${tagPrefix} ${term}`;
+                    }
+                    return {
+                        id: generateId() + i,
+                        term: term,
+                        def: c.content || '',
+                        year: c.year || '',
+                        image: c.image || '',
+                        customFields: c.customFields || [],
+                        tags: c.tags || [],
+                        star: c.star || false
+                    };
+                });
                 setBuilderRows(rows);
             }
 
             if (cards.length > 0 && builderMode === 'visual') {
-                const rows = cards.map((c, i) => ({
-                    id: generateId() + i,
-                    term: c.term?.[0] || '',
-                    def: c.content || '',
-                    year: c.year || '',
-                    image: c.image || '',
-                    customFields: c.customFields || [],
-                    tags: c.tags || [],
-                    star: c.star || false
-                }));
+                const rows = cards.map((c, i) => {
+                    let term = c.term?.[0] || '';
+                    if (c.tags && c.tags.length > 0) {
+                        const tagPrefix = c.tags.map(t => `(${t})`).join(' ');
+                        term = `${tagPrefix} ${term}`;
+                    }
+                    return {
+                        id: generateId() + i,
+                        term: term,
+                        def: c.content || '',
+                        year: c.year || '',
+                        image: c.image || '',
+                        customFields: c.customFields || [],
+                        tags: c.tags || [],
+                        star: c.star || false
+                    };
+                });
                 setBuilderRows(rows);
             } else if (builderMode === 'raw') {
                 setRawText(text);
@@ -1163,18 +1177,35 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         const cards: Card[] = builderRows
             .filter(row => row.term.trim() || row.def.trim())
-            .map(row => ({
-                id: generateId(),
-                term: [row.term.trim()],
-                content: row.def.trim(),
-                year: row.year.trim(),
-                image: row.image,
-                customFields: row.customFields,
-                mastery: 0,
-                star: row.star,
-                originalSetId: editingSetId || undefined,
-                originalSetName: setName
-            }));
+            .map(row => {
+                // Parse tags from term string
+                let termRaw = row.term.trim();
+                let tags: string[] = [];
+
+                const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+                const tagMatch = termRaw.match(tagRegex);
+
+                if (tagMatch) {
+                    const fullTagString = tagMatch[0];
+                    const extractedTags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
+                    tags = extractedTags;
+                    termRaw = termRaw.replace(tagRegex, '').trim();
+                }
+
+                return {
+                    id: generateId(),
+                    term: [termRaw],
+                    content: row.def.trim(),
+                    year: row.year.trim(),
+                    image: row.image,
+                    customFields: row.customFields,
+                    mastery: 0,
+                    star: row.star,
+                    tags: tags,
+                    originalSetId: editingSetId || undefined,
+                    originalSetName: setName
+                };
+            });
 
         if (cards.length === 0) {
             alert("Please add at least one card!");
@@ -1229,9 +1260,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     });
                 }
 
-                if (r.tags.length > 0) {
-                    line += ` %%TAGS%%${r.tags.join('%%')}`;
-                }
+
                 if (r.star) {
                     line += ` %%STAR%%`;
                 }
@@ -1260,9 +1289,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             line += `(${f.name})(${f.value})`;
                         });
                     }
-                    if (r.tags.length > 0) {
-                        line += ` %%TAGS%%${r.tags.join('%%')}`;
-                    }
+
                     if (r.star) {
                         line += ` %%STAR%%`;
                     }
