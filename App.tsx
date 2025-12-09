@@ -247,20 +247,28 @@ const App: React.FC = () => {
          // Load Library from IDB
          const idbSets = await loadLibrary();
 
-         if (idbSets) {
-            setLibrarySets(idbSets);
-         } else {
-            // Fallback/Migration: Check localStorage
+         let setsToUse = idbSets;
+
+         // Rescue Strategy:
+         // If IDB is undefined (not set) OR empty (length 0), check LocalStorage.
+         // If LocalStorage has data, we prefer that over an empty IDB to prevent data loss during migration.
+         if (!setsToUse || setsToUse.length === 0) {
             const localLibrary = localStorage.getItem(LIBRARY_KEY);
             if (localLibrary) {
                try {
                   const parsed = JSON.parse(localLibrary);
-                  setLibrarySets(parsed);
-                  // Save to IDB immediately to migrate
-                  await saveLibrary(parsed);
-                  console.log("Migrated library to IndexedDB");
-               } catch (e) { console.error(e); }
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                     console.log("Rescuing/Migrating data from LocalStorage...", parsed.length, "sets found.");
+                     setsToUse = parsed;
+                     // Save to IDB immediately to persist the rescue
+                     await saveLibrary(parsed);
+                  }
+               } catch (e) { console.error("Error parsing local library:", e); }
             }
+         }
+
+         if (setsToUse) {
+            setLibrarySets(setsToUse);
          }
          setIsLibraryLoaded(true);
 
