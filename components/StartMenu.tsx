@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link } from 'lucide-react';
 import { CardSet, Card, Settings, Folder } from '../types';
 import { parseInput, generateId, downloadFile, renderMarkdown, renderInline } from '../utils';
@@ -354,8 +354,8 @@ const BuilderRowItem: React.FC<{
     updateRow: (id: string, field: keyof BuilderRow, value: any) => void;
     removeRow: (id: string) => void;
     onAddNext: () => void;
-    onOpenImageModal: () => void;
-}> = ({ row, index, showYear, isDuplicate, isLast, customFieldNames, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
+    onOpenImageModal: (id: string) => void;
+}> = React.memo(({ row, index, showYear, isDuplicate, isLast, customFieldNames, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
     const [isEditingDef, setIsEditingDef] = useState(false);
     const [isEditingTerm, setIsEditingTerm] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -444,10 +444,13 @@ const BuilderRowItem: React.FC<{
     };
 
     return (
-        <div className={clsx(
-            "group relative w-full animate-in fade-in slide-in-from-left-2 duration-300",
-            "p-3 mb-3 bg-panel-2/10 border border-outline rounded-xl"
-        )}>
+        <div
+            className={clsx(
+                "group relative w-full",
+                "p-3 mb-3 bg-panel-2/10 border border-outline rounded-xl"
+            )}
+            style={{ minHeight: '120px' }} // Ensure minimum height to prevent collapse
+        >
             {/* Highlight Toolbar */}
             {highlightToolbar && (
                 <div
@@ -505,10 +508,6 @@ const BuilderRowItem: React.FC<{
                             >
                                 {row.term ? (
                                     <span className="whitespace-pre-wrap break-words">
-                                        {/* We need to render markdown here but be careful about tags which are part of the term string */}
-                                        {/* The term string might contain (Tag) at the start. We should probably render that too or let renderInline handle it? */}
-                                        {/* renderInline doesn't handle tags like (Tag). But we want to show the term as it will appear. */}
-                                        {/* Let's just render the whole thing with renderInline which handles bold/italic/highlight */}
                                         {renderInline(row.term, `term-view-${row.id}`)}
                                     </span>
                                 ) : (
@@ -523,7 +522,7 @@ const BuilderRowItem: React.FC<{
                     <div className="flex items-center gap-2">
                         {/* Image Button */}
                         <button
-                            onClick={onOpenImageModal}
+                            onClick={() => onOpenImageModal(row.id)}
                             tabIndex={-1}
                             className={clsx(
                                 "rounded-lg hover:bg-panel-2 transition-all shrink-0 flex items-center justify-center overflow-hidden border border-transparent",
@@ -532,7 +531,7 @@ const BuilderRowItem: React.FC<{
                             title={row.image ? "Change Image" : "Add Image"}
                         >
                             {row.image ? (
-                                <img src={row.image} alt="preview" className="w-full h-full object-cover" />
+                                <img src={row.image} alt="preview" loading="lazy" className="w-full h-full object-cover" />
                             ) : (
                                 <ImageIcon size={16} />
                             )}
@@ -638,7 +637,7 @@ const BuilderRowItem: React.FC<{
             </div>
         </div>
     );
-};
+});
 
 
 export const StartMenu: React.FC<StartMenuProps> = ({
@@ -737,6 +736,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const [newFolderName, setNewFolderName] = useState('');
     const [newFolderColor, setNewFolderColor] = useState<Folder['color']>('brown');
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+
+    // Loading State for "Load Everything" strategy
+    const [isBuilderReady, setIsBuilderReady] = useState(false);
+
+    useEffect(() => {
+        if (view === 'builder' && builderMode === 'visual') {
+            setIsBuilderReady(false);
+            // Give browser a moment to render the loader before blasting the DOM with rows
+            const timer = setTimeout(() => {
+                setIsBuilderReady(true);
+            }, 100);
+            return () => clearTimeout(timer);
+        } else {
+            setIsBuilderReady(true);
+        }
+    }, [view, builderMode, editingSetId]);
 
     // Derived Lists
     const currentFolder = folders.find(f => f.id === currentFolderId);
@@ -1406,27 +1421,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     // --- HELPER FOR VISUAL BUILDER ---
 
-    const addRow = () => {
+    const addRow = useCallback(() => {
         setBuilderRows(prev => [...prev, { id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }]);
-    };
+    }, []);
 
-    const updateRow = (id: string, field: keyof BuilderRow, value: any) => {
+    const updateRow = useCallback((id: string, field: keyof BuilderRow, value: any) => {
         setBuilderRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
-    };
+    }, []);
 
-    const removeRow = (id: string) => {
-        if (builderRows.length <= 1) {
-            // Don't delete last row, just clear it
-            setBuilderRows([{ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }]);
-            return;
-        }
-        setBuilderRows(prev => prev.filter(r => r.id !== id));
-    };
+    const removeRow = useCallback((id: string) => {
+        setBuilderRows(prev => {
+            if (prev.length <= 1) {
+                // Don't delete last row, just clear it
+                return [{ id: generateId(), term: '', def: '', year: '', image: '', customFields: [], tags: [], star: false }];
+            }
+            return prev.filter(r => r.id !== id);
+        });
+    }, []);
 
-    const openImageModal = (rowId: string) => {
+    const openImageModal = useCallback((rowId: string) => {
         setEditingImageRowId(rowId);
         setShowImageModal(true);
-    };
+    }, []);
 
     const handleSaveImage = (url: string) => {
         if (editingImageRowId) {
@@ -2079,30 +2095,37 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                 <HelpCircle size={12} /> Formatting Help
                                             </button>
                                         </div>
-                                        {builderRows.map((row, index) => (
-                                            <BuilderRowItem
-                                                key={row.id}
-                                                row={row}
-                                                index={index}
-                                                showYear={showYears}
-                                                isDuplicate={duplicateIds.has(row.id)}
-                                                isLast={index === builderRows.length - 1}
-                                                customFieldNames={customFieldNames}
-                                                updateRow={updateRow}
-                                                removeRow={removeRow}
-                                                onAddNext={addRow}
-                                                onOpenImageModal={() => {
-                                                    setEditingImageRowId(row.id);
-                                                    setShowImageModal(true);
-                                                }}
-                                            />
-                                        ))}
-                                        <button
-                                            onClick={addRow}
-                                            className="w-full py-3 border border-dashed border-outline rounded-xl text-muted hover:text-accent hover:border-accent hover:bg-panel-2 transition-all flex items-center justify-center gap-2 text-sm font-bold mt-4"
-                                        >
-                                            <Plus size={16} /> Add Card
-                                        </button>
+
+                                        {!isBuilderReady ? (
+                                            <div className="flex flex-col items-center justify-center h-[400px] gap-4">
+                                                <RotateCw className="animate-spin text-accent" size={48} />
+                                                <div className="text-muted font-bold animate-pulse">Loading Builder...</div>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {builderRows.map((row, index) => (
+                                                    <BuilderRowItem
+                                                        key={row.id}
+                                                        row={row}
+                                                        index={index}
+                                                        showYear={showYears}
+                                                        isDuplicate={duplicateIds.has(row.id)}
+                                                        isLast={index === builderRows.length - 1}
+                                                        customFieldNames={customFieldNames}
+                                                        updateRow={updateRow}
+                                                        removeRow={removeRow}
+                                                        onAddNext={addRow}
+                                                        onOpenImageModal={openImageModal}
+                                                    />
+                                                ))}
+                                                <button
+                                                    onClick={addRow}
+                                                    className="w-full py-3 border border-dashed border-outline rounded-xl text-muted hover:text-accent hover:border-accent hover:bg-panel-2 transition-all flex items-center justify-center gap-2 text-sm font-bold mt-4"
+                                                >
+                                                    <Plus size={16} /> Add Card
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="relative">
