@@ -609,86 +609,145 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      })}
                   </div>
                ) : (
-                  <div className={clsx("flex gap-4 items-stretch", isShaking && "animate-shake")}>
-                     <div className="flex-1 relative">
-                        {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
-                           <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
-                              Answer: {currentCard.term[0]}
-                           </div>
-                        )}
-                        <input
-                           ref={termInputRef}
-                           type="text"
-                           value={inputTerm}
-                           onChange={(e) => setInputTerm(e.target.value)}
-                           onKeyDown={handleInputKeyDown}
-                           disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
-                           placeholder={feedback.type === 'retype_needed' ? "Retype term..." : "Type the term..."}
-                           className={clsx(
-                              "w-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
-                              feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
-                              feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green text-green bg-green/5"
-                           )}
-                           autoComplete="off"
-                        />
-                     </div>
+                  <div className={clsx("grid grid-cols-1 md:grid-cols-12 gap-4 items-start", isShaking && "animate-shake")}>
+                     {(() => {
+                        const activeCustomFields = set.customFieldNames?.filter(name => currentCard.customFields?.some(f => f.name === name)) || [];
+                        const hasYear = !!currentCard.year;
+                        const totalFields = 1 + (hasYear ? 1 : 0) + activeCustomFields.length;
 
-                     {/* Year Input */}
-                     {currentCard.year && (
-                        <div className="relative">
-                           {feedback.type === 'retype_needed' && !feedback.results?.isYearMatch && (
-                              <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
-                                 {currentCard.year}
-                              </div>
-                           )}
-                           <input
-                              ref={yearInputRef}
-                              type="text"
-                              value={inputYear}
-                              onChange={(e) => setInputYear(e.target.value)}
-                              onKeyDown={handleInputKeyDown}
-                              placeholder="Year"
-                              disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isYearMatch)}
-                              className={clsx(
-                                 "w-32 bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
-                                 (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !feedback.results?.isYearMatch)) ? "border-red text-red" : "border-outline text-text",
-                                 feedback.type === 'retype_needed' && feedback.results?.isYearMatch && "border-green text-green bg-green/5"
-                              )}
-                              autoComplete="off"
-                           />
-                        </div>
-                     )}
+                        let termClass = "md:col-span-12";
+                        let yearClass = "md:col-span-12";
+                        let customClasses: string[] = activeCustomFields.map(() => "md:col-span-12");
 
-                     {/* Custom Fields Inputs */}
-                     {set.customFieldNames?.map(fieldName => {
-                        const field = currentCard.customFields?.find(f => f.name === fieldName);
-                        if (!field) return null; // Only render if the card actually has this custom field
-                        const isCorrect = feedback.type === 'retype_needed' && feedback.results?.customResults?.[fieldName];
+                        // Always Term first
+                        const fieldOrder: ('term' | 'year' | 'custom')[] = ['term', 'year', 'custom'];
 
-                        return (
-                           <div key={fieldName} className="relative">
-                              {feedback.type === 'retype_needed' && !isCorrect && (
-                                 <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
-                                    {field.value}
+                        if (totalFields === 2) {
+                           if (hasYear) {
+                              termClass = "md:col-span-9";
+                              yearClass = "md:col-span-3";
+                           } else {
+                              termClass = "md:col-span-8";
+                              customClasses = ["md:col-span-4"];
+                           }
+                        } else if (totalFields === 3) {
+                           if (hasYear) {
+                              termClass = "md:col-span-7";
+                              yearClass = "md:col-span-2";
+                              customClasses = ["md:col-span-3"];
+                           } else {
+                              termClass = "md:col-span-12";
+                              customClasses = ["md:col-span-6", "md:col-span-6"];
+                           }
+                        } else if (totalFields === 4) {
+                           if (hasYear) {
+                              termClass = "md:col-span-9";
+                              yearClass = "md:col-span-3";
+                              customClasses = ["md:col-span-6", "md:col-span-6"];
+                           } else {
+                              // Term + 3 Customs
+                              termClass = "md:col-span-9";
+                              customClasses = ["md:col-span-3", "md:col-span-6", "md:col-span-6"];
+                           }
+                        } else if (totalFields === 5) {
+                           // Term + Year + 3 Customs
+                           // Row 1: Term (7) | Year (2) | Custom 1 (3)
+                           // Row 2: Custom 2 (6) | Custom 3 (6)
+                           termClass = "md:col-span-7";
+                           yearClass = "md:col-span-2";
+                           customClasses = ["md:col-span-3", "md:col-span-6", "md:col-span-6"];
+                        }
+
+                        const renderTerm = () => (
+                           <div key="term" className={clsx("relative", termClass)}>
+                              {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
+                                 <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
+                                    Answer: {currentCard.term[0]}
                                  </div>
                               )}
                               <input
+                                 ref={termInputRef}
                                  type="text"
-                                 value={inputCustom[fieldName] || ''}
-                                 onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                                 value={inputTerm}
+                                 onChange={(e) => setInputTerm(e.target.value)}
                                  onKeyDown={handleInputKeyDown}
-                                 placeholder={fieldName}
-                                 disabled={!isInteractive || (feedback.type === 'retype_needed' && isCorrect)}
+                                 disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
+                                 placeholder={feedback.type === 'retype_needed' ? "Retype term..." : "Type the term..."}
                                  className={clsx(
-                                    "flex-1 bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text min-w-[120px]",
-                                    (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red text-red" : "border-outline text-text",
-                                    feedback.type === 'retype_needed' && isCorrect && "border-green text-green bg-green/5"
+                                    "w-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
+                                    feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
+                                    feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green text-green bg-green/5"
                                  )}
                                  autoComplete="off"
                               />
                            </div>
                         );
-                     })}
+
+                        const renderYear = () => (
+                           <div key="year" className={clsx("relative", yearClass)}>
+                              {feedback.type === 'retype_needed' && !feedback.results?.isYearMatch && (
+                                 <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
+                                    {currentCard.year}
+                                 </div>
+                              )}
+                              <input
+                                 ref={yearInputRef}
+                                 type="text"
+                                 value={inputYear}
+                                 onChange={(e) => setInputYear(e.target.value)}
+                                 onKeyDown={handleInputKeyDown}
+                                 placeholder="Year"
+                                 disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isYearMatch)}
+                                 className={clsx(
+                                    "w-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
+                                    (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !feedback.results?.isYearMatch)) ? "border-red text-red" : "border-outline text-text",
+                                    feedback.type === 'retype_needed' && feedback.results?.isYearMatch && "border-green text-green bg-green/5"
+                                 )}
+                                 autoComplete="off"
+                              />
+                           </div>
+                        );
+
+                        const renderCustoms = () => (
+                           <>
+                              {activeCustomFields.map((fieldName, i) => {
+                                 const field = currentCard.customFields?.find(f => f.name === fieldName);
+                                 const isCorrect = feedback.type === 'retype_needed' && feedback.results?.customResults?.[fieldName];
+
+                                 return (
+                                    <div key={fieldName} className={clsx("relative", customClasses[i])}>
+                                       {feedback.type === 'retype_needed' && !isCorrect && (
+                                          <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
+                                             {field?.value}
+                                          </div>
+                                       )}
+                                       <input
+                                          type="text"
+                                          value={inputCustom[fieldName] || ''}
+                                          onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
+                                          onKeyDown={handleInputKeyDown}
+                                          placeholder={fieldName}
+                                          disabled={!isInteractive || (feedback.type === 'retype_needed' && isCorrect)}
+                                          className={clsx(
+                                             "w-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
+                                             (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red text-red" : "border-outline text-text",
+                                             feedback.type === 'retype_needed' && isCorrect && "border-green text-green bg-green/5"
+                                          )}
+                                          autoComplete="off"
+                                       />
+                                    </div>
+                                 );
+                              })}
+                           </>
+                        );
+
+                        return fieldOrder.map(type => {
+                           if (type === 'term') return renderTerm();
+                           if (type === 'year' && hasYear) return renderYear();
+                           if (type === 'custom') return renderCustoms();
+                           return null;
+                        });
+                     })()}
                   </div>
                )}
 

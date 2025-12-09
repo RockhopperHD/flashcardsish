@@ -519,7 +519,7 @@ const BuilderRowItem: React.FC<{
                     </div>
 
                     {/* Toolbar Row: Image | Delete | Year */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                         {/* Image Button */}
                         <button
                             onClick={() => onOpenImageModal(row.id)}
@@ -620,7 +620,7 @@ const BuilderRowItem: React.FC<{
                                 onFocus={() => setIsEditingDef(true)}
                                 onClick={() => setIsEditingDef(true)}
                                 className={clsx(
-                                    "w-full min-h-[42px] px-3 py-2.5 text-sm bg-panel-2 border rounded-lg cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed",
+                                    "w-full min-h-[42px] px-3 py-2.5 text-sm bg-panel-2 border rounded-lg cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words",
                                     row.def ? "border-outline" : "border-outline text-muted italic"
                                 )}
                             >
@@ -2043,8 +2043,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                         <button
                                                             onClick={() => {
                                                                 if (newCustomFieldName.trim() && !customFieldNames.includes(newCustomFieldName.trim())) {
-                                                                    if (customFieldNames.length >= 2) {
-                                                                        alert("Max 2 custom fields allowed.");
+                                                                    if (customFieldNames.length >= 3) {
+                                                                        alert("Max 3 custom fields allowed.");
                                                                         return;
                                                                     }
                                                                     setCustomFieldNames(prev => [...prev, newCustomFieldName.trim()]);

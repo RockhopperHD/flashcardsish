@@ -8,6 +8,7 @@ import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, Image as ImageIcon, LayoutGrid, Type, Trash2 } from 'lucide-react';
 import clsx from 'clsx';
+import { saveLibrary, loadLibrary } from './storage';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
@@ -207,6 +208,7 @@ const App: React.FC = () => {
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
 
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
+   const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
    const [folders, setFolders] = useState<Folder[]>([]);
    // activeSessions removed
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
@@ -239,50 +241,68 @@ const App: React.FC = () => {
    const [lifetimeCorrect, setLifetimeCorrect] = useState(0);
 
    // Load from local storage
+   // Load Data
    useEffect(() => {
-      const savedLibrary = localStorage.getItem(LIBRARY_KEY);
+      const loadData = async () => {
+         // Load Library from IDB
+         const idbSets = await loadLibrary();
 
+         if (idbSets) {
+            setLibrarySets(idbSets);
+         } else {
+            // Fallback/Migration: Check localStorage
+            const localLibrary = localStorage.getItem(LIBRARY_KEY);
+            if (localLibrary) {
+               try {
+                  const parsed = JSON.parse(localLibrary);
+                  setLibrarySets(parsed);
+                  // Save to IDB immediately to migrate
+                  await saveLibrary(parsed);
+                  console.log("Migrated library to IndexedDB");
+               } catch (e) { console.error(e); }
+            }
+         }
+         setIsLibraryLoaded(true);
 
-      if (savedLibrary) {
-         try {
-            setLibrarySets(JSON.parse(savedLibrary));
-         } catch (e) { console.error(e); }
-      }
+         // Load other small data from localStorage
+         const savedFolders = localStorage.getItem(FOLDERS_KEY);
+         if (savedFolders) {
+            try {
+               setFolders(JSON.parse(savedFolders));
+            } catch (e) { console.error(e); }
+         }
 
-      const savedFolders = localStorage.getItem(FOLDERS_KEY);
-      if (savedFolders) {
-         try {
-            setFolders(JSON.parse(savedFolders));
-         } catch (e) { console.error(e); }
-      }
-      // Saved sessions loading removed
+         const savedSettings = localStorage.getItem(SETTINGS_KEY);
+         if (savedSettings) {
+            try {
+               const s = JSON.parse(savedSettings);
+               setSettings({
+                  strictSpelling: s.strictSpelling ?? false,
+                  retypeOnMistake: s.retypeOnMistake ?? false,
+                  darkMode: s.darkMode ?? true,
+                  starredOnly: s.starredOnly ?? false,
+                  mode: s.mode ?? 'standard'
+               });
+            } catch (e) { }
+         }
 
-      const savedSettings = localStorage.getItem(SETTINGS_KEY);
-      if (savedSettings) {
-         try {
-            const s = JSON.parse(savedSettings);
-            setSettings({
-               strictSpelling: s.strictSpelling ?? false,
-               retypeOnMistake: s.retypeOnMistake ?? false,
-               darkMode: s.darkMode ?? true,
-               starredOnly: s.starredOnly ?? false,
-               mode: s.mode ?? 'standard'
-            });
-         } catch (e) { }
-      }
+         const savedStats = localStorage.getItem(STATS_KEY);
+         if (savedStats) {
+            try {
+               setLifetimeCorrect(JSON.parse(savedStats).lifetimeCorrect || 0);
+            } catch (e) { }
+         }
+      };
 
-      const savedStats = localStorage.getItem(STATS_KEY);
-      if (savedStats) {
-         try {
-            setLifetimeCorrect(JSON.parse(savedStats).lifetimeCorrect || 0);
-         } catch (e) { }
-      }
+      loadData();
    }, []);
 
    // Save Effects
    useEffect(() => {
-      localStorage.setItem(LIBRARY_KEY, JSON.stringify(librarySets));
-   }, [librarySets]);
+      if (isLibraryLoaded) {
+         saveLibrary(librarySets);
+      }
+   }, [librarySets, isLibraryLoaded]);
 
    useEffect(() => {
       localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
