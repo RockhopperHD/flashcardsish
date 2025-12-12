@@ -310,6 +310,30 @@ const WarningModal: React.FC<{
     );
 };
 
+// Invalid File Modal
+const InvalidFileModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+}> = ({ isOpen, onClose }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
+            <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-3 mb-4 text-red">
+                    <AlertCircle size={24} />
+                    <h3 className="text-lg font-bold text-text">Invalid File</h3>
+                </div>
+                <p className="text-muted mb-6">This file doesn't look like a valid flashcard set. Please check the file format and try again.</p>
+                <div className="flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 rounded-lg bg-panel-2 hover:bg-panel-3 text-text font-bold transition-colors">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 
 
@@ -663,7 +687,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const [showYears, setShowYears] = useState(false);
     const [customFieldNames, setCustomFieldNames] = useState<string[]>([]);
     const [newCustomFieldName, setNewCustomFieldName] = useState('');
+
     const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+    const [showInvalidFileModal, setShowInvalidFileModal] = useState(false);
 
     // Image Modal State
     const [showImageModal, setShowImageModal] = useState(false);
@@ -1133,21 +1159,35 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            const text = await e.target.files[0].text();
-            // Detect if it's JSON or TXT
-            let loadedName = e.target.files[0].name.replace('.json', '').replace('.flashcards', '').replace('.txt', '');
-            let cards = [];
-
             try {
-                const json = JSON.parse(text);
-                if (json.name) loadedName = json.name;
-                cards = parseInput(text); // parseInput handles both JSON structure and raw
-            } catch {
-                // Raw text
-                setRawText(text);
-                // If we are in visual mode, we need to sync immediately
-                const parsed = parseInput(text);
-                const rows = parsed.map((c, i) => {
+                const text = await e.target.files[0].text();
+                // Basic validation: if text is empty or binary-looking (though text() cleans up some)
+                if (!text.trim()) {
+                    throw new Error("Empty file");
+                }
+
+                // Detect if it's JSON or TXT
+                let loadedName = e.target.files[0].name.replace('.json', '').replace('.flashcards', '').replace('.txt', '');
+                let parsedCards: Partial<Card>[] = [];
+
+                try {
+                    const json = JSON.parse(text);
+                    if (json.name) loadedName = json.name;
+                    parsedCards = parseInput(text); // parseInput handles both JSON structure and raw
+                } catch {
+                    // Raw text fallback
+                    parsedCards = parseInput(text);
+                }
+
+                // If no cards found, or parser return empty
+                if (parsedCards.length === 0) {
+                    setShowInvalidFileModal(true);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                    return;
+                }
+
+                // Populate Builder
+                const rows = parsedCards.map((c, i) => {
                     let term = c.term?.[0] || '';
                     if (c.tags && c.tags.length > 0) {
                         const tagPrefix = c.tags.map(t => `(${t})`).join(' ');
@@ -1164,34 +1204,19 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         star: c.star || false
                     };
                 });
-                setBuilderRows(rows);
-            }
 
-            if (cards.length > 0 && builderMode === 'visual') {
-                const rows = cards.map((c, i) => {
-                    let term = c.term?.[0] || '';
-                    if (c.tags && c.tags.length > 0) {
-                        const tagPrefix = c.tags.map(t => `(${t})`).join(' ');
-                        term = `${tagPrefix} ${term}`;
-                    }
-                    return {
-                        id: generateId() + i,
-                        term: term,
-                        def: c.content || '',
-                        year: c.year || '',
-                        image: c.image || '',
-                        customFields: c.customFields || [],
-                        tags: c.tags || [],
-                        star: c.star || false
-                    };
-                });
                 setBuilderRows(rows);
-            } else if (builderMode === 'raw') {
                 setRawText(text);
-            }
 
-            setSetName(loadedName);
-            setView('builder'); // Force to builder view
+                setSetName(loadedName);
+                setView('builder');
+                setBuilderMode('visual');
+
+            } catch (error) {
+                console.error("Upload failed", error);
+                setShowInvalidFileModal(true);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            }
         }
     };
 
@@ -1531,6 +1556,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 message={warningModal.message}
             />
 
+            <InvalidFileModal
+                isOpen={showInvalidFileModal}
+                onClose={() => setShowInvalidFileModal(false)}
+            />
+
 
 
             <NoStarredModal
@@ -1558,7 +1588,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             />
 
             <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
-            <input ref={fileInputRef} type="file" accept=".json,.txt,.flashcards" className="hidden" onChange={handleFileUpload} />
+            <MarkdownHelpModal isOpen={showMarkdownHelp} onClose={() => setShowMarkdownHelp(false)} />
+            <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileUpload} />
 
             {/* Header */}
             <div className="mb-10 text-left">
