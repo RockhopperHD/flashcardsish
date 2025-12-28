@@ -1,14 +1,15 @@
-
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CardSet, GameState, Settings, Card, Folder } from './types';
+import { CardSet, GameState, Settings, Folder } from './types';
 import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, Image as ImageIcon, LayoutGrid, Type, Trash2 } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud } from 'lucide-react';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary } from './storage';
+import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings } from './storage';
+import { supabase } from './src/supabaseClient';
+import { User } from '@supabase/supabase-js';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
@@ -21,7 +22,10 @@ const SettingsModal: React.FC<{
    onClose: () => void;
    settings: Settings;
    onUpdate: (s: Settings) => void;
-}> = ({ isOpen, onClose, settings, onUpdate }) => {
+   user: User | null;
+   onLogin: () => void;
+   onLogout: () => void;
+}> = ({ isOpen, onClose, settings, onUpdate, user, onLogin, onLogout }) => {
    if (!isOpen) return null;
 
    const toggle = (key: keyof Settings) => {
@@ -39,6 +43,36 @@ const SettingsModal: React.FC<{
             </div>
 
             <div className="space-y-4">
+               {/* --- ACCOUNT SECTION --- */}
+               <div className="p-4 bg-panel-2 rounded-xl border border-outline/50">
+                  <span className="font-medium text-text block mb-3 flex items-center gap-2">
+                     <Cloud size={18} className="text-accent" /> Cloud Sync
+                  </span>
+                  {user ? (
+                     <div className="flex items-center justify-between">
+                        <div className="text-sm">
+                           <div className="text-muted">Logged in as</div>
+                           <div className="font-bold text-text truncate max-w-[150px]">{user.email}</div>
+                        </div>
+                        <button
+                           onClick={onLogout}
+                           className="flex items-center gap-2 px-3 py-1.5 bg-red/10 text-red rounded-lg text-sm font-bold hover:bg-red/20 transition-colors"
+                        >
+                           <LogOut size={14} /> Log Out
+                        </button>
+                     </div>
+                  ) : (
+                     <button
+                        onClick={onLogin}
+                        className="w-full flex items-center justify-center gap-2 py-2 bg-text text-bg rounded-lg font-bold hover:opacity-90 transition-opacity"
+                     >
+                        <LogIn size={16} /> Log in with Google
+                     </button>
+                  )}
+               </div>
+
+               <div className="h-px bg-outline/50 my-2" />
+
                <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
                   <span className="font-medium text-text">Strict Spelling</span>
                   <div onClick={() => toggle('strictSpelling')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.strictSpelling ? "bg-accent" : "bg-outline")}>
@@ -192,10 +226,10 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen,
                </div>
 
                <div>
-                  <h3 className="text-lg font-bold text-accent mb-2">About</h3>
+                  <h3 className="text-lg font-bold text-accent mb-2">Cloud Sync</h3>
                   <ul className="list-disc pl-5 space-y-2 text-muted">
-                     <li>This project was made by <a href="https://www.owenwhelan.com" target="_blank" rel="noreferrer" className="text-accent hover:underline">Owen Whelan</a>.</li>
-                     <li>You can modify, hack, and check out the code at the <a href="https://github.com/RockhopperHD/flashcardsish" target="_blank" rel="noreferrer" className="text-accent hover:underline">GitHub repo</a>.</li>
+                     <li>Log in via Settings to sync your cards across devices.</li>
+                     <li>Data is automatically saved to your account.</li>
                   </ul>
                </div>
             </div>
@@ -207,10 +241,10 @@ const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen,
 const App: React.FC = () => {
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
 
+   const [user, setUser] = useState<User | null>(null);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
    const [folders, setFolders] = useState<Folder[]>([]);
-   // activeSessions removed
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
 
    const activeSession = librarySets.find(s => s.id === activeSetId) || null;
@@ -240,28 +274,67 @@ const App: React.FC = () => {
    // Stats
    const [lifetimeCorrect, setLifetimeCorrect] = useState(0);
 
-   // Load from local storage
-   // Load Data
+   // --- AUTH & CLOUD SYNC ---
+
+   const handleLogin = async () => {
+      await supabase.auth.signInWithOAuth({
+         provider: 'google',
+         options: { redirectTo: window.location.origin } // or your specific supabase callback URL
+      });
+   };
+
+   const handleLogout = async () => {
+      await supabase.auth.signOut();
+      setUser(null);
+      // Optional: clear local state or reload to reset
+      window.location.reload();
+   };
+
+   // Listen for Auth Changes
+   useEffect(() => {
+      // Check initial session
+      supabase.auth.getSession().then(({ data: { session } }) => {
+         setUser(session?.user ?? null);
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+         setUser(session?.user ?? null);
+         if (session?.user) {
+            // User just logged in (or session refreshed), fetch cloud data
+            loadAllUserData().then(data => {
+               if (data) {
+                  if (data.library_sets && data.library_sets.length > 0) setLibrarySets(data.library_sets);
+                  if (data.folders && data.folders.length > 0) setFolders(data.folders);
+                  if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
+               }
+            });
+         }
+      });
+
+      return () => subscription.unsubscribe();
+   }, []);
+
+
+   // Load Initial Data (Local Only - Cloud handled by Auth Effect)
    useEffect(() => {
       const loadData = async () => {
-         // Load Library from IDB
-         const idbSets = await loadLibrary();
+         // Only load local if we aren't waiting for cloud auth? 
+         // Actually, standard pattern: Load local first for speed, then overwrite with cloud if auth.
+
+         const idbSets = await loadLibrary(); // This now intelligently checks auth internally too
 
          let setsToUse = idbSets;
 
-         // Rescue Strategy:
-         // If IDB is undefined (not set) OR empty (length 0), check LocalStorage.
-         // If LocalStorage has data, we prefer that over an empty IDB to prevent data loss during migration.
+         // Rescue Strategy for LocalStorage
          if (!setsToUse || setsToUse.length === 0) {
             const localLibrary = localStorage.getItem(LIBRARY_KEY);
             if (localLibrary) {
                try {
                   const parsed = JSON.parse(localLibrary);
                   if (Array.isArray(parsed) && parsed.length > 0) {
-                     console.log("Rescuing/Migrating data from LocalStorage...", parsed.length, "sets found.");
                      setsToUse = parsed;
-                     // Save to IDB immediately to persist the rescue
-                     await saveLibrary(parsed);
+                     // Only save back if we are sure?
+                     // await saveLibrary(parsed); 
                   }
                } catch (e) { console.error("Error parsing local library:", e); }
             }
@@ -272,33 +345,24 @@ const App: React.FC = () => {
          }
          setIsLibraryLoaded(true);
 
-         // Load other small data from localStorage
+         // Folders
          const savedFolders = localStorage.getItem(FOLDERS_KEY);
          if (savedFolders) {
-            try {
-               setFolders(JSON.parse(savedFolders));
-            } catch (e) { console.error(e); }
+            try { setFolders(JSON.parse(savedFolders)); } catch (e) { }
          }
 
+         // Settings
          const savedSettings = localStorage.getItem(SETTINGS_KEY);
          if (savedSettings) {
             try {
                const s = JSON.parse(savedSettings);
-               setSettings({
-                  strictSpelling: s.strictSpelling ?? false,
-                  retypeOnMistake: s.retypeOnMistake ?? false,
-                  darkMode: s.darkMode ?? true,
-                  starredOnly: s.starredOnly ?? false,
-                  mode: s.mode ?? 'standard'
-               });
+               setSettings({ ...settings, ...s });
             } catch (e) { }
          }
 
          const savedStats = localStorage.getItem(STATS_KEY);
          if (savedStats) {
-            try {
-               setLifetimeCorrect(JSON.parse(savedStats).lifetimeCorrect || 0);
-            } catch (e) { }
+            try { setLifetimeCorrect(JSON.parse(savedStats).lifetimeCorrect || 0); } catch (e) { }
          }
       };
 
@@ -313,14 +377,16 @@ const App: React.FC = () => {
    }, [librarySets, isLibraryLoaded]);
 
    useEffect(() => {
-      localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
-   }, [folders]);
+      if (isLibraryLoaded) {
+         saveFolders(folders);
+      }
+   }, [folders, isLibraryLoaded]);
 
    useEffect(() => {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-   }, [settings]);
-
-   // Sessions save effect removed
+      if (isLibraryLoaded) {
+         saveSettings(settings);
+      }
+   }, [settings, isLibraryLoaded]);
 
    useEffect(() => {
       localStorage.setItem(STATS_KEY, JSON.stringify({ lifetimeCorrect }));
@@ -336,7 +402,7 @@ const App: React.FC = () => {
 
    const updateSettings = (newSettings: Settings) => {
       setSettings(newSettings);
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
+      // Saved via effect
    };
 
    // Timer Logic
@@ -366,7 +432,6 @@ const App: React.FC = () => {
    // --- ACTIONS ---
 
    const handleStartFromLibrary = (libSet: CardSet) => {
-      // Mark as active session
       const updatedSet = { ...libSet, isSessionActive: true, lastPlayed: Date.now() };
 
       setLibrarySets(prev => {
@@ -379,7 +444,6 @@ const App: React.FC = () => {
       });
 
       setActiveSetId(libSet.id);
-
       setTimerStart(Date.now());
       setTimerNow(Date.now());
       setIsTimerPaused(false);
@@ -388,7 +452,6 @@ const App: React.FC = () => {
 
    const handleResumeSession = (session: CardSet) => {
       setActiveSetId(session.id);
-
       setTimerStart(Date.now());
       setTimerNow(Date.now());
       setIsTimerPaused(false);
@@ -396,7 +459,6 @@ const App: React.FC = () => {
    };
 
    const handleSaveToLibrary = (set: CardSet) => {
-      // Check if updating existing
       const existingIdx = librarySets.findIndex(s => s.id === set.id);
       if (existingIdx !== -1) {
          setLibrarySets(prev => prev.map(s => s.id === set.id ? set : s));
@@ -414,7 +476,6 @@ const App: React.FC = () => {
    };
 
    const handleDeleteSession = (id: string) => {
-      // Just mark as inactive
       setLibrarySets(prev => prev.map(s => s.id === id ? { ...s, isSessionActive: false } : s));
    };
 
@@ -450,21 +511,14 @@ const App: React.FC = () => {
          lastPlayed: now
       };
 
-      // Universal Update: Update the single source of truth
       setLibrarySets(prev => {
          let nextLibrary = prev.map(s => s.id === updatedSession.id ? newSessionData : s);
 
          if (updatedSession.isMultistudy) {
-            // Propagate changes to original sets
             const updatedCardsMap = new Map(updatedSession.cards.map(c => [c.id, c]));
 
             nextLibrary = nextLibrary.map(set => {
-               // Skip if this is the multistudy set itself (already updated)
                if (set.id === updatedSession.id) return set;
-
-               // Check if this set has cards that are in the multistudy session
-               // We assume card IDs are unique across the entire library (generated with generateId)
-               // If they are not unique, this logic might be flawed, but usually they are.
                const hasUpdates = set.cards.some(c => updatedCardsMap.has(c.id));
                if (!hasUpdates) return set;
 
@@ -472,7 +526,6 @@ const App: React.FC = () => {
                   ...set,
                   cards: set.cards.map(c => {
                      const updated = updatedCardsMap.get(c.id);
-                     // Ensure we only update if it matches (it should if IDs are unique)
                      if (updated) {
                         return { ...c, ...updated };
                      }
@@ -572,6 +625,9 @@ const App: React.FC = () => {
             onClose={() => setIsSettingsOpen(false)}
             settings={settings}
             onUpdate={updateSettings}
+            user={user}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
          />
 
          <SetPreviewModal
@@ -648,9 +704,38 @@ const App: React.FC = () => {
                      </button>
                   )}
 
+                  {/* Profile Indicator */}
+                  {user ? (
+                     <button
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="flex items-center gap-2 px-2 py-1 rounded-lg bg-panel-2 border border-outline hover:border-accent transition-all"
+                        title={`Logged in as ${user.email}`}
+                     >
+                        <div className="relative">
+                           <img
+                              src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
+                              alt="Profile"
+                              className="w-6 h-6 rounded-full"
+                           />
+                           <Cloud size={10} className="absolute -bottom-0.5 -right-0.5 text-green bg-panel rounded-full" />
+                        </div>
+                        <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0]}</span>
+                     </button>
+                  ) : (
+                     <button
+                        onClick={handleLogin}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-muted hover:text-text border border-outline hover:border-accent rounded-lg transition-all"
+                     >
+                        <LogIn size={14} /> Sign In
+                     </button>
+                  )}
+
                   <button
                      onClick={() => setIsSettingsOpen(true)}
-                     className="p-2 text-muted hover:text-text transition-colors"
+                     className={clsx(
+                        "p-2 transition-colors",
+                        isSettingsOpen ? "text-accent" : "text-muted hover:text-text"
+                     )}
                   >
                      <SettingsIcon size={20} />
                   </button>
