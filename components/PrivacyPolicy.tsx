@@ -161,11 +161,26 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">8. Children's Privacy</h3>
-                        <p className="text-muted leading-relaxed">
-                            Flashcardsish is not intended for children under 13 years of age. We do not knowingly collect personal
-                            information from children under 13. If you are a parent or guardian and believe your child has provided
-                            us with personal information, please contact us.
-                        </p>
+                        <div className="space-y-3 text-muted leading-relaxed">
+                            <p>
+                                <strong className="text-text">8.1</strong> Flashcardsish is not intended for children under 13 years
+                                of age. We do not knowingly collect personal information from children under 13.
+                            </p>
+                            <p>
+                                <strong className="text-text">8.2</strong> If we discover that we have inadvertently collected
+                                personal information from a child under 13, we will promptly delete such information from our systems.
+                            </p>
+                            <p>
+                                <strong className="text-text">8.3</strong> If you are a parent or guardian and believe your child
+                                has provided personal information to us, please contact us at{' '}
+                                <a href="mailto:owenw2023@gmail.com" className="text-accent hover:underline">owenw2023@gmail.com</a>{' '}
+                                and we will take steps to delete the information.
+                            </p>
+                            <p>
+                                <strong className="text-text">8.4</strong> We comply with applicable children's privacy laws,
+                                including the Children's Online Privacy Protection Act (COPPA) where applicable.
+                            </p>
+                        </div>
                     </section>
 
                     <section>
@@ -186,13 +201,30 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">11. Development Status</h3>
-                        <div className="p-4 bg-yellow/10 rounded-xl border border-yellow/30">
+                        <h3 className="text-lg font-bold text-accent mb-3">11. Development Status and Data Deletion</h3>
+                        <div className="p-4 bg-yellow/10 rounded-xl border border-yellow/30 mb-3">
                             <p className="text-muted leading-relaxed">
-                                <strong className="text-yellow">⚠️ Important:</strong> Flashcardsish is an actively developed, personal project.
-                                Due to the nature of ongoing development, database changes, hosting limitations, or unforeseen circumstances,
-                                <strong className="text-text"> user data may be deleted at any time without prior notice</strong>.
-                                We strongly recommend using the "Export All My Data" feature in Settings to regularly back up your flashcard sets, or download .flashcards files on the List Builder screen.
+                                <strong className="text-yellow">⚠️ Important:</strong> Flashcardsish is an actively developed, personal project
+                                with no uptime guarantees or service level agreements.
+                            </p>
+                        </div>
+                        <div className="space-y-3 text-muted leading-relaxed">
+                            <p>
+                                Your data may be deleted under the following circumstances:
+                            </p>
+                            <ul className="list-disc pl-5 space-y-1">
+                                <li>Service shutdown or discontinuation</li>
+                                <li>Database migrations, restructuring, or technical necessity</li>
+                                <li>Hosting provider changes or limitations</li>
+                                <li>Development-related database resets</li>
+                                <li>Security incidents requiring data purge</li>
+                                <li>Extended account inactivity (12+ months)</li>
+                            </ul>
+                            <p>
+                                We will make reasonable efforts to notify users before planned deletions when feasible,
+                                but this cannot be guaranteed. <strong className="text-text">You are strongly encouraged to regularly
+                                    export your data</strong> using the "Export All My Data" feature in Settings or download .flashcards files
+                                from the List Builder screen.
                             </p>
                         </div>
                     </section>
