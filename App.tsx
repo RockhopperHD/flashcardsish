@@ -5,9 +5,11 @@ import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { Confetti } from './components/Confetti';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud } from 'lucide-react';
+import { PrivacyPolicyModal } from './components/PrivacyPolicy';
+import { TermsOfServiceModal } from './components/TermsOfService';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download } from 'lucide-react';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings } from './storage';
+import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData } from './storage';
 import { supabase } from './src/supabaseClient';
 import { User } from '@supabase/supabase-js';
 
@@ -25,7 +27,10 @@ const SettingsModal: React.FC<{
    user: User | null;
    onLogin: () => void;
    onLogout: () => void;
-}> = ({ isOpen, onClose, settings, onUpdate, user, onLogin, onLogout }) => {
+   onDeleteData: () => void;
+   onExportData: () => void;
+}> = ({ isOpen, onClose, settings, onUpdate, user, onLogin, onLogout, onDeleteData, onExportData }) => {
+   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    if (!isOpen) return null;
 
    const toggle = (key: keyof Settings) => {
@@ -127,6 +132,64 @@ const SettingsModal: React.FC<{
                         <LayoutGrid size={16} /> Multiple Choice
                      </button>
                   </div>
+               </div>
+
+               <div className="h-px bg-outline/50 my-2" />
+
+               {/* --- YOUR DATA SECTION --- */}
+               <div className="p-4 bg-blue/5 rounded-xl border border-blue/20">
+                  <span className="font-medium text-blue block mb-3 flex items-center gap-2">
+                     <Download size={18} /> Your Data
+                  </span>
+                  <button
+                     onClick={onExportData}
+                     className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/10 transition-colors text-sm"
+                  >
+                     Export All My Data (JSON)
+                  </button>
+                  <p className="text-xs text-muted mt-2">
+                     Download a copy of all your flashcard sets, folders, and settings.
+                  </p>
+               </div>
+
+               <div className="h-px bg-outline/50 my-2" />
+
+               {/* --- DANGER ZONE --- */}
+               <div className="p-4 bg-red/5 rounded-xl border border-red/20">
+                  <span className="font-medium text-red block mb-3 flex items-center gap-2">
+                     <Trash2 size={18} /> Danger Zone
+                  </span>
+                  {!showDeleteConfirm ? (
+                     <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="w-full flex items-center justify-center gap-2 py-2 text-red border border-red/30 rounded-lg font-bold hover:bg-red/10 transition-colors text-sm"
+                     >
+                        Delete All My Data
+                     </button>
+                  ) : (
+                     <div className="space-y-3">
+                        <p className="text-sm text-muted">
+                           This will permanently delete all your flashcard sets, folders, and settings from both this device and the cloud. This action cannot be undone.
+                        </p>
+                        <div className="flex gap-2">
+                           <button
+                              onClick={() => setShowDeleteConfirm(false)}
+                              className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
+                           >
+                              Cancel
+                           </button>
+                           <button
+                              onClick={() => {
+                                 onDeleteData();
+                                 setShowDeleteConfirm(false);
+                              }}
+                              className="flex-1 py-2 bg-red text-white rounded-lg font-bold hover:bg-red/90 transition-colors text-sm"
+                           >
+                              Yes, Delete Everything
+                           </button>
+                        </div>
+                     </div>
+                  )}
                </div>
             </div>
          </div>
@@ -260,6 +323,8 @@ const App: React.FC = () => {
    // Modals
    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
    const [isInfoOpen, setIsInfoOpen] = useState(false);
+   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+   const [isTermsOpen, setIsTermsOpen] = useState(false);
    const [previewSet, setPreviewSet] = useState<{ set: CardSet, mode: 'library' | 'session' } | null>(null);
 
    // Timer State
@@ -288,6 +353,39 @@ const App: React.FC = () => {
       setUser(null);
       // Optional: clear local state or reload to reset
       window.location.reload();
+   };
+
+   const handleDeleteData = async () => {
+      const result = await deleteAllUserData();
+      if (result.success) {
+         // Sign out and reload
+         await supabase.auth.signOut();
+         setUser(null);
+         window.location.reload();
+      } else {
+         alert('Failed to delete data: ' + (result.error || 'Unknown error'));
+      }
+   };
+
+   const handleExportData = () => {
+      const exportData = {
+         exportedAt: new Date().toISOString(),
+         version: 'flashcardsish-export-v1',
+         librarySets: librarySets,
+         folders: folders,
+         settings: settings,
+         stats: { lifetimeCorrect }
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `flashcardsish-export-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
    };
 
    // Listen for Auth Changes
@@ -628,6 +726,8 @@ const App: React.FC = () => {
             user={user}
             onLogin={handleLogin}
             onLogout={handleLogout}
+            onDeleteData={handleDeleteData}
+            onExportData={handleExportData}
          />
 
          <SetPreviewModal
@@ -640,6 +740,16 @@ const App: React.FC = () => {
          <InfoModal
             isOpen={isInfoOpen}
             onClose={() => setIsInfoOpen(false)}
+         />
+
+         <PrivacyPolicyModal
+            isOpen={isPrivacyOpen}
+            onClose={() => setIsPrivacyOpen(false)}
+         />
+
+         <TermsOfServiceModal
+            isOpen={isTermsOpen}
+            onClose={() => setIsTermsOpen(false)}
          />
 
          {/* Top Bar */}
@@ -821,9 +931,24 @@ const App: React.FC = () => {
             )}
          </main>
 
-         <footer className="py-8 text-center text-muted opacity-60 text-sm border-t border-outline bg-panel-2/50">
-            <div className="flex items-center justify-center gap-1.5">
+         <footer className="py-6 text-center text-muted text-sm border-t border-outline bg-panel-2/50">
+            <div className="flex items-center justify-center gap-1.5 mb-3">
                Made with <Heart size={14} className="text-red fill-red" /> and vibe coding by Owen Whelan.
+            </div>
+            <div className="flex items-center justify-center gap-4 text-xs opacity-60">
+               <button
+                  onClick={() => setIsPrivacyOpen(true)}
+                  className="hover:text-accent hover:opacity-100 transition-all underline-offset-2 hover:underline"
+               >
+                  Privacy Policy
+               </button>
+               <span className="text-outline">•</span>
+               <button
+                  onClick={() => setIsTermsOpen(true)}
+                  className="hover:text-accent hover:opacity-100 transition-all underline-offset-2 hover:underline"
+               >
+                  Terms of Service
+               </button>
             </div>
          </footer>
       </div>

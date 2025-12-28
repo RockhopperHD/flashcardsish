@@ -91,3 +91,43 @@ export const loadAllUserData = async () => {
 
     return data;
 };
+
+// --- DELETE ALL USER DATA (GDPR Compliance) ---
+
+export const deleteAllUserData = async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+        const user = await getUser();
+
+        // Delete cloud data if logged in
+        if (user) {
+            const { error } = await supabase
+                .from('profiles')
+                .delete()
+                .eq('id', user.id);
+
+            if (error) {
+                console.error('Failed to delete cloud data:', error);
+                return { success: false, error: 'Failed to delete cloud data: ' + error.message };
+            }
+        }
+
+        // Clear IndexedDB
+        try {
+            const { del } = await import('idb-keyval');
+            await del(LIBRARY_KEY);
+        } catch (e) {
+            console.error('Failed to clear IndexedDB:', e);
+        }
+
+        // Clear all localStorage keys related to the app
+        localStorage.removeItem(LIBRARY_KEY);
+        localStorage.removeItem(FOLDERS_KEY);
+        localStorage.removeItem(SETTINGS_KEY);
+        localStorage.removeItem('flashcard-stats-v1');
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting user data:', error);
+        return { success: false, error: 'An unexpected error occurred' };
+    }
+};
