@@ -4,6 +4,7 @@ import { CardSet, GameState, Settings, Folder } from './types';
 import { fmtTime, generateId } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
+import { SetDetail } from './components/SetDetail';
 import { Confetti } from './components/Confetti';
 import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
@@ -197,62 +198,6 @@ const SettingsModal: React.FC<{
    );
 };
 
-// Set Preview Modal
-const SetPreviewModal: React.FC<{
-   set: CardSet | null;
-   onClose: () => void;
-   onUpdateSet: (s: CardSet) => void;
-   mode: 'library' | 'session';
-}> = ({ set, onClose, onUpdateSet, mode }) => {
-   if (!set) return null;
-
-   const toggleStar = (cardId: string) => {
-      const newCards = set.cards.map(c => c.id === cardId ? { ...c, star: !c.star } : c);
-      onUpdateSet({ ...set, cards: newCards });
-   };
-
-   return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
-         <div className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-outline flex justify-between items-center bg-panel-2 rounded-t-2xl">
-               <div>
-                  <h2 className="text-xl font-bold text-text">{set.name}</h2>
-                  <div className="text-sm text-muted">{set.cards.length} cards &bull; {mode === 'library' ? 'Template' : 'Active Session'}</div>
-               </div>
-               <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-3">
-               {set.cards.map((card, i) => (
-                  <div key={card.id} className="flex gap-4 p-4 border border-outline rounded-xl bg-panel items-start">
-                     <div className="text-xs font-mono text-muted pt-1 w-6">{i + 1}</div>
-
-                     {card.image && (
-                        <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-outline bg-panel-2 flex items-center justify-center">
-                           <img src={card.image} alt="Thumbnail" className="w-full h-full object-cover" />
-                        </div>
-                     )}
-
-                     <div className="flex-1 min-w-0">
-                        <div className="font-bold text-text mb-1 truncate">{card.term.join(' / ')}</div>
-                        <div className="text-sm text-muted line-clamp-2">{card.content}</div>
-                        {card.year && <div className="text-xs text-accent mt-1">{card.year}</div>}
-                     </div>
-                     {mode === 'session' && (
-                        <div className="pt-1 flex flex-col items-center gap-1">
-                           <div className={clsx("w-2 h-2 rounded-full", card.mastery >= 1 ? "bg-green" : "bg-outline")}></div>
-                           <div className={clsx("w-2 h-2 rounded-full", card.mastery >= 2 ? "bg-green" : "bg-outline")}></div>
-                        </div>
-                     )}
-                     <button onClick={() => toggleStar(card.id)} className="pt-1">
-                        {card.star ? <span className="text-yellow text-lg">★</span> : <span className="text-outline hover:text-muted text-lg">☆</span>}
-                     </button>
-                  </div>
-               ))}
-            </div>
-         </div>
-      </div>
-   );
-};
 
 // Info Modal Component
 const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
@@ -325,7 +270,13 @@ const App: React.FC = () => {
    const [isInfoOpen, setIsInfoOpen] = useState(false);
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
-   const [previewSet, setPreviewSet] = useState<{ set: CardSet, mode: 'library' | 'session' } | null>(null);
+
+   // Set Detail View
+   const [detailSetId, setDetailSetId] = useState<string | null>(null);
+   const detailSet = librarySets.find(s => s.id === detailSetId) || null;
+
+   // Edit Request (from SetDetail to StartMenu)
+   const [editRequestSetId, setEditRequestSetId] = useState<string | null>(null);
 
    // Timer State
    const [timerStart, setTimerStart] = useState<number>(0);
@@ -529,6 +480,24 @@ const App: React.FC = () => {
 
    // --- ACTIONS ---
 
+   // Open Set Detail View
+   const handleOpenSet = (set: CardSet) => {
+      setDetailSetId(set.id);
+      setGameState(GameState.SET_DETAIL);
+   };
+
+   // Go back from Set Detail to Menu
+   const handleBackFromDetail = () => {
+      setDetailSetId(null);
+      setGameState(GameState.MENU);
+   };
+
+   // Start Learn mode from Set Detail
+   const handleStartLearnFromDetail = () => {
+      if (!detailSet) return;
+      handleStartFromLibrary(detailSet);
+   };
+
    const handleStartFromLibrary = (libSet: CardSet) => {
       const updatedSet = { ...libSet, isSessionActive: true, lastPlayed: Date.now() };
 
@@ -636,11 +605,7 @@ const App: React.FC = () => {
       });
    };
 
-   const handleUpdatePreview = (updatedSet: CardSet) => {
-      if (!previewSet) return;
-      setPreviewSet({ ...previewSet, set: updatedSet });
-      handleUpdateLibrarySet(updatedSet);
-   };
+
 
    const handleRenameSession = (newName: string) => {
       if (activeSession) {
@@ -730,12 +695,7 @@ const App: React.FC = () => {
             onExportData={handleExportData}
          />
 
-         <SetPreviewModal
-            set={previewSet?.set || null}
-            mode={previewSet?.mode || 'library'}
-            onClose={() => setPreviewSet(null)}
-            onUpdateSet={handleUpdatePreview}
-         />
+
 
          <InfoModal
             isOpen={isInfoOpen}
@@ -763,7 +723,7 @@ const App: React.FC = () => {
                   >
                      <HelpCircle size={20} />
                   </button>
-                  {gameState !== GameState.MENU && gameState !== GameState.PLAYING && (
+                  {gameState !== GameState.MENU && gameState !== GameState.PLAYING && gameState !== GameState.SET_DETAIL && (
                      <button
                         onClick={handleBackToMenu}
                         className="group flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
@@ -864,12 +824,39 @@ const App: React.FC = () => {
                   onResumeSession={handleResumeSession}
                   onDeleteLibrarySet={handleDeleteLibrarySet}
                   onDuplicateLibrarySet={handleDuplicateLibrarySet}
-                  onViewPreview={({ set, mode }) => setPreviewSet({ set, mode })}
+                  onOpenSet={handleOpenSet}
                   onSaveToLibrary={handleSaveToLibrary}
                   onDeleteSession={handleDeleteSession}
                   settings={settings}
                   onUpdateSettings={updateSettings}
                   lifetimeCorrect={lifetimeCorrect}
+                  initialEditSetId={editRequestSetId}
+                  onClearEditRequest={() => setEditRequestSetId(null)}
+               />
+            )}
+
+            {gameState === GameState.SET_DETAIL && detailSet && (
+               <SetDetail
+                  set={detailSet}
+                  settings={settings}
+                  onBack={handleBackFromDetail}
+                  onStartLearn={handleStartLearnFromDetail}
+                  onUpdateSet={handleUpdateLibrarySet}
+                  onEdit={() => {
+                     // Set the edit request and go back to menu
+                     setEditRequestSetId(detailSet.id);
+                     handleBackFromDetail();
+                  }}
+                  onDuplicate={() => {
+                     handleDuplicateLibrarySet(detailSet.id);
+                     // Update detailSetId to the new duplicate
+                     const newSet = librarySets.find(s => s.name === `${detailSet.name} (Copy)`);
+                     if (newSet) setDetailSetId(newSet.id);
+                  }}
+                  onDelete={() => {
+                     handleDeleteLibrarySet(detailSet.id);
+                     handleBackFromDetail();
+                  }}
                />
             )}
 

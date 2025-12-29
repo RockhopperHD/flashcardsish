@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Eye, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link } from 'lucide-react';
+import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link, ExternalLink } from 'lucide-react';
 import { CardSet, Card, Settings, Folder } from '../types';
 import { parseInput, generateId, downloadFile, renderMarkdown, renderInline } from '../utils';
 import clsx from 'clsx';
@@ -14,11 +14,13 @@ interface StartMenuProps {
     onSaveToLibrary: (set: CardSet) => void;
     onDeleteLibrarySet: (id: string) => void;
     onDeleteSession: (id: string) => void;
-    onViewPreview: (data: { set: CardSet, mode: 'library' | 'session' }) => void;
+    onOpenSet: (set: CardSet) => void;
     settings: Settings;
     onUpdateSettings: (s: Settings) => void;
     lifetimeCorrect: number;
     onDuplicateLibrarySet: (id: string) => void;
+    initialEditSetId?: string | null;
+    onClearEditRequest?: () => void;
 }
 
 interface BuilderRow {
@@ -671,14 +673,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     onSaveToLibrary,
     onDeleteLibrarySet,
     onDeleteSession,
-    onViewPreview,
+    onOpenSet,
     settings,
     onUpdateSettings,
     lifetimeCorrect,
     onDuplicateLibrarySet,
     setLibrarySets,
     folders,
-    setFolders
+    setFolders,
+    initialEditSetId,
+    onClearEditRequest
 }) => {
     const [view, setView] = useState<'menu' | 'builder'>('menu');
     const [builderMode, setBuilderMode] = useState<'visual' | 'raw'>('visual');
@@ -750,6 +754,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     // Delete Confirmation State
     const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [ongoingDeleteConfirmId, setOngoingDeleteConfirmId] = useState<string | null>(null);
     const [selectedSetIds, setSelectedSetIds] = useState<Set<string>>(new Set());
     const [batchDeleteClicks, setBatchDeleteClicks] = useState(0);
 
@@ -779,6 +784,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         }
     }, [view, builderMode, editingSetId]);
 
+    // Handle edit request from SetDetail
+    useEffect(() => {
+        if (initialEditSetId && onClearEditRequest) {
+            const setToEdit = librarySets.find(s => s.id === initialEditSetId);
+            if (setToEdit) {
+                handleLoadSetToBuilder(setToEdit);
+                onClearEditRequest();
+            }
+        }
+    }, [initialEditSetId]);
+
     // Derived Lists
     const currentFolder = folders.find(f => f.id === currentFolderId);
 
@@ -793,6 +809,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const displayedFolders = currentFolderId ? [] : folders;
 
     const multistudySets = librarySets.filter(s => s.isMultistudy);
+
+    // Ongoing Sessions - filter for active sessions and sort by most recent
+    const ongoingSessions = librarySets
+        .filter(s => s.isSessionActive)
+        .sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
 
     // Selection Logic
     const handleToggleSelect = (id: string) => {
@@ -1624,6 +1645,142 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 {/* MENU MODE */}
                 {view === 'menu' && (
                     <div className="max-w-4xl mx-auto">
+                        {/* ONGOING SESSIONS */}
+                        {ongoingSessions.length > 0 && (
+                            <div className="mb-8">
+                                <h3 className="text-xs font-bold text-muted uppercase tracking-widest pl-2 mb-4">Ongoing</h3>
+                                <div className="overflow-x-auto pb-2 -mx-2 px-2 scrollbar-thin scrollbar-thumb-outline scrollbar-track-transparent">
+                                    <div className="flex gap-4" style={{ minWidth: 'min-content' }}>
+                                        {ongoingSessions.map(session => {
+                                            const masteredCount = session.cards.filter(c => c.mastery >= 2).length;
+                                            const learningCount = session.cards.filter(c => c.mastery === 1).length;
+                                            const unseenCount = session.cards.filter(c => c.mastery === 0).length;
+                                            const isDeletePending = ongoingDeleteConfirmId === session.id;
+
+                                            return (
+                                                <div
+                                                    key={session.id}
+                                                    className={clsx(
+                                                        "relative flex-shrink-0 w-64 h-48 bg-panel-2 border border-outline rounded-2xl p-5 transition-all hover:border-accent group flex flex-col",
+                                                        session.isMultistudy && "overflow-hidden"
+                                                    )}
+                                                >
+                                                    {/* Multistudy stripes background */}
+                                                    {session.isMultistudy && (
+                                                        <>
+                                                            <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{
+                                                                backgroundImage: 'repeating-linear-gradient(45deg, #000 0, #000 20px, transparent 20px, transparent 40px)'
+                                                            }}></div>
+                                                            <div className="absolute top-0 left-0 w-1 h-full bg-accent/50"></div>
+                                                        </>
+                                                    )}
+
+                                                    <div className="relative z-10 flex flex-col h-full">
+                                                        {/* Header */}
+                                                        <div className="mb-2">
+                                                            <div className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">
+                                                                {session.isMultistudy ? 'Multistudy' : 'Learn'}
+                                                            </div>
+                                                            <div className="font-bold text-text truncate">{session.name}</div>
+                                                        </div>
+
+                                                        {/* Progress or Set List - fixed height with flex-1 */}
+                                                        <div className="flex-1 overflow-hidden">
+                                                            {session.isMultistudy ? (
+                                                                // Multistudy: show bullet list of source sets with scroll
+                                                                <ul className="text-xs text-muted space-y-1 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-outline scrollbar-track-transparent pr-1">
+                                                                    {session.cards
+                                                                        .reduce((acc, card) => {
+                                                                            if (card.originalSetName && !acc.includes(card.originalSetName)) {
+                                                                                acc.push(card.originalSetName);
+                                                                            }
+                                                                            return acc;
+                                                                        }, [] as string[])
+                                                                        .map((setName, i) => (
+                                                                            <li key={i} className="flex items-center gap-1.5">
+                                                                                <span className="text-accent">•</span>
+                                                                                <span className="truncate">{setName}</span>
+                                                                            </li>
+                                                                        ))
+                                                                    }
+                                                                </ul>
+                                                            ) : (
+                                                                // Learn: show progress squares
+                                                                <div className="flex gap-1.5 flex-wrap">
+                                                                    {/* Unseen */}
+                                                                    <div className="flex items-center gap-1 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                                                                        </div>
+                                                                        <span className="text-xs font-mono text-muted">{unseenCount}</span>
+                                                                    </div>
+                                                                    {/* Learning */}
+                                                                    <div className="flex items-center gap-1 px-2 py-1 bg-yellow/10 border border-yellow/20 rounded-lg">
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-yellow"></div>
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                                                                        </div>
+                                                                        <span className="text-xs font-mono text-yellow">{learningCount}</span>
+                                                                    </div>
+                                                                    {/* Mastered */}
+                                                                    <div className="flex items-center gap-1 px-2 py-1 bg-green/10 border border-green/20 rounded-lg">
+                                                                        <div className="flex flex-col gap-0.5">
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+                                                                            <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+                                                                        </div>
+                                                                        <span className="text-xs font-mono text-green">{masteredCount}</span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Actions - always at bottom */}
+                                                        <div className="flex gap-2 mt-auto pt-3">
+                                                            <button
+                                                                onClick={() => onResumeSession(session)}
+                                                                className="flex-1 px-3 py-2 bg-accent text-bg text-xs font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                                                            >
+                                                                <Play size={12} fill="currentColor" /> Resume
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (isDeletePending) {
+                                                                        if (session.isMultistudy) {
+                                                                            onDeleteLibrarySet(session.id);
+                                                                        } else {
+                                                                            onDeleteSession(session.id);
+                                                                        }
+                                                                        setOngoingDeleteConfirmId(null);
+                                                                    } else {
+                                                                        setOngoingDeleteConfirmId(session.id);
+                                                                        setTimeout(() => setOngoingDeleteConfirmId(null), 3000);
+                                                                    }
+                                                                }}
+                                                                className={clsx(
+                                                                    "px-3 py-2 border rounded-lg transition-all flex items-center justify-center",
+                                                                    isDeletePending
+                                                                        ? "bg-red text-bg border-red"
+                                                                        : "bg-panel-3 border-outline text-muted hover:text-red hover:border-red"
+                                                                )}
+                                                                title="End Session"
+                                                            >
+                                                                {isDeletePending ? (
+                                                                    <span className="text-[10px] font-bold uppercase">Sure?</span>
+                                                                ) : (
+                                                                    <Trash2 size={12} />
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* LIBRARY COLUMN */}
                         <div className="space-y-4">
                             <div className="flex justify-between items-center">
@@ -1789,13 +1946,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                                     >
                                                                         <Pencil size={16} />
                                                                     </button>
-                                                                    <button
-                                                                        onClick={() => onViewPreview({ set, mode: 'library' })}
-                                                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                                                        title="Preview"
-                                                                    >
-                                                                        <Eye size={16} />
-                                                                    </button>
+
                                                                     <button
                                                                         onClick={() => downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json')}
                                                                         className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
@@ -1829,81 +1980,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                     </div>
 
                                                     <div className="pt-2 mt-2 flex gap-2 relative z-10">
-                                                        {set.isSessionActive ? (
-                                                            <>
-                                                                <button
-                                                                    onClick={() => handleResumeSet(set)}
-                                                                    className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
-                                                                >
-                                                                    <Play size={14} fill="currentColor" /> Resume
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => handlePlaySet(set)}
-                                                                    className="px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-panel-3 transition-all flex items-center justify-center gap-2"
-                                                                    title="Restart Session"
-                                                                >
-                                                                    <RotateCcw size={14} />
-                                                                </button>
-                                                            </>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => handlePlaySet(set)}
-                                                                className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
-                                                            >
-                                                                <Play size={14} fill="currentColor" /> Play
-                                                            </button>
-                                                        )}
+                                                        <button
+                                                            onClick={() => onOpenSet(set)}
+                                                            className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            <ExternalLink size={14} /> Open
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-
-                                    {/* Multistudy Sets */}
-                                    {multistudySets.length > 0 && (
-                                        <div className="space-y-3 pt-6 border-t border-outline/50">
-                                            <h3 className="text-xs font-bold uppercase tracking-widest text-muted mb-2">Multistudy Sessions</h3>
-                                            {multistudySets.map(set => (
-                                                <div key={set.id} className="group bg-panel-2 border border-outline p-5 rounded-2xl hover:border-accent transition-all shadow-sm flex flex-col justify-between h-full relative overflow-hidden">
-                                                    <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{
-                                                        backgroundImage: 'repeating-linear-gradient(45deg, #000 0, #000 20px, transparent 20px, transparent 40px)'
-                                                    }}></div>
-                                                    <div className="absolute top-0 left-0 w-1 h-full bg-accent/50"></div>
-                                                    <div className="flex justify-between items-start mb-4 pl-2 relative z-10">
-                                                        <div>
-                                                            <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">{set.name}</div>
-                                                            <div className="text-xs text-muted font-mono">{set.cards.length} cards</div>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDeleteClick(set.id, 'library');
-                                                                }}
-                                                                className={clsx(
-                                                                    "p-1.5 rounded transition-all flex items-center justify-center",
-                                                                    deleteConfirmId === set.id ? "bg-red text-bg w-12" : "text-muted hover:text-red hover:border-red"
-                                                                )}
-                                                                title="Delete Session"
-                                                            >
-                                                                {deleteConfirmId === set.id ? <span className="text-[10px] font-bold uppercase">Sure?</span> : <Trash2 size={16} />}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="pt-2 mt-2 flex gap-2 pl-2 relative z-10">
-                                                        <button
-                                                            onClick={() => handleResumeSet(set)}
-                                                            className="flex-1 px-4 py-2 bg-accent text-bg text-sm font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg shadow-accent/20"
-                                                        >
-                                                            <Play size={14} fill="currentColor" /> Resume
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
 
                                     {/* Floating Action Bar */}
                                     {selectedSetIds.size > 0 && (

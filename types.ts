@@ -44,6 +44,7 @@ export interface Settings {
 
 export enum GameState {
   MENU = 'MENU',
+  SET_DETAIL = 'SET_DETAIL',
   PLAYING = 'PLAYING',
   WIN = 'WIN'
 }
