@@ -1,6 +1,4 @@
 ![Powered by Vibes](https://img.shields.io/badge/Powered%20by-vibes-ff69b4) 
-[![Check it Out](https://img.shields.io/badge/Check%20it%20Out-Here-brightgreen)](flashcardsish.owenwhelan.com)
-[![My Website](https://img.shields.io/badge/My%20Website-Here-orange)](www.owenwhelan.com)
 
 # **Flashcardsish**
 
