@@ -8,7 +8,8 @@ import { SetDetail } from './components/SetDetail';
 import { Confetti } from './components/Confetti';
 import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, HelpCircle, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download } from 'lucide-react';
+import { Documentation } from './components/Documentation';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download } from 'lucide-react';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData } from './storage';
 import { supabase } from './src/supabaseClient';
@@ -107,6 +108,13 @@ const SettingsModal: React.FC<{
                   </div>
                </label>
 
+               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
+                  <span className="font-medium text-text">Answer with Definition</span>
+                  <div onClick={() => toggle('answerWithDefinition')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.answerWithDefinition ? "bg-accent" : "bg-outline")}>
+                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.answerWithDefinition ? "translate-x-6" : "translate-x-0")} />
+                  </div>
+               </label>
+
                <div className="p-3 bg-panel-2 rounded-xl border border-transparent">
                   <span className="font-medium text-text block mb-3">Game Mode</span>
                   <div className="grid grid-cols-2 gap-2">
@@ -199,55 +207,9 @@ const SettingsModal: React.FC<{
 };
 
 
-// Info Modal Component
-const InfoModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-   if (!isOpen) return null;
-
-   return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
-         <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 max-h-[80vh] overflow-y-auto custom-scrollbar" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-               <h2 className="text-2xl font-bold text-text">How to Use</h2>
-               <button onClick={onClose} className="text-muted hover:text-text">
-                  <X size={24} />
-               </button>
-            </div>
-
-            <div className="space-y-6 text-text">
-               <div>
-                  <h3 className="text-lg font-bold text-accent mb-2">Getting Started</h3>
-                  <ul className="list-disc pl-5 space-y-2 text-muted">
-                     <li>Create a new set in the builder or import a file.</li>
-                     <li>This saves it to your <b>Library</b>.</li>
-                     <li>Raw text format: <code>Term / Definition /// Year</code>.</li>
-                     <li>Separate cards with <code>&&&</code> on a new line.</li>
-                  </ul>
-               </div>
-
-               <div>
-                  <h3 className="text-lg font-bold text-accent mb-2">Study Mode</h3>
-                  <ul className="list-disc pl-5 space-y-2 text-muted">
-                     <li>Click "Play" on a set to start a new <b>Session</b>.</li>
-                     <li>Sessions are saved separately from your Library templates.</li>
-                     <li>Get it right twice to master a card.</li>
-                  </ul>
-               </div>
-
-               <div>
-                  <h3 className="text-lg font-bold text-accent mb-2">Cloud Sync</h3>
-                  <ul className="list-disc pl-5 space-y-2 text-muted">
-                     <li>Log in via Settings to sync your cards across devices.</li>
-                     <li>Data is automatically saved to your account.</li>
-                  </ul>
-               </div>
-            </div>
-         </div>
-      </div>
-   );
-};
-
 const App: React.FC = () => {
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
+   const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
 
    const [user, setUser] = useState<User | null>(null);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
@@ -262,12 +224,13 @@ const App: React.FC = () => {
       retypeOnMistake: false,
       darkMode: true,
       starredOnly: false,
-      mode: 'standard'
+      mode: 'standard',
+      answerWithDefinition: false
    });
 
    // Modals
    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-   const [isInfoOpen, setIsInfoOpen] = useState(false);
+
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
 
@@ -696,12 +659,6 @@ const App: React.FC = () => {
          />
 
 
-
-         <InfoModal
-            isOpen={isInfoOpen}
-            onClose={() => setIsInfoOpen(false)}
-         />
-
          <PrivacyPolicyModal
             isOpen={isPrivacyOpen}
             onClose={() => setIsPrivacyOpen(false)}
@@ -717,23 +674,17 @@ const App: React.FC = () => {
             <div className="max-w-5xl mx-auto flex items-center justify-between">
                <div className="flex items-center gap-4 w-1/3">
                   <button
-                     onClick={() => setIsInfoOpen(true)}
+                     onClick={() => {
+                        if (gameState !== GameState.DOCUMENTATION) {
+                           setPreviousGameState(gameState);
+                        }
+                        setGameState(GameState.DOCUMENTATION);
+                     }}
                      className="p-2 text-muted hover:text-text transition-colors"
-                     title="Help"
+                     title="Documentation"
                   >
-                     <HelpCircle size={20} />
+                     <BookOpen size={20} />
                   </button>
-                  {gameState !== GameState.MENU && gameState !== GameState.PLAYING && gameState !== GameState.SET_DETAIL && (
-                     <button
-                        onClick={handleBackToMenu}
-                        className="group flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
-                     >
-                        <div className="p-2 rounded-full border border-outline group-hover:bg-panel transition-colors">
-                           <ArrowLeft size={16} />
-                        </div>
-                        Back
-                     </button>
-                  )}
                </div>
 
                <div className="w-1/3 flex justify-center">
@@ -915,6 +866,10 @@ const App: React.FC = () => {
                      </button>
                   </div>
                </div>
+            )}
+
+            {gameState === GameState.DOCUMENTATION && (
+               <Documentation onBack={() => setGameState(previousGameState)} />
             )}
          </main>
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link, ExternalLink } from 'lucide-react';
+import { Trash2, Upload, Plus, Copy, AlertCircle, ArrowLeft, Download, FileText, LayoutList, HelpCircle, Save, FolderOpen, Play, Pencil, RotateCw, RotateCcw, X, Image as ImageIcon, Link, ExternalLink, ArrowLeftRight, Combine } from 'lucide-react';
 import { CardSet, Card, Settings, Folder } from '../types';
 import { parseInput, generateId, downloadFile, renderMarkdown, renderInline } from '../utils';
 import clsx from 'clsx';
@@ -54,6 +54,11 @@ const GREETINGS = [
     "Onward.",
     "Heyo.",
     "Flashcards! Hurrah!",
+    "Flashcardsish!",
+    "'SET' it up. Haha, get it?",
+    "Practice makes... good.",
+    "Working hard... or hardly working?",
+    "What'll it be?"
 ];
 
 // Unsaved Changes Modal
@@ -381,7 +386,8 @@ const BuilderRowItem: React.FC<{
     removeRow: (id: string) => void;
     onAddNext: () => void;
     onOpenImageModal: (id: string) => void;
-}> = React.memo(({ row, index, showYear, isDuplicate, isLast, customFieldNames, updateRow, removeRow, onAddNext, onOpenImageModal }) => {
+    onSwap: (id: string) => void;
+}> = React.memo(({ row, index, showYear, isDuplicate, isLast, customFieldNames, updateRow, removeRow, onAddNext, onOpenImageModal, onSwap }) => {
     const [isEditingDef, setIsEditingDef] = useState(false);
     const [isEditingTerm, setIsEditingTerm] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -574,6 +580,16 @@ const BuilderRowItem: React.FC<{
                             title={row.star ? "Unstar Card" : "Star Card"}
                         >
                             {row.star ? "★" : "☆"}
+                        </button>
+
+                        {/* Swap Term/Definition Button */}
+                        <button
+                            onClick={() => onSwap(row.id)}
+                            tabIndex={-1}
+                            className="p-2.5 text-muted hover:text-accent transition-all shrink-0"
+                            title="Swap Term & Definition"
+                        >
+                            <ArrowLeftRight size={16} />
                         </button>
 
                         {/* Delete Button */}
@@ -951,7 +967,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const handleCreateMultistudy = () => {
         const selectedSets = librarySets.filter(s => selectedSetIds.has(s.id));
-        if (selectedSets.length === 0) return;
+        if (selectedSets.length < 2) {
+            alert("Please select at least 2 sets for a Multistudy session.");
+            return;
+        }
 
         const allCards: Card[] = [];
         selectedSets.forEach(set => {
@@ -986,6 +1005,44 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         newSet.customFieldNames = Array.from(allCustomFields);
 
         handlePlaySet(newSet);
+        setSelectedSetIds(new Set());
+    };
+
+    const handleCombineSets = () => {
+        const selectedSets = librarySets.filter(s => selectedSetIds.has(s.id));
+        if (selectedSets.length === 0) return;
+
+        const allCards: Card[] = [];
+        selectedSets.forEach(set => {
+            set.cards.forEach(card => {
+                allCards.push({
+                    ...card,
+                    id: generateId(), // New ID for combined set
+                    originalSetId: set.id,
+                    originalSetName: set.name,
+                    mastery: 0 // Reset mastery for the new set
+                });
+            });
+        });
+
+        // Merge custom field names
+        const allCustomFields = new Set<string>();
+        selectedSets.forEach(s => s.customFieldNames?.forEach(n => allCustomFields.add(n)));
+
+        const newSet: CardSet = {
+            id: generateId(),
+            name: `Combined (${selectedSets.length} Sets)`,
+            cards: allCards,
+            lastPlayed: Date.now(),
+            elapsedTime: 0,
+            topStreak: 0,
+            isSessionActive: false,
+            isMultistudy: false,
+            customFieldNames: Array.from(allCustomFields)
+        };
+
+        // Add to library
+        onSaveToLibrary(newSet);
         setSelectedSetIds(new Set());
     };
 
@@ -1490,6 +1547,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setShowImageModal(true);
     }, []);
 
+    const swapRow = useCallback((id: string) => {
+        setBuilderRows(prev => prev.map(r => {
+            if (r.id === id) {
+                return { ...r, term: r.def, def: r.term };
+            }
+            return r;
+        }));
+    }, []);
+
     const handleSaveImage = (url: string) => {
         if (editingImageRowId) {
             updateRow(editingImageRowId, 'image', url);
@@ -1668,7 +1734,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                     {/* Multistudy stripes background */}
                                                     {session.isMultistudy && (
                                                         <>
-                                                            <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{
+                                                            <div className="absolute inset-0 opacity-[0.15] pointer-events-none" style={{
                                                                 backgroundImage: 'repeating-linear-gradient(45deg, #000 0, #000 20px, transparent 20px, transparent 40px)'
                                                             }}></div>
                                                             <div className="absolute top-0 left-0 w-1 h-full bg-accent/50"></div>
@@ -2006,6 +2072,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                 Multistudy
                                             </button>
                                             <button
+                                                onClick={handleCombineSets}
+                                                className="px-6 py-2 bg-panel-2 border border-accent text-accent font-bold rounded-xl hover:bg-accent hover:text-bg transition-all shadow-lg flex items-center gap-2"
+                                                title="Create a new set by combining all selected sets"
+                                            >
+                                                <Combine size={16} /> Combine
+                                            </button>
+                                            <button
                                                 onClick={handleCreateFolder}
                                                 className="px-6 py-2 bg-panel-2 border border-outline text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg"
                                             >
@@ -2234,6 +2307,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                                         removeRow={removeRow}
                                                         onAddNext={addRow}
                                                         onOpenImageModal={openImageModal}
+                                                        onSwap={swapRow}
                                                     />
                                                 ))}
                                                 <button

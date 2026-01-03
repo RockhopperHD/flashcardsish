@@ -40,13 +40,15 @@ export interface Settings {
   darkMode: boolean;
   starredOnly: boolean;
   mode: 'standard' | 'multiple_choice';
+  answerWithDefinition: boolean;
 }
 
 export enum GameState {
   MENU = 'MENU',
   SET_DETAIL = 'SET_DETAIL',
   PLAYING = 'PLAYING',
-  WIN = 'WIN'
+  WIN = 'WIN',
+  DOCUMENTATION = 'DOCUMENTATION'
 }
 
 export type FeedbackState =

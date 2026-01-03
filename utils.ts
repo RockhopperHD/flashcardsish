@@ -97,6 +97,68 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
   };
 };
 
+// Check definition answer logic (for "Answer with Definition" mode)
+export const checkDefinitionAnswer = (inputDefinition: string, inputYear: string, inputCustom: Record<string, string>, card: Card, strict: boolean = false) => {
+  const strip = (s: string) => {
+    // Strip markdown: **, *, __, `, <h=...>
+    let clean = s
+      .replace(/<h=[^>]+>/g, '')
+      .replace(/<\/h>/g, '')
+      .replace(/\*\*\*/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/__/g, '')
+      .replace(/`/g, '')
+      .replace(/<u>/g, '')
+      .replace(/<\/u>/g, '')
+      .replace(/<p>/gi, ' ')
+      .replace(/- /g, ' ');
+    // Normalize and remove diacritics
+    clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
+  };
+
+  // 1. Check Definition (content)
+  const strippedInput = strip(inputDefinition);
+  const strippedContent = strip(card.content);
+
+  const def_dist = distance(strippedInput, strippedContent);
+
+  // For definitions, we use a proportional threshold since they can be longer
+  // Strict: distance must be 0. Loose: distance <= max(2, 5% of content length)
+  const threshold = strict ? 0 : Math.max(2, Math.floor(strippedContent.length * 0.05));
+  const isDefinitionMatch = def_dist <= threshold;
+
+  // 2. Check Year (if applicable)
+  let isYearMatch = true;
+  if (card.year) {
+    isYearMatch = strip(inputYear) === strip(card.year);
+  }
+
+  // 3. Check Custom Fields
+  let isCustomMatch = true;
+  const customResults: Record<string, boolean> = {};
+
+  if (card.customFields) {
+    for (const field of card.customFields) {
+      const input = inputCustom[field.name] || '';
+      const match = strip(input) === strip(field.value);
+      customResults[field.name] = match;
+      if (!match) isCustomMatch = false;
+    }
+  }
+
+  return {
+    isMatch: isDefinitionMatch && isYearMatch && isCustomMatch,
+    isDefinitionMatch,
+    isYearMatch,
+    isCustomMatch,
+    customResults,
+    bestDist: def_dist
+  };
+};
+
 // Parsing Logic
 export const parseInput = (text: string): Partial<Card>[] => {
   if (!text.trim()) return [];

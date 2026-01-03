@@ -17,7 +17,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <FileText size={24} className="text-accent" />
                         <div>
                             <h2 className="text-xl font-bold text-text">Terms of Service</h2>
-                            <div className="text-sm text-muted">Last updated: December 28, 2025</div>
+                            <div className="text-sm text-muted">Last updated: January 2, 2026</div>
                         </div>
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
@@ -128,7 +128,9 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                                 <li>Hosting provider changes or limitations</li>
                                 <li>Development-related database resets during active development phases</li>
                                 <li>Security incidents requiring data purge</li>
-                                <li>Extended account inactivity (accounts inactive for 12+ months)</li>
+                                <li>Extended account inactivity</li>
+                                <li>Failure or destruction of one of the services we use</li>
+                                <li>Any other reason we deem appropriate, for any reason, at any time; we reserve the right to do so and you voluntarily agree to give us this right by using Flashcardsish</li>
                             </ul>
                             <p>
                                 <strong className="text-text">6.3</strong> We will make reasonable efforts to notify users before
@@ -295,18 +297,16 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">16. Dispute Resolution</h3>
+                        <h3 className="text-lg font-bold text-accent mb-3">16. Waiver of Legal Action</h3>
                         <div className="space-y-3 text-muted leading-relaxed">
                             <p>
-                                <strong className="text-text">16.1 Informal Resolution:</strong> Before initiating any formal
-                                dispute proceedings, you agree to first contact us at{' '}
-                                <a href="mailto:owenw2023@gmail.com" className="text-accent hover:underline">owenw2023@gmail.com</a>{' '}
-                                and attempt to resolve the dispute informally for at least 30 days.
+                                <strong className="text-text">16.1 Covenant Not to Sue:</strong> TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, BY USING THIS SERVICE,
+                                YOU HEREBY IRREVOCABLY WAIVE ANY RIGHT TO SUE, LITIGATE, OR BRING ANY LEGAL ACTION OR PROCEEDING AGAINST THE DEVELOPERS OF FLASHCARDSISH
+                                FOR ANY REASON WHATSOEVER RELATING TO YOUR USE OF THE SERVICE.
                             </p>
                             <p>
-                                <strong className="text-text">16.2</strong> Given the free, open-source nature of this Service,
-                                both parties agree to make good-faith efforts to resolve disputes amicably without resorting to
-                                formal legal proceedings.
+                                <strong className="text-text">16.2 Sole Remedy:</strong> IF YOU ARE DISSATISFIED WITH THE SERVICE, OR HAVE ANY DISPUTE, CLAIM,
+                                OR CONTROVERSY ARISING OUT OF OR RELATING TO THE SERVICE, YOUR SOLE AND EXCLUSIVE REMEDY IS TO STOP USING THE SERVICE AND DELETE YOUR ACCOUNT.
                             </p>
                         </div>
                     </section>
@@ -316,13 +316,13 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <div className="space-y-3 text-muted leading-relaxed">
                             <p>
                                 <strong className="text-text">17.1</strong> These Terms shall be governed by and construed in
-                                accordance with the laws of the State of New Jersey, United States, without regard to its
+                                accordance with the laws of the State of New York, United States, without regard to its
                                 conflict of law provisions.
                             </p>
                             <p>
                                 <strong className="text-text">17.2</strong> Any legal action or proceeding arising out of or
                                 relating to these Terms shall be brought exclusively in the state or federal courts located
-                                in New Jersey, and you consent to the personal jurisdiction of such courts.
+                                in New York, and you consent to the personal jurisdiction of such courts.
                             </p>
                             <p>
                                 <strong className="text-text">17.3</strong> Notwithstanding the above, we reserve the right to

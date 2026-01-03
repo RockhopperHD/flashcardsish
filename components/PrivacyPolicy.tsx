@@ -17,7 +17,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         <Shield size={24} className="text-accent" />
                         <div>
                             <h2 className="text-xl font-bold text-text">Privacy Policy</h2>
-                            <div className="text-sm text-muted">Last updated: December 28, 2025</div>
+                            <div className="text-sm text-muted">Last updated: January 2, 2026</div>
                         </div>
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
@@ -77,7 +77,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 <p className="text-muted leading-relaxed">
                                     We use browser local storage and IndexedDB to store your data locally on your device
                                     for offline access and improved performance. This data remains on your device unless
-                                    you are signed in, in which case it syncs with our cloud storage. In simple terms: if you don't sign in, we store your data on your device; otherwise, we use what we have stored.
+                                    you are signed in, in which case it syncs with our cloud storage. In simple terms: if you don't sign in, we store your data on your device; otherwise, we use what we have stored online.
                                 </p>
                             </div>
                         </div>
@@ -216,9 +216,11 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 <li>Service shutdown or discontinuation</li>
                                 <li>Database migrations, restructuring, or technical necessity</li>
                                 <li>Hosting provider changes or limitations</li>
-                                <li>Development-related database resets</li>
+                                <li>Development-related database resets during active development phases</li>
                                 <li>Security incidents requiring data purge</li>
-                                <li>Extended account inactivity (12+ months)</li>
+                                <li>Extended account inactivity</li>
+                                <li>Failure or destruction of one of the services we use</li>
+                                <li>Any other reason we deem appropriate, for any reason, at any time; we reserve the right to do so and you voluntarily agree to give us this right by using Flashcardsish</li>
                             </ul>
                             <p>
                                 We will make reasonable efforts to notify users before planned deletions when feasible,

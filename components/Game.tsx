@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings } from '../types';
-import { checkAnswer, renderMarkdown, renderInline, downloadFile } from '../utils';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile } from '../utils';
 import { ArrowLeft, Pencil, X, Download } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -102,9 +102,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Generate Options for Multiple Choice
    useEffect(() => {
       if (settings.mode === 'multiple_choice' && currentCard) {
-         const correctTerm = currentCard.term[0]; // Use primary term
+         // In definition mode, options are definitions. Otherwise, options are terms.
+         const correctAnswer = settings.answerWithDefinition
+            ? currentCard.content
+            : currentCard.term[0]; // Use primary term
 
-         // Get all other terms from the set
+         // Get all other cards from the set
          const allOtherCards = set.cards.filter(c => c.id !== currentCard.id);
 
          // Shuffle and pick 3
@@ -112,14 +115,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const shuffledOthers = [...allOtherCards].sort(() => 0.5 - Math.random());
 
          for (let i = 0; i < Math.min(3, shuffledOthers.length); i++) {
-            distractors.push(shuffledOthers[i].term[0]);
+            distractors.push(settings.answerWithDefinition
+               ? shuffledOthers[i].content
+               : shuffledOthers[i].term[0]);
          }
 
          // Combine and shuffle
-         const newOptions = [correctTerm, ...distractors].sort(() => 0.5 - Math.random());
+         const newOptions = [correctAnswer, ...distractors].sort(() => 0.5 - Math.random());
          setOptions(newOptions);
       }
-   }, [currentCard, settings.mode, set.cards]);
+   }, [currentCard, settings.mode, settings.answerWithDefinition, set.cards]);
 
    // Focus Management
    useEffect(() => {
@@ -172,7 +177,15 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
       if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
 
-      const result = checkAnswer(inputTerm, inputYear, inputCustom, currentCard, settings.strictSpelling);
+      // Use appropriate check function based on answerWithDefinition setting
+      const result = settings.answerWithDefinition
+         ? checkDefinitionAnswer(inputTerm, inputYear, inputCustom, currentCard, settings.strictSpelling)
+         : checkAnswer(inputTerm, inputYear, inputCustom, currentCard, settings.strictSpelling);
+
+      // Normalize result - in definition mode, isDefinitionMatch maps to isTermMatch conceptually
+      const isMainAnswerMatch = settings.answerWithDefinition
+         ? (result as ReturnType<typeof checkDefinitionAnswer>).isDefinitionMatch
+         : (result as ReturnType<typeof checkAnswer>).isTermMatch;
 
       if (result.isMatch) {
          // CORRECT
@@ -208,7 +221,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          onCorrect(); // Update lifetime stats
          setFeedback({
             type: 'correct',
-            correction: (!settings.strictSpelling && result.bestDist > 0) ? result.bestTerm : undefined
+            correction: (!settings.strictSpelling && result.bestDist > 0)
+               ? (settings.answerWithDefinition ? currentCard.content.substring(0, 50) + '...' : (result as ReturnType<typeof checkAnswer>).bestTerm)
+               : undefined
          });
       } else {
          // INCORRECT
@@ -223,14 +238,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             setFeedback({
                type: 'retype_needed',
                results: {
-                  isTermMatch: result.isTermMatch,
+                  isTermMatch: isMainAnswerMatch,
                   isYearMatch: result.isYearMatch,
                   isCustomMatch: result.isCustomMatch,
                   customResults: result.customResults
                }
             });
             // Clear ONLY wrong fields
-            if (!result.isTermMatch) setInputTerm('');
+            if (!isMainAnswerMatch) setInputTerm('');
             if (!result.isYearMatch) setInputYear('');
             if (!result.isCustomMatch) {
                const newCustom = { ...inputCustom };
@@ -240,15 +255,17 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                setInputCustom(newCustom);
             }
          } else {
-            let msg = `Answer: ${currentCard.term.join(' / ')}`;
-            if (currentCard.year && !result.isYearMatch && result.isTermMatch) {
-               msg = `Term correct, but year is ${currentCard.year}`;
-            } else if (result.isTermMatch && result.isYearMatch && !result.isCustomMatch) {
+            let msg = settings.answerWithDefinition
+               ? `Answer: ${currentCard.content.length > 100 ? currentCard.content.substring(0, 100) + '...' : currentCard.content}`
+               : `Answer: ${currentCard.term.join(' / ')}`;
+            if (currentCard.year && !result.isYearMatch && isMainAnswerMatch) {
+               msg = `${settings.answerWithDefinition ? 'Definition' : 'Term'} correct, but year is ${currentCard.year}`;
+            } else if (isMainAnswerMatch && result.isYearMatch && !result.isCustomMatch) {
                // Find which custom field is wrong
                const wrongField = Object.keys(result.customResults || {}).find(k => !result.customResults[k]);
                if (wrongField) {
                   const correctVal = currentCard.customFields?.find(f => f.name === wrongField)?.value;
-                  msg = `Term/Year correct, but ${wrongField} is ${correctVal}`;
+                  msg = `${settings.answerWithDefinition ? 'Definition' : 'Term'}/Year correct, but ${wrongField} is ${correctVal}`;
                }
             }
             setFeedback({
@@ -265,8 +282,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const handleOptionClick = (option: string) => {
       if (!currentCard) return;
 
-      // Check if option matches any of the valid terms
-      const isCorrect = currentCard.term.some(t => t.toLowerCase() === option.toLowerCase());
+      // Check if option matches either the term (normal) or definition (answerWithDefinition mode)
+      const isCorrect = settings.answerWithDefinition
+         ? option.toLowerCase() === currentCard.content.toLowerCase()
+         : currentCard.term.some(t => t.toLowerCase() === option.toLowerCase());
 
       if (isCorrect) {
          // Correct
@@ -292,7 +311,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          // Let's wait for user to hit Continue or Enter, same as standard mode
       } else {
          // Incorrect
-         setFeedback({ type: 'incorrect', message: `Correct Answer: ${currentCard.term.join(' / ')}` });
+         const correctAnswer = settings.answerWithDefinition
+            ? currentCard.content
+            : currentCard.term.join(' / ');
+         setFeedback({ type: 'incorrect', message: `Correct Answer: ${correctAnswer}` });
          setPendingStreakBreak(true);
       }
    };
@@ -313,7 +335,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          });
          return;
       }
-      setFeedback({ type: 'reveal', message: `Answer: ${currentCard.term.join(' / ')}` });
+      const answer = settings.answerWithDefinition
+         ? currentCard.content
+         : currentCard.term.join(' / ');
+      setFeedback({ type: 'reveal', message: `Answer: ${answer}` });
    };
 
    const handleOverride = (wasActuallyCorrect: boolean) => {
@@ -553,12 +578,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         />
                      </div>
                      <div className="text-3xl font-medium leading-normal text-text font-sans text-left">
-                        {renderMarkdown(currentCard.content)}
+                        {settings.answerWithDefinition
+                           ? <div>{currentCard.term.map((t, i) => <div key={i}>{renderInline(t, `term-${i}`)}</div>)}</div>
+                           : renderMarkdown(currentCard.content)}
                      </div>
                   </div>
                ) : (
                   <div className="w-full text-3xl font-medium leading-normal text-text font-sans text-left">
-                     {renderMarkdown(currentCard.content)}
+                     {settings.answerWithDefinition
+                        ? <div>{currentCard.term.map((t, i) => <div key={i}>{renderInline(t, `term-${i}`)}</div>)}</div>
+                        : renderMarkdown(currentCard.content)}
                   </div>
                )}
             </div>
@@ -662,7 +691,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            <div key="term" className={clsx("relative", termClass)}>
                               {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
                                  <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
-                                    Answer: {currentCard.term[0]}
+                                    Answer: {settings.answerWithDefinition
+                                       ? (currentCard.content.length > 50 ? currentCard.content.substring(0, 50) + '...' : currentCard.content)
+                                       : currentCard.term[0]}
                                  </div>
                               )}
                               <input
@@ -672,7 +703,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onChange={(e) => setInputTerm(e.target.value)}
                                  onKeyDown={handleInputKeyDown}
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
-                                 placeholder={feedback.type === 'retype_needed' ? "Retype term..." : "Type the term..."}
+                                 placeholder={feedback.type === 'retype_needed'
+                                    ? (settings.answerWithDefinition ? "Retype definition..." : "Retype term...")
+                                    : (settings.answerWithDefinition ? "Type the definition..." : "Type the term...")}
                                  className={clsx(
                                     "w-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
                                     feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
