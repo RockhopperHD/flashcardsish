@@ -1,97 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Flashcardsish</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              bg: 'var(--bg)',
-              panel: 'var(--panel)',
-              'panel-2': 'var(--panel-2)',
-              text: 'var(--text)',
-              muted: 'var(--muted)',
-              accent: 'var(--accent)',
-              red: 'var(--red)',
-              yellow: 'var(--yellow)',
-              green: 'var(--green)',
-              blue: '#c6a972',
-              pill: '#1e1913',
-              outline: 'var(--outline)',
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flashcardsish</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: 'var(--bg)',
+            panel: 'var(--panel)',
+            'panel-2': 'var(--panel-2)',
+            text: 'var(--text)',
+            muted: 'var(--muted)',
+            accent: 'var(--accent)',
+            red: 'var(--red)',
+            yellow: 'var(--yellow)',
+            green: 'var(--green)',
+            green: 'var(--green)',
+            blue: 'var(--blue)',
+            purple: 'var(--purple)',
+            pill: '#1e1913',
+            outline: 'var(--outline)',
+          },
+          fontFamily: {
+            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+          },
+          animation: {
+            'glow-pulse': 'glowPulse 1s ease-out',
+            'fall': 'fall 3s linear forwards',
+          },
+          keyframes: {
+            glowPulse: {
+              '0%': { boxShadow: '0 0 0px var(--green)' },
+              '50%': { boxShadow: '0 0 25px 10px rgba(147,210,108,0.7)' },
+              '100%': { boxShadow: '0 0 0px var(--green)' },
             },
-            fontFamily: {
-              sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial'],
-              mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
-            },
-            animation: {
-              'glow-pulse': 'glowPulse 1s ease-out',
-              'fall': 'fall 3s linear forwards',
-            },
-            keyframes: {
-              glowPulse: {
-                '0%': { boxShadow: '0 0 0px var(--green)' },
-                '50%': { boxShadow: '0 0 25px 10px rgba(147,210,108,0.7)' },
-                '100%': { boxShadow: '0 0 0px var(--green)' },
-              },
-              fall: {
-                'to': { transform: 'translateY(100vh) rotate(720deg)', opacity: '0' }
-              }
+            fall: {
+              'to': { transform: 'translateY(100vh) rotate(720deg)', opacity: '0' }
             }
           }
         }
       }
-    </script>
-    <style>
-      :root {
-        --bg: #0b0806;
-        --panel: #14100c;
-        --panel-2: #1b1611;
-        --text: #f5f3ef;
-        --muted: #cfc2a5;
-        --accent: #d0a45e;
-        --red: #e57373;
-        --green: #93d26c;
-        --yellow: #f5c16c;
-        --outline: #3b2f22;
-      }
-      .light-mode {
-        --bg: #f5f3ef;
-        --panel: #e8e6e1;
-        --panel-2: #dcd9d2;
-        --text: #1e1913;
-        --muted: #8a8170;
-        --accent: #b08845;
-        --red: #d32f2f;
-        --green: #388e3c;
-        --yellow: #fbc02d;
-        --outline: #ccc5b9;
-      }
-      body { background-color: var(--bg); color: var(--text); transition: background-color 0.3s, color 0.3s; }
-      /* Custom scrollbar for textareas */
-      ::-webkit-scrollbar { width: 8px; }
-      ::-webkit-scrollbar-track { background: var(--panel); }
-      ::-webkit-scrollbar-thumb { background: var(--outline); border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
-    </style>
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #0b0806;
+      --panel: #14100c;
+      --panel-2: #1b1611;
+      --text: #f5f3ef;
+      --muted: #cfc2a5;
+      --accent: #d0a45e;
+      --red: #e57373;
+      --green: #93d26c;
+      --green: #93d26c;
+      --yellow: #f5c16c;
+      --blue: #64b5f6;
+      --purple: #ba68c8;
+      --outline: #3b2f22;
+    }
 
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "clsx": "https://aistudiocdn.com/clsx@^2.1.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
-  }
-}
-</script>
-  <script type="module" crossorigin src="/assets/index-h0KoSDT0.js"></script>
+    .light-mode {
+      --bg: #f5f3ef;
+      --panel: #e8e6e1;
+      --panel-2: #dcd9d2;
+      --text: #1e1913;
+      --muted: #8a8170;
+      --accent: #b08845;
+      --red: #d32f2f;
+      --green: #388e3c;
+      --green: #388e3c;
+      --yellow: #fbc02d;
+      --blue: #1976d2;
+      --purple: #7b1fa2;
+      --outline: #ccc5b9;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    /* Custom scrollbar for textareas */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--panel);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--outline);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+    }
+  </style>
+
+  <script type="module" crossorigin src="/assets/index-CXc7uOFq.js"></script>
 </head>
-  <body>
-    <div id="root"></div>
-  </body>
+
+<body>
+  <div id="root"></div>
+</body>
+
 </html>
