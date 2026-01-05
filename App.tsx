@@ -102,6 +102,13 @@ const SettingsModal: React.FC<{
                </label>
 
                <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
+                  <span className="font-medium text-text">Hide Helper Tooltips</span>
+                  <div onClick={() => toggle('hideTooltips')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.hideTooltips ? "bg-accent" : "bg-outline")}>
+                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.hideTooltips ? "translate-x-6" : "translate-x-0")} />
+                  </div>
+               </label>
+
+               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
                   <span className="font-medium text-text">Study Starred Only</span>
                   <div onClick={() => toggle('starredOnly')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.starredOnly ? "bg-accent" : "bg-outline")}>
                      <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.starredOnly ? "translate-x-6" : "translate-x-0")} />
@@ -201,8 +208,8 @@ const SettingsModal: React.FC<{
                   )}
                </div>
             </div>
-         </div>
-      </div>
+         </div >
+      </div >
    );
 };
 
@@ -225,7 +232,8 @@ const App: React.FC = () => {
       darkMode: true,
       starredOnly: false,
       mode: 'standard',
-      answerWithDefinition: false
+      answerWithDefinition: false,
+      hideTooltips: false
    });
 
    // Modals

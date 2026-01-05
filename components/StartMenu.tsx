@@ -695,6 +695,7 @@ const SetConfigurationModal: React.FC<{
   setDefSideFields: (f: CustomFieldDefinition[]) => void;
   showYear: boolean;
   setShowYear: (b: boolean) => void;
+  settings: Settings;
 }> = ({
   isOpen,
   onClose,
@@ -708,6 +709,7 @@ const SetConfigurationModal: React.FC<{
   setDefSideFields,
   showYear,
   setShowYear,
+  settings,
 }) => {
   if (!isOpen) return null;
 
@@ -769,75 +771,201 @@ const SetConfigurationModal: React.FC<{
     setDefSideFields(defSideFields.filter((_, i) => i !== index));
   };
 
+  // Helper Tooltip Component
+  const HelperTooltip: React.FC<{
+    text: React.ReactNode;
+    show: boolean;
+    position?: "top" | "bottom";
+    type?: "default" | "error";
+  }> = ({ text, show, position = "top", type = "default" }) => {
+    if (!show || settings.hideTooltips) return null;
+    return (
+      <div
+        className={clsx(
+          "absolute z-50 px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center left-1/2 -translate-x-1/2",
+          position === "top" ? "bottom-full mb-3" : "top-full mt-3",
+          type === "default" &&
+            "bg-[#422006] text-[#FEF3C7] border border-[#78350F]",
+          type === "error" &&
+            "bg-red text-white border border-red-700 shadow-red/20",
+        )}
+      >
+        {text}
+        <div
+          className={clsx(
+            "absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45",
+            position === "top" ? "bottom-[-5px]" : "top-[-5px]",
+            type === "default" &&
+              "bg-[#422006] border-r border-b border-[#78350F]",
+            type === "error" && "bg-red",
+          )}
+        ></div>
+      </div>
+    );
+  };
+
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+  const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(
+    null,
+  );
+
   const renderFieldRow = (
     field: CustomFieldDefinition,
     index: number,
-    update: (i: number, u: Partial<CustomFieldDefinition>) => void,
-    remove: (i: number) => void,
+    update: (index: number, updates: Partial<CustomFieldDefinition>) => void,
+    remove: (index: number) => void,
     isLast: boolean,
     addNext: () => void,
+    side: "term" | "def", // Added side prop
   ) => {
+    const isFocused = activeFieldId === `${side}-${index}`;
+
+    // Determine dynamic text for tooltip
+    const thisSideName =
+      side === "term" ? termLabel || "Terms" : definitionLabel || "Definition";
+    const otherSideName =
+      side === "term" ? definitionLabel || "Definition" : termLabel || "Terms";
+    let actionText = "";
+    if (field.type === "text")
+      actionText = "enter text corresponding to this field";
+    else if (field.type === "number")
+      actionText = "enter a number corresponding to this field";
+    else if (field.type === "ab")
+      actionText = "choose between two options you define";
+
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on click outside
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (
+          dropdownRef.current &&
+          !dropdownRef.current.contains(event.target as Node)
+        ) {
+          setIsDropdownOpen(false);
+        }
+      };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
     return (
       <div
         key={index}
-        className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3"
+        className="relative group/field-row"
+        onFocus={() => setActiveFieldId(`${side}-${index}`)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setActiveFieldId(null);
+          }
+        }}
       >
-        <div className="flex items-center gap-2">
-          <input
-            value={field.name}
-            onChange={(e) => update(index, { name: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addNext();
-              }
-            }}
-            className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
-            placeholder="Field Name"
-            autoFocus={!field.name}
-          />
-          <select
-            value={field.type}
-            onChange={(e) =>
-              update(index, { type: e.target.value as CustomFieldType })
+        <div className="absolute left-1/2 -translate-x-1/2 -top-2 w-0 h-0">
+          <HelperTooltip
+            show={isFocused}
+            position="top"
+            text={
+              <span>
+                In study mode, when you are presented with{" "}
+                <b>{otherSideName}</b> responding with <b>{thisSideName}</b>,
+                we’ll ask you to also <b>{actionText}</b>.
+              </span>
             }
-            className="bg-panel border border-outline rounded-lg px-2 py-2 text-sm focus:border-accent outline-none transition-colors max-w-[100px]"
-          >
-            <option value="text">Text</option>
-            <option value="number">Num</option>
-            <option value="ab">A/B</option>
-          </select>
-          <button
-            onClick={() => remove(index)}
-            className="p-2 text-muted hover:text-red transition-colors"
-          >
-            <X size={16} />
-          </button>
+          />
         </div>
-        {field.type === "ab" && (
-          <div className="flex gap-2">
+
+        <div className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3">
+          <div className="flex items-center gap-2">
             <input
-              value={field.options?.a || ""}
-              onChange={(e) =>
-                update(index, {
-                  options: { a: e.target.value, b: field.options?.b || "" },
-                })
-              }
-              placeholder="Option A"
-              className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+              value={field.name}
+              onChange={(e) => update(index, { name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addNext();
+                }
+              }}
+              className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
+              placeholder="Field Name"
+              autoFocus={!field.name}
+              spellCheck={false}
+              data-ms-editor="true"
             />
-            <input
-              value={field.options?.b || ""}
-              onChange={(e) =>
-                update(index, {
-                  options: { a: field.options?.a || "", b: e.target.value },
-                })
-              }
-              placeholder="Option B"
-              className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
-            />
+
+            {/* Custom Dropdown */}
+            <div className="relative w-32 flex-shrink-0" ref={dropdownRef}>
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
+              >
+                <span className="capitalize truncate">
+                  {field.type === "ab" ? "A/B" : field.type}
+                </span>
+                <Settings2 size={12} className="opacity-50 flex-shrink-0" />
+              </button>
+
+              {isDropdownOpen && (
+                <div className="absolute top-full right-0 mt-1 w-full bg-panel border border-outline rounded-xl shadow-xl z-[60] overflow-hidden animate-in zoom-in-95">
+                  {[
+                    { val: "text", label: "Text" },
+                    { val: "number", label: "Number" },
+                    { val: "ab", label: "A/B" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.val}
+                      onClick={() => {
+                        update(index, { type: opt.val as CustomFieldType });
+                        setIsDropdownOpen(false);
+                      }}
+                      className={clsx(
+                        "w-full text-left px-4 py-2 text-sm hover:bg-panel-2 transition-colors",
+                        field.type === opt.val
+                          ? "text-accent font-bold bg-accent/5"
+                          : "text-text",
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => remove(index)}
+              className="p-2 text-muted hover:text-red transition-colors"
+            >
+              <X size={16} />
+            </button>
           </div>
-        )}
+          {field.type === "ab" && (
+            <div className="flex gap-2">
+              <input
+                value={field.options?.a || ""}
+                onChange={(e) =>
+                  update(index, {
+                    options: { a: e.target.value, b: field.options?.b || "" },
+                  })
+                }
+                placeholder="Option A"
+                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+              />
+              <input
+                value={field.options?.b || ""}
+                onChange={(e) =>
+                  update(index, {
+                    options: { a: field.options?.a || "", b: e.target.value },
+                  })
+                }
+                placeholder="Option B"
+                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+                onFocus={() => setActiveFieldId(`${side}-${index}`)} // Ensure focus triggers specific row
+              />
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -852,10 +980,11 @@ const SetConfigurationModal: React.FC<{
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h3 className="text-2xl font-bold text-text mb-2">Set Configuration</h3>
-        <p className="text-muted mb-8 text-sm">
-          Customize the structure of your flashcards. You can rename the sides
-          and add custom fields with different types (Text, Number, True/False,
-          A/B).
+        <p className="text-muted mb-8 text-sm leading-relaxed max-w-2xl">
+          You can tailor your flashcards set by renaming the main fields and
+          adding up to 4 custom fields per side. These custom fields allow you
+          to include additional information or specific answer types (text,
+          number, A/B choice) for a richer study experience.
         </p>
 
         <div className="grid md:grid-cols-2 gap-8">
@@ -865,10 +994,22 @@ const SetConfigurationModal: React.FC<{
               Terms Side
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
+              <HelperTooltip
+                show={activeLabelSide === "term"}
+                text={
+                  <span>
+                    When you’re studying <b>Terms</b>, we’ll call the{" "}
+                    <b>Terms</b> side this word. You can put a language here, a
+                    special title, or anything else.
+                  </span>
+                }
+              />
               <input
                 value={termLabel}
                 onChange={(e) => setTermLabel(e.target.value)}
+                onFocus={() => setActiveLabelSide("term")}
+                onBlur={() => setActiveLabelSide(null)}
                 className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
                 placeholder="Term"
               />
@@ -890,6 +1031,7 @@ const SetConfigurationModal: React.FC<{
                     deleteTermField,
                     i === termSideFields.length - 1,
                     addTermField,
+                    "term",
                   ),
                 )}
                 {termSideFields.length < 4 && (
@@ -910,10 +1052,22 @@ const SetConfigurationModal: React.FC<{
               Definitions Side
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
+              <HelperTooltip
+                show={activeLabelSide === "def"}
+                text={
+                  <span>
+                    When you’re studying <b>Definitions</b>, we’ll call the{" "}
+                    <b>Definitions</b> side this word. You can put a language
+                    here, a special title, or anything else.
+                  </span>
+                }
+              />
               <input
                 value={definitionLabel}
                 onChange={(e) => setDefinitionLabel(e.target.value)}
+                onFocus={() => setActiveLabelSide("def")}
+                onBlur={() => setActiveLabelSide(null)}
                 className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
                 placeholder="Definition"
               />
@@ -935,6 +1089,7 @@ const SetConfigurationModal: React.FC<{
                     deleteDefField,
                     i === defSideFields.length - 1,
                     addDefField,
+                    "def",
                   ),
                 )}
                 {defSideFields.length < 4 && (
@@ -1456,7 +1611,7 @@ const BuilderRowItem: React.FC<{
                     <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1 flex justify-between items-center truncate">
                       <span title={field.name}>{field.name}</span>
                       {isInvalidNumber && (
-                        <span className="text-white bg-red/90 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide animate-pulse shadow-sm">
+                        <span className="text-white bg-red px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide animate-pulse shadow-sm shadow-red/20">
                           #
                         </span>
                       )}
@@ -2766,6 +2921,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         definitionLabel={definitionLabel}
         setDefinitionLabel={setDefinitionLabel}
         termSideFields={termSideFields}
+        settings={settings} // Pass settings
         setTermSideFields={setTermSideFields}
         defSideFields={defSideFields}
         setDefSideFields={setDefSideFields}

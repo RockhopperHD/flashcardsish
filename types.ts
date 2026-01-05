@@ -55,6 +55,7 @@ export interface Settings {
   starredOnly: boolean;
   mode: 'standard' | 'multiple_choice';
   answerWithDefinition: boolean;
+  hideTooltips: boolean;
 }
 
 export enum GameState {
