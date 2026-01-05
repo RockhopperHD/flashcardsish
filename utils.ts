@@ -375,18 +375,20 @@ export const renderInline = (text: string, keyPrefix: string, isHighlighted: boo
   });
 };
 
+// Helper to extract category (Tag) from content
+export const extractCategory = (content: string): { category: string | null; body: string } => {
+  const catMatch = content.match(/^\((.*?)\)\s*(.*)/s);
+  if (catMatch) {
+    return { category: catMatch[1], body: catMatch[2] };
+  }
+  return { category: null, body: content };
+};
+
 export const renderMarkdown = (content: string): React.ReactNode => {
   if (!content) return React.createElement('div', { className: "text-muted italic opacity-50" }, "No content");
 
-  // 1. Extract Category: (Item) Definition
-  let category: string | null = null;
-  let body = content;
-
-  const catMatch = content.match(/^\((.*?)\)\s*(.*)/s);
-  if (catMatch) {
-    category = catMatch[1];
-    body = catMatch[2];
-  }
+  // 1. Extract Category
+  const { category, body } = extractCategory(content);
 
   // 2. Split by <p> for block separation (Explicit paragraph break)
   const blocks = body.split(/<p>/i);
@@ -435,7 +437,7 @@ export const renderMarkdown = (content: string): React.ReactNode => {
   const children: React.ReactNode[] = [];
   if (category) {
     children.push(
-      React.createElement('div', { key: "cat", className: "text-xs font-bold uppercase tracking-widest text-accent mb-2 opacity-80" }, category)
+      React.createElement('div', { key: "cat", className: "inline-block bg-accent/10 border border-accent/20 text-accent px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide mb-2" }, category)
     );
   }
   children.push(React.createElement('div', { key: "body" }, renderedBlocks));

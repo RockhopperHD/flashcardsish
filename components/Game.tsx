@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Card, CardSet, FeedbackState, Settings } from '../types';
+import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile } from '../utils';
 import { ArrowLeft, Pencil, X, Download } from 'lucide-react';
 import clsx from 'clsx';
@@ -567,29 +567,66 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             <div className="mb-6"></div>
 
             {/* Content Area - WIDE + SIDE-BY-SIDE MODE */}
-            <div className="min-h-[200px] mb-10 flex items-center">
-               {currentCard.image ? (
-                  <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                     <div className="flex justify-center md:justify-center">
-                        <img
-                           src={currentCard.image}
-                           alt="Card visual"
-                           className="rounded-xl max-h-[400px] w-auto object-contain border border-outline shadow-sm max-w-full"
-                        />
+            <div className="min-h-[200px] mb-10 flex flex-col justify-center">
+               {(() => {
+                  const isAnsweringWithDef = settings.answerWithDefinition;
+                  // If answering with Def, Question is Term.
+                  const questionSideFields = isAnsweringWithDef ? (set.termSideFields || []) : (set.defSideFields || []);
+                  const questionContent = isAnsweringWithDef
+                     ? (currentCard.term[0] || '')
+                     : (currentCard.content || '');
+
+                  // Dynamic Text Sizing
+                  const len = questionContent.length;
+                  let textSizeClass = "text-4xl";
+                  if (len > 50) textSizeClass = "text-3xl";
+                  if (len > 100) textSizeClass = "text-2xl";
+                  if (len > 200) textSizeClass = "text-xl";
+
+                  return (
+                     <div className="w-full gap-8 items-center">
+                        <div className={clsx("flex flex-col gap-4", currentCard.image ? "md:flex-row md:items-center" : "")}>
+
+                           {currentCard.image && (
+                              <div className="flex-shrink-0 mx-auto md:mx-0">
+                                 <img
+                                    src={currentCard.image}
+                                    alt="Card visual"
+                                    className="rounded-xl max-h-[300px] w-auto object-contain border border-outline shadow-sm bg-bg/50"
+                                 />
+                              </div>
+                           )}
+
+                           <div className="flex-1 min-w-0">
+                              {/* Metadata/Context Fields (Question Side) */}
+                              {questionSideFields.length > 0 && (
+                                 <div className="flex flex-wrap gap-3 mb-4 opacity-80">
+                                    {questionSideFields.map(field => {
+                                       // Normalize field to object if string (legacy)
+                                       const fieldName = typeof field === 'string' ? field : field.name;
+                                       const val = currentCard.customFields?.find(f => f.name === fieldName)?.value;
+                                       if (!val) return null;
+                                       return (
+                                          <div key={fieldName} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm font-medium text-muted">
+                                             <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-2">{fieldName}:</span>
+                                             <span className="text-text">{val}</span>
+                                          </div>
+                                       );
+                                    })}
+                                 </div>
+                              )}
+
+                              {/* Main Question Text */}
+                              <div className={clsx("font-medium leading-tight text-text font-sans text-left transition-all", textSizeClass)}>
+                                 {isAnsweringWithDef
+                                    ? <div>{currentCard.term.map((t, i) => <div key={i}>{renderInline(t, `term-${i}`)}</div>)}</div>
+                                    : renderMarkdown(currentCard.content)}
+                              </div>
+                           </div>
+                        </div>
                      </div>
-                     <div className="text-3xl font-medium leading-normal text-text font-sans text-left">
-                        {settings.answerWithDefinition
-                           ? <div>{currentCard.term.map((t, i) => <div key={i}>{renderInline(t, `term-${i}`)}</div>)}</div>
-                           : renderMarkdown(currentCard.content)}
-                     </div>
-                  </div>
-               ) : (
-                  <div className="w-full text-3xl font-medium leading-normal text-text font-sans text-left">
-                     {settings.answerWithDefinition
-                        ? <div>{currentCard.term.map((t, i) => <div key={i}>{renderInline(t, `term-${i}`)}</div>)}</div>
-                        : renderMarkdown(currentCard.content)}
-                  </div>
-               )}
+                  );
+               })()}
             </div>
 
             {/* Interactive Area */}
@@ -640,7 +677,24 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                ) : (
                   <div className={clsx("grid grid-cols-1 md:grid-cols-12 gap-4 items-start", isShaking && "animate-shake")}>
                      {(() => {
-                        const activeCustomFields = set.customFieldNames?.filter(name => currentCard.customFields?.some(f => f.name === name)) || [];
+                        const isAnsweringWithDef = settings.answerWithDefinition;
+                        const inputLabel = isAnsweringWithDef ? (set.definitionLabel || 'Definition') : (set.termLabel || 'Term');
+
+                        // Determine input fields based on side
+                        let relevantFields: CustomFieldDefinition[] = [];
+
+                        const normalize = (f: any[] | undefined): CustomFieldDefinition[] => {
+                           if (!f) return [];
+                           return f.map(item => typeof item === 'string' ? { name: item, type: 'text' } : item);
+                        };
+
+                        if (set.version && set.version >= 2) {
+                           relevantFields = isAnsweringWithDef ? normalize(set.defSideFields) : normalize(set.termSideFields);
+                        } else {
+                           relevantFields = normalize(set.customFieldNames);
+                        }
+
+                        const activeCustomFields = relevantFields.filter(fDef => currentCard.customFields?.some(f => f.name === fDef.name));
                         const hasYear = !!currentCard.year;
                         const totalFields = 1 + (hasYear ? 1 : 0) + activeCustomFields.length;
 
@@ -674,17 +728,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               yearClass = "md:col-span-3";
                               customClasses = ["md:col-span-6", "md:col-span-6"];
                            } else {
-                              // Term + 3 Customs
                               termClass = "md:col-span-9";
                               customClasses = ["md:col-span-3", "md:col-span-6", "md:col-span-6"];
                            }
-                        } else if (totalFields === 5) {
-                           // Term + Year + 3 Customs
-                           // Row 1: Term (7) | Year (2) | Custom 1 (3)
-                           // Row 2: Custom 2 (6) | Custom 3 (6)
+                        } else if (totalFields >= 5) {
                            termClass = "md:col-span-7";
                            yearClass = "md:col-span-2";
-                           customClasses = ["md:col-span-3", "md:col-span-6", "md:col-span-6"];
+                           customClasses = activeCustomFields.map((_, i) => i === 0 ? "md:col-span-3" : "md:col-span-6");
                         }
 
                         const renderTerm = () => (
@@ -704,8 +754,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onKeyDown={handleInputKeyDown}
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
                                  placeholder={feedback.type === 'retype_needed'
-                                    ? (settings.answerWithDefinition ? "Retype definition..." : "Retype term...")
-                                    : (settings.answerWithDefinition ? "Type the definition..." : "Type the term...")}
+                                    ? `Retype ${inputLabel.toLowerCase()}...`
+                                    : `Type the ${inputLabel.toLowerCase()}...`}
                                  className={clsx(
                                     "w-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
                                     feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
@@ -743,9 +793,68 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
                         const renderCustoms = () => (
                            <>
-                              {activeCustomFields.map((fieldName, i) => {
+                              {activeCustomFields.map((fieldDef, i) => {
+                                 // fieldDef is CustomFieldDefinition
+                                 const fieldName = fieldDef.name;
                                  const field = currentCard.customFields?.find(f => f.name === fieldName);
                                  const isCorrect = feedback.type === 'retype_needed' && feedback.results?.customResults?.[fieldName];
+                                 const val = inputCustom[fieldName] || '';
+
+                                 // Number Tooltip State (using local vars for render calc, or we rely on transient tooltip on hover/focus/input)
+                                 // Since we are inside a map and don't have per-field state hooks easily without subcomponent,
+                                 // we will show the tooltip if the value is non-numeric AND not empty.
+                                 const isInvalidNumber = fieldDef.type === 'number' && val !== '' && /[^0-9.]/.test(val);
+
+
+                                 if (fieldDef.type === 'ab') {
+                                    const isB = val === fieldDef.options?.b;
+                                    // Default to A if empty? Or waiting state? Let's assume empty is unselected technically, but for switch it usually defaults.
+                                    // Let's default to A if empty for UI, but empty string in state until clicked?
+                                    // If we want it to be a valid switch, user must click.
+                                    // Or we can just render two buttons side-by-side.
+                                    // User requested "horizontal switch".
+
+                                    return (
+                                       <div key={fieldName} className={clsx("relative flex flex-col items-center justify-center p-4 bg-panel-2 border rounded-xl", customClasses[i],
+                                          (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red" : "border-outline",
+                                          feedback.type === 'retype_needed' && isCorrect && "border-green bg-green/5"
+                                       )}>
+                                          <div className="text-xs font-bold text-muted uppercase mb-2">{fieldName}</div>
+                                          {feedback.type === 'retype_needed' && !isCorrect && (
+                                             <div className="absolute -top-3 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in bg-bg px-2 border border-outline rounded-full mx-auto w-max max-w-[90%] truncate shadow-sm z-10">
+                                                {field?.value}
+                                             </div>
+                                          )}
+                                          <div className="flex w-full max-w-[200px] h-10 bg-bg border border-outline rounded-lg relative p-1">
+                                             <div className={clsx(
+                                                "absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent rounded-md transition-all duration-200",
+                                                isB ? "left-[calc(50%)]" : "left-1",
+                                                !val && "opacity-0" // Hide slider if no value selected yet?
+                                             )} />
+                                             <button
+                                                onClick={() => {
+                                                   const isDisabled = !isInteractive || (feedback.type === 'retype_needed' && isCorrect);
+                                                   if (isDisabled) return;
+                                                   setInputCustom(prev => ({ ...prev, [fieldName]: fieldDef.options?.a || 'A' }));
+                                                }}
+                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === fieldDef.options?.a) ? "text-bg" : "text-muted")}
+                                             >
+                                                {fieldDef.options?.a || 'A'}
+                                             </button>
+                                             <button
+                                                onClick={() => {
+                                                   const isDisabled = !isInteractive || (feedback.type === 'retype_needed' && isCorrect);
+                                                   if (isDisabled) return;
+                                                   setInputCustom(prev => ({ ...prev, [fieldName]: fieldDef.options?.b || 'B' }));
+                                                }}
+                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === fieldDef.options?.b) ? "text-bg" : "text-muted")}
+                                             >
+                                                {fieldDef.options?.b || 'B'}
+                                             </button>
+                                          </div>
+                                       </div>
+                                    );
+                                 }
 
                                  return (
                                     <div key={fieldName} className={clsx("relative", customClasses[i])}>
@@ -754,16 +863,21 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                              {field?.value}
                                           </div>
                                        )}
+                                       {isInvalidNumber && (
+                                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-red text-white text-xs font-bold rounded shadow-lg whitespace-nowrap z-20 animate-in fade-in slide-in-from-bottom-1 after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-red">
+                                             Numbers Only
+                                          </div>
+                                       )}
                                        <input
                                           type="text"
-                                          value={inputCustom[fieldName] || ''}
+                                          value={val}
                                           onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
                                           onKeyDown={handleInputKeyDown}
                                           placeholder={fieldName}
                                           disabled={!isInteractive || (feedback.type === 'retype_needed' && isCorrect)}
                                           className={clsx(
-                                             "w-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
-                                             (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red text-red" : "border-outline text-text",
+                                             "w-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text transition-colors",
+                                             (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect) || isInvalidNumber) ? "border-red text-red" : "border-outline text-text",
                                              feedback.type === 'retype_needed' && isCorrect && "border-green text-green bg-green/5"
                                           )}
                                           autoComplete="off"

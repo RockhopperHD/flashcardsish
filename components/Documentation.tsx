@@ -744,6 +744,15 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                     <td className="px-4 py-3 font-mono text-muted">__underline__</td>
                                     <td className="px-4 py-3 text-right"><u>underline</u></td>
                                 </tr>
+                                <tr>
+                                    <td className="px-4 py-3 font-mono text-muted">(Tag) Text</td>
+                                    <td className="px-4 py-3 text-right">
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className="inline-block bg-accent/10 text-accent px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide">Tag</span>
+                                            <span>Text</span>
+                                        </div>
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -786,7 +795,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     </div>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Raw Text Mode</h3>
-                    <p className="text-muted mb-4">For bulk entry, use Raw Text mode with this format:</p>
+                    <p className="text-muted mb-4">If you'd prefer to write your cards out on a document elsewhere, you can use this format:</p>
                     <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted">
                         <div>Term / Definition /// Year</div>
                         <div className="text-accent">&&&</div>
@@ -965,13 +974,13 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     </p>
 
                     <p className="text-muted">
-                        [Placeholder: Add your account management content here]
+                        To keep things safe and simple, Flashcardsish uses Google sign-in. It's totally optional, but is great if you're studying between devices.
                     </p>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Signing In</h3>
                     <p className="text-muted mb-4">
                         Open <strong className="text-accent">Settings</strong> (gear icon) and click <strong className="text-accent">Login with Google</strong>.
-                        Your library will sync within seconds.
+                        Your library will sync really fast (it's not a lot of data).
                     </p>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">What Gets Synced?</h3>

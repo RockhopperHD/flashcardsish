@@ -40,8 +40,8 @@ const SettingsModal: React.FC<{
    };
 
    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={onClose}>
-         <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
+         <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
                <h2 className="text-xl font-bold text-text">Settings</h2>
                <button onClick={onClose} className="text-muted hover:text-text">

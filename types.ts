@@ -1,3 +1,10 @@
+export type CustomFieldType = 'text' | 'number' | 'ab';
+
+export interface CustomFieldDefinition {
+  name: string;
+  type: CustomFieldType;
+  options?: { a: string; b: string }; // For 'ab' type
+}
 
 export interface Card {
   id: string;
@@ -18,7 +25,14 @@ export interface CardSet {
   sourceId?: string; // Link to original library set
   name: string;
   cards: Card[];
-  customFieldNames?: string[]; // Names of custom fields
+  customFieldNames?: string[]; // Names of custom fields (Legacy V1)
+
+  // V2 Fields
+  version?: number;
+  termLabel?: string; // default "Term"
+  definitionLabel?: string; // default "Definition"
+  termSideFields?: CustomFieldDefinition[]; // Custom fields shown on term side
+  defSideFields?: CustomFieldDefinition[]; // Custom fields shown on definition side
   lastPlayed: number; // Timestamp
   elapsedTime: number; // Time spent in ms
   topStreak: number;

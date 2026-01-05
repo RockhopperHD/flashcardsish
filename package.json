@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
     "@supabase/supabase-js": "^2.89.0",
     "clsx": "^2.1.1",
     "idb-keyval": "^6.2.2",
