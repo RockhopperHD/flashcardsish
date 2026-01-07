@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder } from './types';
 import { fmtTime, generateId } from './utils';
@@ -9,7 +9,8 @@ import { Confetti } from './components/Confetti';
 import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download } from 'lucide-react';
+import { FlashcardsMode } from './components/FlashcardsMode';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File } from 'lucide-react';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData } from './storage';
 import { supabase } from './src/supabaseClient';
@@ -20,7 +21,7 @@ const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const STATS_KEY = 'flashcard-stats-v1';
 
-// Settings Modal Component
+// Settings Modal Component - Two Tab Sidebar Layout
 const SettingsModal: React.FC<{
    isOpen: boolean;
    onClose: () => void;
@@ -33,183 +34,502 @@ const SettingsModal: React.FC<{
    onExportData: () => void;
 }> = ({ isOpen, onClose, settings, onUpdate, user, onLogin, onLogout, onDeleteData, onExportData }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+   const [activeTab, setActiveTab] = useState<'set' | 'global'>('set');
+   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
    if (!isOpen) return null;
 
    const toggle = (key: keyof Settings) => {
       onUpdate({ ...settings, [key]: !settings[key] });
    };
 
+   // Tooltip definitions
+   const tooltips: Record<string, string> = {
+      forgiveSpellingErrors: "Allow minor typos and capitalization errors. Configure specific rules below.",
+      ignoreDiacritics: "Treat accented characters as their base letters (e.g., 'é' matches 'e').",
+      ignoreCapitalization: "Mark answers as correct regardless of uppercase or lowercase usage.",
+      forgiveThe: "Ignore the word 'the' at the beginning of terms (e.g., 'The Apple' matches 'Apple').",
+      wiggleRoom: "How many letters can be wrong while still counting the answer as correct (1-6 letters).",
+      retypeOnMistake: "When you get an answer wrong, you'll need to retype the correct answer before moving on.",
+      starredOnly: "Only study cards you've starred. Great for focusing on tricky terms.",
+      answerWithDefinition: "Flip the cards—you'll see the term and type the definition instead.",
+      learnMode: "Choose how you want to answer: type your answer (Standard) or pick from options (Multiple Choice).",
+      hideTooltips: "Turns on or off Helper Tooltips, like this one. This tooltip appears regardless of if this setting is on or not.",
+      darkMode: "Toggle between dark and light themes for the app.",
+      cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
+      exportData: "Download all your flashcard sets, folders, and settings as a JSON file for backup or transfer.",
+      dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone."
+   };
+
+   const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
+      const [localVal, setLocalVal] = useState(value.toString());
+      const [error, setError] = useState<string | null>(null);
+      const [rect, setRect] = useState<DOMRect | null>(null);
+      const inputRef = useRef<HTMLInputElement>(null);
+
+      useEffect(() => {
+         setLocalVal(value.toString());
+      }, [value]);
+
+      const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+         const val = e.target.value;
+         setLocalVal(val);
+
+         // Allow empty string while typing
+         if (val === '') {
+            setError("Cannot be empty");
+            return;
+         }
+
+         const num = parseInt(val);
+         if (isNaN(num) || num < 1 || num > 6) {
+            setError("Must be between 1 and 6");
+            // Update rect immediately to ensure tooltip shows in right place
+            if (inputRef.current) setRect(inputRef.current.getBoundingClientRect());
+         } else {
+            setError(null);
+            onChange(num);
+         }
+      };
+
+      const handleMouseEnter = (e: React.MouseEvent) => {
+         setRect(e.currentTarget.getBoundingClientRect());
+      };
+
+      return (
+         <div className="relative" onMouseEnter={handleMouseEnter}>
+            <input
+               ref={inputRef}
+               type="text"
+               value={localVal}
+               onChange={handleChange}
+               className={clsx(
+                  "w-12 py-1 px-2 text-center bg-panel border rounded-lg text-sm font-bold outline-none ring-offset-bg focus:ring-2 transition-all",
+                  error ? "border-red text-red focus:ring-red/50" : "border-outline text-text focus:ring-accent"
+               )}
+            />
+            {error && rect && (
+               <div
+                  className="fixed z-[100] px-3 py-2 rounded-lg text-xs font-bold shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-max max-w-[200px] text-center bg-red text-white border border-red-700 shadow-red/20"
+                  style={{
+                     top: rect.top - 10,
+                     left: rect.left + (rect.width / 2),
+                     transform: 'translate(-50%, -100%)'
+                  }}
+               >
+                  {error}
+                  <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-red border-r border-b border-red-700"></div>
+               </div>
+            )}
+         </div>
+      );
+   };
+
+   // Setting Row Component with tooltip support
+   const SettingRow: React.FC<{
+      id: string;
+      label: string;
+      settingKey: keyof Settings;
+      alwaysShowTooltip?: boolean;
+   }> = ({ id, label, settingKey, alwaysShowTooltip }) => {
+      const [hovered, setHovered] = useState(false);
+      const [rect, setRect] = useState<DOMRect | null>(null);
+      const showTooltip = alwaysShowTooltip ? hovered : (hovered && !settings.hideTooltips);
+
+      const updateRect = (e: React.MouseEvent) => {
+         setRect(e.currentTarget.getBoundingClientRect());
+      };
+
+      return (
+         <div className="relative">
+            <label
+               className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
+               onMouseEnter={(e) => { setHovered(true); updateRect(e); }}
+               onMouseLeave={() => setHovered(false)}
+            >
+               <span className="font-medium text-text">{label}</span>
+               <div
+                  onClick={(e) => { e.stopPropagation(); toggle(settingKey); }}
+                  className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings[settingKey] ? "bg-accent" : "bg-outline")}
+               >
+                  <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings[settingKey] ? "translate-x-6" : "translate-x-0")} />
+               </div>
+            </label>
+            {showTooltip && tooltips[id] && rect && (
+               <div
+                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
+                  style={{
+                     top: rect.top - 12,
+                     left: rect.left + (rect.width / 2),
+                     transform: 'translate(-50%, -100%)'
+                  }}
+               >
+                  {tooltips[id]}
+                  <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-[#422006] border-r border-b border-[#78350F]"></div>
+               </div>
+            )}
+         </div>
+      );
+   };
+
+   // Tooltip Wrapper Component for custom sections
+   const TooltipWrapper: React.FC<{
+      id: string;
+      tooltip: string;
+      hideWhenSetting?: boolean;
+      children: React.ReactNode;
+   }> = ({ id, tooltip, hideWhenSetting = true, children }) => {
+      const [hovered, setHovered] = useState(false);
+      const [rect, setRect] = useState<DOMRect | null>(null);
+      const showTooltip = hideWhenSetting ? (hovered && !settings.hideTooltips) : hovered;
+
+      const updateRect = (e: React.MouseEvent) => {
+         setRect(e.currentTarget.getBoundingClientRect());
+      };
+
+      return (
+         <div
+            className="relative"
+            onMouseEnter={(e) => { setHovered(true); updateRect(e); }}
+            onMouseLeave={() => setHovered(false)}
+         >
+            {children}
+            {showTooltip && rect && (
+               <div
+                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
+                  style={{
+                     top: rect.top - 12,
+                     left: rect.left + (rect.width / 2),
+                     transform: 'translate(-50%, -100%)'
+                  }}
+               >
+                  {tooltip}
+                  <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-[#422006] border-r border-b border-[#78350F]"></div>
+               </div>
+            )}
+         </div>
+      );
+   };
+
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
-         <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-               <h2 className="text-xl font-bold text-text">Settings</h2>
-               <button onClick={onClose} className="text-muted hover:text-text">
+         <div
+            className="bg-panel border border-outline rounded-2xl shadow-2xl animate-in zoom-in-95 w-full max-w-md md:max-w-3xl lg:max-w-4xl h-[600px] md:h-[750px] max-h-[90vh] flex flex-col"
+            onMouseDown={(e) => e.stopPropagation()}
+         >
+            {/* Header */}
+            <div className="flex justify-between items-center p-6 border-b border-outline shrink-0">
+               <h2 className="text-3xl font-extrabold text-text">Settings</h2>
+               <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
                   <X size={24} />
                </button>
             </div>
 
-            <div className="space-y-4">
-               {/* --- ACCOUNT SECTION --- */}
-               <div className="p-4 bg-panel-2 rounded-xl border border-outline/50">
-                  <span className="font-medium text-text block mb-3 flex items-center gap-2">
-                     <Cloud size={18} className="text-accent" /> Cloud Sync
-                  </span>
-                  {user ? (
-                     <div className="flex items-center justify-between">
-                        <div className="text-sm">
-                           <div className="text-muted">Logged in as</div>
-                           <div className="font-bold text-text truncate max-w-[150px]">{user.email}</div>
-                        </div>
-                        <button
-                           onClick={onLogout}
-                           className="flex items-center gap-2 px-3 py-1.5 bg-red/10 text-red rounded-lg text-sm font-bold hover:bg-red/20 transition-colors"
-                        >
-                           <LogOut size={14} /> Log Out
-                        </button>
-                     </div>
-                  ) : (
+            {/* Content with Sidebar */}
+            <div className="flex flex-1 min-h-0">
+               {/* Sidebar Navigation */}
+               <div className="w-48 shrink-0 border-r border-outline p-4 hidden md:block">
+                  <h3 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 px-2">
+                     Settings
+                  </h3>
+                  <nav className="space-y-1">
                      <button
-                        onClick={onLogin}
-                        className="w-full flex items-center justify-center gap-2 py-2 bg-text text-bg rounded-lg font-bold hover:opacity-90 transition-opacity"
+                        onClick={() => setActiveTab('set')}
+                        className={clsx(
+                           "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all text-sm",
+                           activeTab === 'set'
+                              ? "bg-accent/10 text-accent border border-accent/20"
+                              : "text-muted hover:text-text hover:bg-panel-2"
+                        )}
                      >
-                        <LogIn size={16} /> Log in with Google
+                        <LayoutGrid size={18} className={activeTab === 'set' ? "text-accent" : "text-muted"} />
+                        <span className="font-medium">Set Settings</span>
                      </button>
-                  )}
+                     <button
+                        onClick={() => setActiveTab('global')}
+                        className={clsx(
+                           "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all text-sm",
+                           activeTab === 'global'
+                              ? "bg-accent/10 text-accent border border-accent/20"
+                              : "text-muted hover:text-text hover:bg-panel-2"
+                        )}
+                     >
+                        <SettingsIcon size={18} className={activeTab === 'global' ? "text-accent" : "text-muted"} />
+                        <span className="font-medium">Global Settings</span>
+                     </button>
+                  </nav>
                </div>
 
-               <div className="h-px bg-outline/50 my-2" />
-
-               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-                  <span className="font-medium text-text">Strict Spelling</span>
-                  <div onClick={() => toggle('strictSpelling')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.strictSpelling ? "bg-accent" : "bg-outline")}>
-                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.strictSpelling ? "translate-x-6" : "translate-x-0")} />
-                  </div>
-               </label>
-
-               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-                  <span className="font-medium text-text">Retype Mistakes</span>
-                  <div onClick={() => toggle('retypeOnMistake')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.retypeOnMistake ? "bg-accent" : "bg-outline")}>
-                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.retypeOnMistake ? "translate-x-6" : "translate-x-0")} />
-                  </div>
-               </label>
-
-               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-                  <span className="font-medium text-text">Dark Mode</span>
-                  <div onClick={() => toggle('darkMode')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.darkMode ? "bg-accent" : "bg-outline")}>
-                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.darkMode ? "translate-x-6" : "translate-x-0")} />
-                  </div>
-               </label>
-
-               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-                  <span className="font-medium text-text">Hide Helper Tooltips</span>
-                  <div onClick={() => toggle('hideTooltips')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.hideTooltips ? "bg-accent" : "bg-outline")}>
-                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.hideTooltips ? "translate-x-6" : "translate-x-0")} />
-                  </div>
-               </label>
-
-               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-                  <span className="font-medium text-text">Study Starred Only</span>
-                  <div onClick={() => toggle('starredOnly')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.starredOnly ? "bg-accent" : "bg-outline")}>
-                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.starredOnly ? "translate-x-6" : "translate-x-0")} />
-                  </div>
-               </label>
-
-               <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-                  <span className="font-medium text-text">Answer with Definition</span>
-                  <div onClick={() => toggle('answerWithDefinition')} className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.answerWithDefinition ? "bg-accent" : "bg-outline")}>
-                     <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.answerWithDefinition ? "translate-x-6" : "translate-x-0")} />
-                  </div>
-               </label>
-
-               <div className="p-3 bg-panel-2 rounded-xl border border-transparent">
-                  <span className="font-medium text-text block mb-3">Game Mode</span>
+               {/* Mobile Tab Selector */}
+               <div className="md:hidden p-4 border-b border-outline w-full shrink-0">
                   <div className="grid grid-cols-2 gap-2">
                      <button
-                        onClick={() => onUpdate({ ...settings, mode: 'standard' })}
+                        onClick={() => setActiveTab('set')}
                         className={clsx(
-                           "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
-                           settings.mode === 'standard'
-                              ? "bg-accent text-bg border-accent"
-                              : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                           "py-2 px-4 rounded-lg text-sm font-bold transition-all",
+                           activeTab === 'set'
+                              ? "bg-accent text-bg"
+                              : "bg-panel-2 text-muted hover:text-text"
                         )}
                      >
-                        <Type size={16} /> Standard
+                        Set Settings
                      </button>
                      <button
-                        onClick={() => onUpdate({ ...settings, mode: 'multiple_choice' })}
+                        onClick={() => setActiveTab('global')}
                         className={clsx(
-                           "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
-                           settings.mode === 'multiple_choice'
-                              ? "bg-accent text-bg border-accent"
-                              : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                           "py-2 px-4 rounded-lg text-sm font-bold transition-all",
+                           activeTab === 'global'
+                              ? "bg-accent text-bg"
+                              : "bg-panel-2 text-muted hover:text-text"
                         )}
                      >
-                        <LayoutGrid size={16} /> Multiple Choice
+                        Global Settings
                      </button>
                   </div>
                </div>
 
-               <div className="h-px bg-outline/50 my-2" />
+               {/* Main Content Area */}
+               <div className="flex-1 p-6 overflow-y-auto overflow-x-visible">
+                  {activeTab === 'set' && (
+                     <div className="space-y-4">
+                        {/* Forgive Spelling Errors & Sub-options */}
+                        <div className="bg-panel-2/50 rounded-xl overflow-hidden border border-transparent transition-all hover:border-outline/50">
+                           <SettingRow
+                              id="forgiveSpellingErrors"
+                              label="Forgive Minor Spelling Errors"
+                              settingKey="forgiveSpellingErrors"
+                           />
 
-               {/* --- YOUR DATA SECTION --- */}
-               <div className="p-4 bg-blue/5 rounded-xl border border-blue/20">
-                  <span className="font-medium text-blue block mb-3 flex items-center gap-2">
-                     <Download size={18} /> Your Data
-                  </span>
-                  <button
-                     onClick={onExportData}
-                     className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/10 transition-colors text-sm"
-                  >
-                     Export All My Data (JSON)
-                  </button>
-                  <p className="text-xs text-muted mt-2">
-                     Download a copy of all your flashcard sets, folders, and settings.
-                  </p>
-               </div>
+                           {settings.forgiveSpellingErrors && (
+                              <div className="space-y-1 pb-3 pt-1 px-3">
+                                 {/* Sub-options */}
+                                 <div className="pl-6 border-l-2 border-outline/30 space-y-3 ml-2">
+                                    {/* Ignore Diacritics */}
+                                    <div className="flex items-center justify-between">
+                                       <TooltipWrapper id="ignoreDiacritics" tooltip={tooltips.ignoreDiacritics}>
+                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Ignore diacritics (é, ñ)</label>
+                                       </TooltipWrapper>
+                                       <div
+                                          onClick={() => toggle('ignoreDiacritics')}
+                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer shrink-0", settings.ignoreDiacritics ? "bg-accent" : "bg-outline")}
+                                       >
+                                          <div className={clsx("bg-bg w-3 h-3 rounded-full shadow-sm transition-transform", settings.ignoreDiacritics ? "translate-x-4" : "translate-x-0")} />
+                                       </div>
+                                    </div>
 
-               <div className="h-px bg-outline/50 my-2" />
+                                    {/* Ignore Capitalization */}
+                                    <div className="flex items-center justify-between">
+                                       <TooltipWrapper id="ignoreCapitalization" tooltip={tooltips.ignoreCapitalization}>
+                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Ignore capitalization</label>
+                                       </TooltipWrapper>
+                                       <div
+                                          onClick={() => toggle('ignoreCapitalization')}
+                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer shrink-0", settings.ignoreCapitalization ? "bg-accent" : "bg-outline")}
+                                       >
+                                          <div className={clsx("bg-bg w-3 h-3 rounded-full shadow-sm transition-transform", settings.ignoreCapitalization ? "translate-x-4" : "translate-x-0")} />
+                                       </div>
+                                    </div>
 
-               {/* --- DANGER ZONE --- */}
-               <div className="p-4 bg-red/5 rounded-xl border border-red/20">
-                  <span className="font-medium text-red block mb-3 flex items-center gap-2">
-                     <Trash2 size={18} /> Danger Zone
-                  </span>
-                  {!showDeleteConfirm ? (
-                     <button
-                        onClick={() => setShowDeleteConfirm(true)}
-                        className="w-full flex items-center justify-center gap-2 py-2 text-red border border-red/30 rounded-lg font-bold hover:bg-red/10 transition-colors text-sm"
-                     >
-                        Delete All My Data
-                     </button>
-                  ) : (
-                     <div className="space-y-3">
-                        <p className="text-sm text-muted">
-                           This will permanently delete all your flashcard sets, folders, and settings from both this device and the cloud. This action cannot be undone.
-                        </p>
-                        <div className="flex gap-2">
-                           <button
-                              onClick={() => setShowDeleteConfirm(false)}
-                              className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
-                           >
-                              Cancel
-                           </button>
-                           <button
-                              onClick={() => {
-                                 onDeleteData();
-                                 setShowDeleteConfirm(false);
-                              }}
-                              className="flex-1 py-2 bg-red text-white rounded-lg font-bold hover:bg-red/90 transition-colors text-sm"
-                           >
-                              Yes, Delete Everything
-                           </button>
+                                    {/* Forgive "the" */}
+                                    <div className="flex items-center justify-between">
+                                       <TooltipWrapper id="forgiveThe" tooltip={tooltips.forgiveThe}>
+                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Forgive "the"</label>
+                                       </TooltipWrapper>
+                                       <div
+                                          onClick={() => toggle('forgiveThe')}
+                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer shrink-0", settings.forgiveThe ? "bg-accent" : "bg-outline")}
+                                       >
+                                          <div className={clsx("bg-bg w-3 h-3 rounded-full shadow-sm transition-transform", settings.forgiveThe ? "translate-x-4" : "translate-x-0")} />
+                                       </div>
+                                    </div>
+
+                                    {/* Wiggle Room */}
+                                    <div className="flex items-center justify-between">
+                                       <TooltipWrapper id="wiggleRoom" tooltip={tooltips.wiggleRoom}>
+                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Wiggle room (letters)</label>
+                                       </TooltipWrapper>
+                                       <WiggleInput
+                                          value={settings.wiggleRoom}
+                                          onChange={(val) => onUpdate({ ...settings, wiggleRoom: val })}
+                                       />
+                                    </div>
+                                 </div>
+                              </div>
+                           )}
                         </div>
+
+                        <SettingRow id="retypeOnMistake" label="Retype Mistakes" settingKey="retypeOnMistake" />
+                        <SettingRow id="starredOnly" label="Study Starred Only" settingKey="starredOnly" />
+
+                        {/* Answer With Toggle */}
+                        <TooltipWrapper id="answerWithDefinition" tooltip={tooltips.answerWithDefinition}>
+                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                              <span className="font-medium text-text block mb-3">Answer With</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: false })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       !settings.answerWithDefinition
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <File size={16} /> Term
+                                 </button>
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: true })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       settings.answerWithDefinition
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <FileText size={16} /> Definition
+                                 </button>
+                              </div>
+                           </div>
+                        </TooltipWrapper>
+
+                        {/* Learn Game Mode */}
+                        <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode}>
+                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                              <span className="font-medium text-text block mb-3">Learn Game Mode</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, mode: 'standard' })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       settings.mode === 'standard'
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <Type size={16} /> Standard
+                                 </button>
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, mode: 'multiple_choice' })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       settings.mode === 'multiple_choice'
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <LayoutGrid size={16} /> Multiple Choice
+                                 </button>
+                              </div>
+                           </div>
+                        </TooltipWrapper>
+                     </div>
+                  )}
+
+                  {activeTab === 'global' && (
+                     <div className="space-y-4">
+                        {/* Cloud Sync Box */}
+                        <TooltipWrapper id="cloudSync" tooltip={tooltips.cloudSync}>
+                           <div className="p-6 bg-panel-2 rounded-2xl border border-outline/50 hover:border-accent transition-all relative overflow-hidden">
+                              <span className="font-medium text-text block mb-4 flex items-center gap-2">
+                                 <Cloud size={18} className="text-accent" /> Cloud Sync
+                              </span>
+                              {user ? (
+                                 <div className="flex items-center gap-6">
+                                    <img
+                                       src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=128`}
+                                       alt="Profile"
+                                       className="w-24 h-24 rounded-full border-4 border-bg shadow-lg object-cover bg-panel"
+                                    />
+                                    <div className="flex flex-col items-start min-w-0">
+                                       <span className="text-sm text-muted font-medium mb-0.5">You're signed in as</span>
+                                       <div className="text-2xl font-bold text-text truncate w-full max-w-[200px] md:max-w-[300px] mb-3" title={user.email}>
+                                          {user.user_metadata?.full_name || user.email?.split('@')[0]}
+                                       </div>
+                                       <button
+                                          onClick={onLogout}
+                                          className="px-6 py-2 border-2 border-outline rounded-xl text-sm font-bold hover:bg-red/5 hover:text-red hover:border-red/30 transition-all shadow-sm flex items-center gap-2"
+                                       >
+                                          Sign Out
+                                       </button>
+                                    </div>
+                                 </div>
+                              ) : (
+                                 <button
+                                    onClick={onLogin}
+                                    className="w-full flex items-center justify-center gap-2 py-3 bg-text text-bg rounded-xl font-bold hover:opacity-90 transition-opacity shadow-lg"
+                                 >
+                                    <LogIn size={18} /> Log in with Google
+                                 </button>
+                              )}
+                           </div>
+                        </TooltipWrapper>
+
+                        {/* Hide Helper Tooltips - Always shows its own tooltip */}
+                        <SettingRow id="hideTooltips" label="Hide Helper Tooltips" settingKey="hideTooltips" alwaysShowTooltip />
+
+                        {/* Dark Mode */}
+                        <SettingRow id="darkMode" label="Dark Mode" settingKey="darkMode" />
+
+                        {/* Export Data Box */}
+                        <TooltipWrapper id="exportData" tooltip={tooltips.exportData}>
+                           <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
+                              <span className="font-medium text-blue block mb-3 flex items-center gap-2">
+                                 <Download size={18} /> Export Data
+                              </span>
+                              <button
+                                 onClick={onExportData}
+                                 className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/20 transition-colors text-sm"
+                              >
+                                 Export All My Data (JSON)
+                              </button>
+                           </div>
+                        </TooltipWrapper>
+
+                        {/* Danger Zone */}
+                        <TooltipWrapper id="dangerZone" tooltip={tooltips.dangerZone}>
+                           <div className="p-4 bg-red/5 rounded-xl border border-red/20 hover:border-red/40 transition-all">
+                              <span className="font-medium text-red block mb-3 flex items-center gap-2">
+                                 <Trash2 size={18} /> Danger Zone
+                              </span>
+                              {!showDeleteConfirm ? (
+                                 <button
+                                    onClick={() => setShowDeleteConfirm(true)}
+                                    className="w-full flex items-center justify-center gap-2 py-2 text-red border border-red/30 rounded-lg font-bold hover:bg-red/20 transition-colors text-sm"
+                                 >
+                                    Delete All My Data
+                                 </button>
+                              ) : (
+                                 <div className="space-y-3">
+                                    <p className="text-sm text-muted">
+                                       This will permanently delete all your flashcard sets, folders, and settings from both this device and the cloud. This action cannot be undone.
+                                    </p>
+                                    <div className="flex gap-2">
+                                       <button
+                                          onClick={() => setShowDeleteConfirm(false)}
+                                          className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
+                                       >
+                                          Cancel
+                                       </button>
+                                       <button
+                                          onClick={() => {
+                                             onDeleteData();
+                                             setShowDeleteConfirm(false);
+                                          }}
+                                          className="flex-1 py-2 bg-red text-white rounded-lg font-bold hover:bg-red/90 transition-colors text-sm"
+                                       >
+                                          Yes, Delete Everything
+                                       </button>
+                                    </div>
+                                 </div>
+                              )}
+                           </div>
+                        </TooltipWrapper>
                      </div>
                   )}
                </div>
             </div>
-         </div >
-      </div >
+         </div>
+      </div>
    );
 };
 
@@ -227,7 +547,11 @@ const App: React.FC = () => {
    const activeSession = librarySets.find(s => s.id === activeSetId) || null;
 
    const [settings, setSettings] = useState<Settings>({
-      strictSpelling: false,
+      forgiveSpellingErrors: true,
+      ignoreDiacritics: false,
+      ignoreCapitalization: true,
+      forgiveThe: false,
+      wiggleRoom: 1,
       retypeOnMistake: false,
       darkMode: true,
       starredOnly: false,
@@ -467,6 +791,13 @@ const App: React.FC = () => {
    const handleStartLearnFromDetail = () => {
       if (!detailSet) return;
       handleStartFromLibrary(detailSet);
+   };
+
+   // Start Flashcards mode from Set Detail
+   const handleStartFlashcardsFromDetail = () => {
+      if (!detailSet) return;
+      setActiveSetId(detailSet.id);
+      setGameState(GameState.FLASHCARDS);
    };
 
    const handleStartFromLibrary = (libSet: CardSet) => {
@@ -800,6 +1131,7 @@ const App: React.FC = () => {
                   settings={settings}
                   onBack={handleBackFromDetail}
                   onStartLearn={handleStartLearnFromDetail}
+                  onStartFlashcards={handleStartFlashcardsFromDetail}
                   onUpdateSet={handleUpdateLibrarySet}
                   onEdit={() => {
                      // Set the edit request and go back to menu
@@ -827,6 +1159,18 @@ const App: React.FC = () => {
                   settings={settings}
                   onExit={handleBackToMenu}
                   onCorrect={() => setLifetimeCorrect(p => p + 1)}
+               />
+            )}
+
+            {gameState === GameState.FLASHCARDS && activeSession && (
+               <FlashcardsMode
+                  set={activeSession}
+                  settings={settings}
+                  onExit={() => {
+                     setGameState(GameState.SET_DETAIL);
+                     setActiveSetId(null);
+                  }}
+                  onUpdateSet={handleUpdateLibrarySet}
                />
             )}
 

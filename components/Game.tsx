@@ -179,8 +179,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
       // Use appropriate check function based on answerWithDefinition setting
       const result = settings.answerWithDefinition
-         ? checkDefinitionAnswer(inputTerm, inputYear, inputCustom, currentCard, settings.strictSpelling)
-         : checkAnswer(inputTerm, inputYear, inputCustom, currentCard, settings.strictSpelling);
+         ? checkDefinitionAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors)
+         : checkAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors);
 
       // Normalize result - in definition mode, isDefinitionMatch maps to isTermMatch conceptually
       const isMainAnswerMatch = settings.answerWithDefinition
@@ -221,7 +221,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          onCorrect(); // Update lifetime stats
          setFeedback({
             type: 'correct',
-            correction: (!settings.strictSpelling && result.bestDist > 0)
+            correction: (settings.forgiveSpellingErrors && result.bestDist > 0)
                ? (settings.answerWithDefinition ? currentCard.content.substring(0, 50) + '...' : (result as ReturnType<typeof checkAnswer>).bestTerm)
                : undefined
          });

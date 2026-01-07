@@ -955,8 +955,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Visual Indicator</h3>
                     <p className="text-muted">
-                        Multistudy sessions are marked with <strong className="text-text">diagonal stripes</strong> and an
-                        accent bar on the left side, so you can easily distinguish them from regular sessions in your
+                        Multistudy sessions are marked with diagonal stripes so you can easily distinguish them from regular sessions in your
                         Ongoing Sessions list.
                     </p>
                 </div>

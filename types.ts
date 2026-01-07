@@ -49,7 +49,11 @@ export interface Folder {
 }
 
 export interface Settings {
-  strictSpelling: boolean;
+  forgiveSpellingErrors: boolean;
+  ignoreDiacritics: boolean;
+  ignoreCapitalization: boolean;
+  forgiveThe: boolean;
+  wiggleRoom: number;
   retypeOnMistake: boolean;
   darkMode: boolean;
   starredOnly: boolean;
@@ -62,6 +66,7 @@ export enum GameState {
   MENU = 'MENU',
   SET_DETAIL = 'SET_DETAIL',
   PLAYING = 'PLAYING',
+  FLASHCARDS = 'FLASHCARDS',
   WIN = 'WIN',
   DOCUMENTATION = 'DOCUMENTATION'
 }

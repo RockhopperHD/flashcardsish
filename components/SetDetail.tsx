@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Shuffle, FolderOpen, Pencil, Download, Copy, Trash2 } from 'lucide-react';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2 } from 'lucide-react';
 import { renderMarkdown, renderInline, downloadFile } from '../utils';
 import clsx from 'clsx';
 
@@ -9,6 +9,7 @@ interface SetDetailProps {
     settings: Settings;
     onBack: () => void;
     onStartLearn: () => void;
+    onStartFlashcards: () => void;
     onUpdateSet: (set: CardSet) => void;
     onEdit: () => void;
     onDuplicate: () => void;
@@ -142,6 +143,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     settings,
     onBack,
     onStartLearn,
+    onStartFlashcards,
     onUpdateSet,
     onEdit,
     onDuplicate,
@@ -255,20 +257,17 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                     <ModeButton
                         label="Learn"
                         icon={<BookOpen size={24} />}
-                        isActive={true}
+                        isActive={false}
                         onClick={onStartLearn}
                     />
 
-                    {/* Flashcards - Coming Soon */}
-                    <div className="relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-outline/50 bg-panel-2/50 transition-all">
-                        <div className="absolute top-2 right-2 px-2 py-0.5 bg-accent/20 text-accent text-[10px] font-bold uppercase rounded-full">
-                            Soon
-                        </div>
-                        <div className="p-3 rounded-xl bg-panel-3 opacity-60">
-                            <Shuffle size={24} className="text-muted" />
-                        </div>
-                        <span className="font-bold text-sm text-muted">Flashcards</span>
-                    </div>
+                    {/* Flashcards - Active */}
+                    <ModeButton
+                        label="Flashcards"
+                        icon={<Layers size={24} />}
+                        isActive={false}
+                        onClick={onStartFlashcards}
+                    />
 
                     {/* Mystery Mode Placeholders */}
                     <div className="relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-outline/30 bg-panel-2/20 transition-all">
