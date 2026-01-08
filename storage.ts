@@ -5,6 +5,7 @@ import { supabase } from './src/supabaseClient';
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
+const BADGES_KEY = 'flashcard-badges-v1';
 
 // Helper to check if user is logged in
 const getUser = async () => {
@@ -78,6 +79,15 @@ export const saveSettings = async (settings: Settings) => {
     }
 };
 
+export const saveBadges = async (badges: any[]) => { // Using any[] to avoid circular dependency if Badge type isn't imported yet, but better to import it.
+    const user = await getUser();
+    if (user) {
+        await supabase.from('profiles').upsert({ id: user.id, badges: badges, updated_at: new Date() });
+    } else {
+        localStorage.setItem(BADGES_KEY, JSON.stringify(badges));
+    }
+};
+
 // We also need a way to load everything at once when logging in
 export const loadAllUserData = async () => {
     const user = await getUser();
@@ -85,7 +95,7 @@ export const loadAllUserData = async () => {
 
     const { data } = await supabase
         .from('profiles')
-        .select('library_sets, folders, settings')
+        .select('library_sets, folders, settings, badges')
         .eq('id', user.id)
         .single();
 
@@ -123,6 +133,7 @@ export const deleteAllUserData = async (): Promise<{ success: boolean; error?: s
         localStorage.removeItem(LIBRARY_KEY);
         localStorage.removeItem(FOLDERS_KEY);
         localStorage.removeItem(SETTINGS_KEY);
+        localStorage.removeItem(BADGES_KEY);
         localStorage.removeItem('flashcard-stats-v1');
 
         return { success: true };

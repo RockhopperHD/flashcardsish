@@ -62,6 +62,15 @@ export interface Settings {
   hideTooltips: boolean;
 }
 
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string; // Lucide icon name
+  color: string; // tailwind color class alias like 'text-yellow'
+  earnedAt: number;
+}
+
 export enum GameState {
   MENU = 'MENU',
   SET_DETAIL = 'SET_DETAIL',

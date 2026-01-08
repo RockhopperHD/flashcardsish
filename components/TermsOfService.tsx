@@ -38,7 +38,8 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <h3 className="text-lg font-bold text-accent mb-3">2. Description of Service</h3>
                         <p className="text-muted leading-relaxed">
                             Flashcardsish is a free, open-source flashcard application that allows users to create, organize,
-                            and study flashcard sets. The Service may include optional cloud synchronization features when
+                            and study flashcard sets. The Service includes features for tracking your study progress and statistics
+                            (such as lifetime correct answers and study time). The Service may include optional cloud synchronization features when
                             users sign in with their Google account. Flashcardsish is a personal, hobby project developed and
                             maintained by a single individual.
                         </p>

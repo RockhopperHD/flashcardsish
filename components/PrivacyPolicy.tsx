@@ -61,14 +61,15 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 </p>
                             </div>
                             <div>
-                                <h4 className="font-bold text-text mb-2">2.2 User-Generated Content</h4>
+                                <h4 className="font-bold text-text mb-2">2.2 User-Generated Content & Usage Stats</h4>
                                 <p className="text-muted leading-relaxed">
-                                    We store data you create within the application, including:
+                                    We store data you create and generate within the application, including:
                                 </p>
                                 <ul className="list-disc pl-5 mt-2 space-y-1 text-muted">
                                     <li>Flashcard sets (terms, definitions, images)</li>
                                     <li>Folders and organizational data</li>
-                                    <li>Study progress and mastery levels</li>
+                                    <li>Study progress, mastery levels, and lifetime correct answer counts</li>
+                                    <li>Usage statistics (e.g., number of cards saved, sets created, study time)</li>
                                     <li>Application settings and preferences</li>
                                 </ul>
                             </div>

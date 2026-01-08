@@ -15,6 +15,8 @@ import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData } from './storage';
 import { supabase } from './src/supabaseClient';
 import { User } from '@supabase/supabase-js';
+import { UserModal } from './components/UserModal';
+
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
@@ -27,12 +29,10 @@ const SettingsModal: React.FC<{
    onClose: () => void;
    settings: Settings;
    onUpdate: (s: Settings) => void;
-   user: User | null;
-   onLogin: () => void;
-   onLogout: () => void;
    onDeleteData: () => void;
    onExportData: () => void;
-}> = ({ isOpen, onClose, settings, onUpdate, user, onLogin, onLogout, onDeleteData, onExportData }) => {
+   librarySets: CardSet[]; // kept for potential future use or debugging in settings, though arguably ProfileCard handles stats now. 
+}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global'>('set');
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
@@ -52,7 +52,7 @@ const SettingsModal: React.FC<{
       wiggleRoom: "How many letters can be wrong while still counting the answer as correct (1-6 letters).",
       retypeOnMistake: "When you get an answer wrong, you'll need to retype the correct answer before moving on.",
       starredOnly: "Only study cards you've starred. Great for focusing on tricky terms.",
-      answerWithDefinition: "Flip the cards—you'll see the term and type the definition instead.",
+      answerWithDefinition: `Change what you're expected to enter and what you're prompted with. Right now, you will be presented with the ${settings.answerWithDefinition ? 'Term' : 'Definition'} and have to think about, choose, or type the ${settings.answerWithDefinition ? 'Definition' : 'Term'}.`,
       learnMode: "Choose how you want to answer: type your answer (Standard) or pick from options (Multiple Choice).",
       hideTooltips: "Turns on or off Helper Tooltips, like this one. This tooltip appears regardless of if this setting is on or not.",
       darkMode: "Toggle between dark and light themes for the app.",
@@ -427,43 +427,6 @@ const SettingsModal: React.FC<{
 
                   {activeTab === 'global' && (
                      <div className="space-y-4">
-                        {/* Cloud Sync Box */}
-                        <TooltipWrapper id="cloudSync" tooltip={tooltips.cloudSync}>
-                           <div className="p-6 bg-panel-2 rounded-2xl border border-outline/50 hover:border-accent transition-all relative overflow-hidden">
-                              <span className="font-medium text-text block mb-4 flex items-center gap-2">
-                                 <Cloud size={18} className="text-accent" /> Cloud Sync
-                              </span>
-                              {user ? (
-                                 <div className="flex items-center gap-6">
-                                    <img
-                                       src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=128`}
-                                       alt="Profile"
-                                       className="w-24 h-24 rounded-full border-4 border-bg shadow-lg object-cover bg-panel"
-                                    />
-                                    <div className="flex flex-col items-start min-w-0">
-                                       <span className="text-sm text-muted font-medium mb-0.5">You're signed in as</span>
-                                       <div className="text-2xl font-bold text-text truncate w-full max-w-[200px] md:max-w-[300px] mb-3" title={user.email}>
-                                          {user.user_metadata?.full_name || user.email?.split('@')[0]}
-                                       </div>
-                                       <button
-                                          onClick={onLogout}
-                                          className="px-6 py-2 border-2 border-outline rounded-xl text-sm font-bold hover:bg-red/5 hover:text-red hover:border-red/30 transition-all shadow-sm flex items-center gap-2"
-                                       >
-                                          Sign Out
-                                       </button>
-                                    </div>
-                                 </div>
-                              ) : (
-                                 <button
-                                    onClick={onLogin}
-                                    className="w-full flex items-center justify-center gap-2 py-3 bg-text text-bg rounded-xl font-bold hover:opacity-90 transition-opacity shadow-lg"
-                                 >
-                                    <LogIn size={18} /> Log in with Google
-                                 </button>
-                              )}
-                           </div>
-                        </TooltipWrapper>
-
                         {/* Hide Helper Tooltips - Always shows its own tooltip */}
                         <SettingRow id="hideTooltips" label="Hide Helper Tooltips" settingKey="hideTooltips" alwaysShowTooltip />
 
@@ -471,59 +434,55 @@ const SettingsModal: React.FC<{
                         <SettingRow id="darkMode" label="Dark Mode" settingKey="darkMode" />
 
                         {/* Export Data Box */}
-                        <TooltipWrapper id="exportData" tooltip={tooltips.exportData}>
-                           <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
-                              <span className="font-medium text-blue block mb-3 flex items-center gap-2">
-                                 <Download size={18} /> Export Data
-                              </span>
-                              <button
-                                 onClick={onExportData}
-                                 className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/20 transition-colors text-sm"
-                              >
-                                 Export All My Data (JSON)
-                              </button>
-                           </div>
-                        </TooltipWrapper>
+                        <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
+                           <span className="font-medium text-blue block mb-3 flex items-center gap-2">
+                              <Download size={18} /> Export Data
+                           </span>
+                           <button
+                              onClick={onExportData}
+                              className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/20 transition-colors text-sm"
+                           >
+                              Export All My Data (JSON)
+                           </button>
+                        </div>
 
                         {/* Danger Zone */}
-                        <TooltipWrapper id="dangerZone" tooltip={tooltips.dangerZone}>
-                           <div className="p-4 bg-red/5 rounded-xl border border-red/20 hover:border-red/40 transition-all">
-                              <span className="font-medium text-red block mb-3 flex items-center gap-2">
-                                 <Trash2 size={18} /> Danger Zone
-                              </span>
-                              {!showDeleteConfirm ? (
-                                 <button
-                                    onClick={() => setShowDeleteConfirm(true)}
-                                    className="w-full flex items-center justify-center gap-2 py-2 text-red border border-red/30 rounded-lg font-bold hover:bg-red/20 transition-colors text-sm"
-                                 >
-                                    Delete All My Data
-                                 </button>
-                              ) : (
-                                 <div className="space-y-3">
-                                    <p className="text-sm text-muted">
-                                       This will permanently delete all your flashcard sets, folders, and settings from both this device and the cloud. This action cannot be undone.
-                                    </p>
-                                    <div className="flex gap-2">
-                                       <button
-                                          onClick={() => setShowDeleteConfirm(false)}
-                                          className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
-                                       >
-                                          Cancel
-                                       </button>
-                                       <button
-                                          onClick={() => {
-                                             onDeleteData();
-                                             setShowDeleteConfirm(false);
-                                          }}
-                                          className="flex-1 py-2 bg-red text-white rounded-lg font-bold hover:bg-red/90 transition-colors text-sm"
-                                       >
-                                          Yes, Delete Everything
-                                       </button>
-                                    </div>
+                        <div className="p-4 bg-red/5 rounded-xl border border-red/20 hover:border-red/40 transition-all">
+                           <span className="font-medium text-red block mb-3 flex items-center gap-2">
+                              <Trash2 size={18} /> Danger Zone
+                           </span>
+                           {!showDeleteConfirm ? (
+                              <button
+                                 onClick={() => setShowDeleteConfirm(true)}
+                                 className="w-full flex items-center justify-center gap-2 py-2 text-red border border-red/30 rounded-lg font-bold hover:bg-red/20 transition-colors text-sm"
+                              >
+                                 Delete All My Data
+                              </button>
+                           ) : (
+                              <div className="space-y-3">
+                                 <p className="text-sm text-muted">
+                                    This will permanently delete all your flashcard sets, folders, and settings from both this device and the cloud. This action cannot be undone.
+                                 </p>
+                                 <div className="flex gap-2">
+                                    <button
+                                       onClick={() => setShowDeleteConfirm(false)}
+                                       className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
+                                    >
+                                       Cancel
+                                    </button>
+                                    <button
+                                       onClick={() => {
+                                          onDeleteData();
+                                          setShowDeleteConfirm(false);
+                                       }}
+                                       className="flex-1 py-2 bg-red text-white rounded-lg font-bold hover:bg-red/90 transition-colors text-sm"
+                                    >
+                                       Yes, Delete Everything
+                                    </button>
                                  </div>
-                              )}
-                           </div>
-                        </TooltipWrapper>
+                              </div>
+                           )}
+                        </div>
                      </div>
                   )}
                </div>
@@ -562,6 +521,7 @@ const App: React.FC = () => {
 
    // Modals
    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
@@ -600,6 +560,8 @@ const App: React.FC = () => {
       // Optional: clear local state or reload to reset
       window.location.reload();
    };
+
+
 
    const handleDeleteData = async () => {
       const result = await deleteAllUserData();
@@ -650,6 +612,7 @@ const App: React.FC = () => {
                   if (data.library_sets && data.library_sets.length > 0) setLibrarySets(data.library_sets);
                   if (data.folders && data.folders.length > 0) setFolders(data.folders);
                   if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
+
                }
             });
          }
@@ -657,6 +620,10 @@ const App: React.FC = () => {
 
       return () => subscription.unsubscribe();
    }, []);
+
+
+
+
 
 
    // Load Initial Data (Local Only - Cloud handled by Auth Effect)
@@ -990,12 +957,26 @@ const App: React.FC = () => {
             onClose={() => setIsSettingsOpen(false)}
             settings={settings}
             onUpdate={updateSettings}
-            user={user}
-            onLogin={handleLogin}
-            onLogout={handleLogout}
             onDeleteData={handleDeleteData}
             onExportData={handleExportData}
+            librarySets={librarySets}
          />
+
+         <UserModal
+            isOpen={isUserModalOpen}
+            onClose={() => setIsUserModalOpen(false)}
+            user={user}
+            lifetimeCorrect={lifetimeCorrect}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            librarySets={librarySets}
+            onOpenSettings={() => {
+               setIsUserModalOpen(false);
+               setIsSettingsOpen(true);
+            }}
+         />
+
+
 
 
          <PrivacyPolicyModal
@@ -1065,30 +1046,24 @@ const App: React.FC = () => {
                   )}
 
                   {/* Profile Indicator */}
-                  {user ? (
-                     <button
-                        onClick={() => setIsSettingsOpen(true)}
-                        className="flex items-center gap-2 px-2 py-1 rounded-lg bg-panel-2 border border-outline hover:border-accent transition-all"
-                        title={`Logged in as ${user.email}`}
-                     >
-                        <div className="relative">
-                           <img
-                              src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
-                              alt="Profile"
-                              className="w-6 h-6 rounded-full"
-                           />
-                           <Cloud size={10} className="absolute -bottom-0.5 -right-0.5 text-green bg-panel rounded-full" />
+                  <button
+                     onClick={() => setIsUserModalOpen(true)}
+                     className="flex items-center gap-2 px-2 py-1 rounded-lg bg-panel-2 border border-outline hover:border-accent transition-all"
+                     title={user ? `Logged in as ${user.email}` : "Account"}
+                  >
+                     {user ? (
+                        <img
+                           src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
+                           alt="Profile"
+                           className="w-6 h-6 rounded-full"
+                        />
+                     ) : (
+                        <div className="w-6 h-6 rounded-full bg-outline/20 flex items-center justify-center">
+                           <Cloud size={14} className="text-muted" />
                         </div>
-                        <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0]}</span>
-                     </button>
-                  ) : (
-                     <button
-                        onClick={handleLogin}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-muted hover:text-text border border-outline hover:border-accent rounded-lg transition-all"
-                     >
-                        <LogIn size={14} /> Sign In
-                     </button>
-                  )}
+                     )}
+                     <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
+                  </button>
 
                   <button
                      onClick={() => setIsSettingsOpen(true)}
