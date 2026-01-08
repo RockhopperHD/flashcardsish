@@ -30,8 +30,8 @@ const ModeButton: React.FC<{
             disabled={isDisabled}
             className={clsx(
                 "relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 transition-all duration-300",
-                isActive && !isDisabled && "bg-accent/10 border-accent text-accent hover:bg-accent/20 hover:scale-[1.02] cursor-pointer shadow-lg shadow-accent/10",
-                !isActive && !isDisabled && "bg-panel-2 border-outline text-text hover:border-accent/50 hover:bg-panel-3 cursor-pointer",
+                isActive && !isDisabled && "bg-accent/10 border-accent text-accent hover:bg-accent/20 hover:scale-[1.02] hover:-translate-y-1 cursor-pointer shadow-lg shadow-accent/10",
+                !isActive && !isDisabled && "bg-panel-2 border-outline text-text hover:border-accent/50 hover:bg-panel-3 hover:-translate-y-1 cursor-pointer",
                 isDisabled && "bg-panel-2/50 border-outline/50 text-muted/50 cursor-not-allowed"
             )}
         >

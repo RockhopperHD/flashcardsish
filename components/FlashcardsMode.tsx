@@ -462,10 +462,8 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => {
-                            // Full reset when going back
-                            resetSort();
-                            resetStack();
-                            setSubMode(null);
+                            // Exit directly to set detail
+                            onExit();
                         }}
                         className="flex items-center gap-2 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                     >

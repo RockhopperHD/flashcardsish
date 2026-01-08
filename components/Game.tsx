@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile } from '../utils';
-import { ArrowLeft, Pencil, X, Download } from 'lucide-react';
+import { ChevronLeft, Pencil, X, Download } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -449,13 +449,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          {/* Top Controls Row */}
          <div className="flex justify-between items-end mb-4 select-none">
             <div className="flex items-center gap-4 mb-2">
-               {/* Back Button (Flashcards Mode) */}
+               {/* Back Button */}
                <button
                   onClick={onExit}
-                  className="flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
+                  className="flex items-center gap-3 text-muted hover:text-text font-bold uppercase text-xs tracking-wider transition-colors group"
                >
-                  <div className="p-2 rounded-full border border-outline hover:bg-panel transition-colors">
-                     <ArrowLeft size={16} />
+                  <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
+                     <ChevronLeft size={16} />
                   </div>
                   Back
                </button>
@@ -464,10 +464,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                {set.isMultistudy && (
                   <button
                      onClick={handleDownloadSession}
-                     className="flex items-center gap-2 text-muted hover:text-text font-bold text-sm uppercase tracking-wider transition-colors"
+                     className="flex items-center gap-3 text-muted hover:text-text font-bold uppercase text-xs tracking-wider transition-colors group"
                      title="Download Session as Set"
                   >
-                     <div className="p-2 rounded-full border border-outline hover:bg-panel transition-colors">
+                     <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
                         <Download size={16} />
                      </div>
                      Save Set

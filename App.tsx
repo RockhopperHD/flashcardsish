@@ -16,14 +16,14 @@ import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, d
 import { supabase } from './src/supabaseClient';
 import { User } from '@supabase/supabase-js';
 import { UserModal } from './components/UserModal';
-
+import { ProfileCard } from './components/ProfileCard';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const STATS_KEY = 'flashcard-stats-v1';
 
-// Settings Modal Component - Two Tab Sidebar Layout
+// Settings Modal Component - Three Tab Sidebar Layout
 const SettingsModal: React.FC<{
    isOpen: boolean;
    onClose: () => void;
@@ -31,11 +31,24 @@ const SettingsModal: React.FC<{
    onUpdate: (s: Settings) => void;
    onDeleteData: () => void;
    onExportData: () => void;
-   librarySets: CardSet[]; // kept for potential future use or debugging in settings, though arguably ProfileCard handles stats now. 
-}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData }) => {
+   librarySets: CardSet[];
+   // User props for "You" tab
+   user: User | null;
+   lifetimeCorrect: number;
+   onLogin: () => void;
+   onLogout: () => void;
+   initialTab?: 'set' | 'global' | 'you';
+}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set' }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-   const [activeTab, setActiveTab] = useState<'set' | 'global'>('set');
+   const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you'>(initialTab);
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+   // Reset activeTab when initialTab changes (e.g., opening from different triggers)
+   React.useEffect(() => {
+      if (isOpen) {
+         setActiveTab(initialTab);
+      }
+   }, [isOpen, initialTab]);
 
    if (!isOpen) return null;
 
@@ -214,7 +227,7 @@ const SettingsModal: React.FC<{
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
          <div
-            className="bg-panel border border-outline rounded-2xl shadow-2xl animate-in zoom-in-95 w-full max-w-md md:max-w-3xl lg:max-w-4xl h-[600px] md:h-[750px] max-h-[90vh] flex flex-col"
+            className="bg-panel border border-outline rounded-2xl shadow-2xl animate-in zoom-in-95 w-full max-w-lg md:max-w-5xl lg:max-w-6xl h-[700px] md:h-[850px] max-h-[90vh] flex flex-col"
             onMouseDown={(e) => e.stopPropagation()}
          >
             {/* Header */}
@@ -228,7 +241,7 @@ const SettingsModal: React.FC<{
             {/* Content with Sidebar */}
             <div className="flex flex-1 min-h-0">
                {/* Sidebar Navigation */}
-               <div className="w-48 shrink-0 border-r border-outline p-4 hidden md:block">
+               <div className="w-48 shrink-0 border-r border-outline p-4 hidden md:flex md:flex-col">
                   <h3 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 px-2">
                      Settings
                   </h3>
@@ -258,11 +271,31 @@ const SettingsModal: React.FC<{
                         <span className="font-medium">Global Settings</span>
                      </button>
                   </nav>
+
+
+                  {/* Spacer to push You to bottom */}
+                  <div className="flex-1" />
+
+                  {/* You Section */}
+                  <nav className="mt-4 pt-4 border-t border-outline">
+                     <button
+                        onClick={() => setActiveTab('you')}
+                        className={clsx(
+                           "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all text-sm",
+                           activeTab === 'you'
+                              ? "bg-accent/10 text-accent border border-accent/20"
+                              : "text-muted hover:text-text hover:bg-panel-2"
+                        )}
+                     >
+                        <Cloud size={18} className={activeTab === 'you' ? "text-accent" : "text-muted"} />
+                        <span className="font-medium">You</span>
+                     </button>
+                  </nav>
                </div>
 
                {/* Mobile Tab Selector */}
                <div className="md:hidden p-4 border-b border-outline w-full shrink-0">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                      <button
                         onClick={() => setActiveTab('set')}
                         className={clsx(
@@ -272,7 +305,7 @@ const SettingsModal: React.FC<{
                               : "bg-panel-2 text-muted hover:text-text"
                         )}
                      >
-                        Set Settings
+                        Set
                      </button>
                      <button
                         onClick={() => setActiveTab('global')}
@@ -283,7 +316,18 @@ const SettingsModal: React.FC<{
                               : "bg-panel-2 text-muted hover:text-text"
                         )}
                      >
-                        Global Settings
+                        Global
+                     </button>
+                     <button
+                        onClick={() => setActiveTab('you')}
+                        className={clsx(
+                           "py-2 px-4 rounded-lg text-sm font-bold transition-all",
+                           activeTab === 'you'
+                              ? "bg-accent text-bg"
+                              : "bg-panel-2 text-muted hover:text-text"
+                        )}
+                     >
+                        You
                      </button>
                   </div>
                </div>
@@ -485,10 +529,53 @@ const SettingsModal: React.FC<{
                         </div>
                      </div>
                   )}
+
+                  {activeTab === 'you' && (
+                     <div className="space-y-6">
+                        {user ? (
+                           <>
+                              <ProfileCard
+                                 user={user}
+                                 lifetimeCorrect={lifetimeCorrect}
+                                 librarySets={librarySets}
+                                 className="shadow-sm"
+                              />
+
+                              {/* Logout Section */}
+                              <div className="p-4 bg-panel-2 rounded-xl border border-outline/50">
+                                 <h3 className="text-sm font-bold text-muted uppercase tracking-widest mb-3">Account Actions</h3>
+                                 <button
+                                    onClick={onLogout}
+                                    className="w-full py-3 border-2 border-outline rounded-xl text-sm font-bold hover:bg-red/5 hover:text-red hover:border-red/30 transition-all shadow-sm flex items-center justify-center gap-2"
+                                 >
+                                    Sign Out
+                                 </button>
+                              </div>
+                           </>
+                        ) : (
+                           <div className="text-center py-8">
+                              <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                                 <Cloud size={40} className="text-accent" />
+                              </div>
+                              <h2 className="text-2xl font-bold text-text mb-2">Sync Your Progress</h2>
+                              <p className="text-muted mb-8 max-w-[80%] mx-auto">
+                                 Sign in to save your stats, badges, and Sets to the cloud and access them from any device.
+                              </p>
+
+                              <button
+                                 onClick={onLogin}
+                                 className="w-full flex items-center justify-center gap-2 py-3 bg-text text-bg rounded-xl font-bold hover:opacity-90 transition-opacity shadow-lg mb-4"
+                              >
+                                 <LogIn size={18} /> Log in with Google
+                              </button>
+                           </div>
+                        )}
+                     </div>
+                  )}
                </div>
             </div>
          </div>
-      </div>
+      </div >
    );
 };
 
@@ -521,6 +608,7 @@ const App: React.FC = () => {
 
    // Modals
    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+   const [settingsInitialTab, setSettingsInitialTab] = useState<'set' | 'global' | 'you'>('set');
    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -914,6 +1002,24 @@ const App: React.FC = () => {
       setIsRenaming(false);
    };
 
+   // Handle back from Learn mode to Set Detail
+   const handleBackFromLearnToDetail = () => {
+      if (activeSession && gameState === GameState.PLAYING) {
+         const now = Date.now();
+         const delta = isTimerPaused ? 0 : (now - timerStart);
+         const finalSet = {
+            ...activeSession,
+            elapsedTime: activeSession.elapsedTime + delta,
+            lastPlayed: now
+         };
+         setLibrarySets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+         setDetailSetId(activeSession.id);
+      }
+      setGameState(GameState.SET_DETAIL);
+      setActiveSetId(null);
+      setIsRenaming(false);
+   };
+
    const handleRestart = () => {
       if (!activeSession) return;
 
@@ -960,6 +1066,11 @@ const App: React.FC = () => {
             onDeleteData={handleDeleteData}
             onExportData={handleExportData}
             librarySets={librarySets}
+            user={user}
+            lifetimeCorrect={lifetimeCorrect}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+            initialTab={settingsInitialTab}
          />
 
          <UserModal
@@ -1047,7 +1158,10 @@ const App: React.FC = () => {
 
                   {/* Profile Indicator */}
                   <button
-                     onClick={() => setIsUserModalOpen(true)}
+                     onClick={() => {
+                        setSettingsInitialTab('you');
+                        setIsSettingsOpen(true);
+                     }}
                      className="flex items-center gap-2 px-2 py-1 rounded-lg bg-panel-2 border border-outline hover:border-accent transition-all"
                      title={user ? `Logged in as ${user.email}` : "Account"}
                   >
@@ -1066,7 +1180,10 @@ const App: React.FC = () => {
                   </button>
 
                   <button
-                     onClick={() => setIsSettingsOpen(true)}
+                     onClick={() => {
+                        setSettingsInitialTab('set');
+                        setIsSettingsOpen(true);
+                     }}
                      className={clsx(
                         "p-2 transition-colors",
                         isSettingsOpen ? "text-accent" : "text-muted hover:text-text"
@@ -1132,7 +1249,7 @@ const App: React.FC = () => {
                   onUpdateSet={handleUpdateActiveSession}
                   onFinish={handleFinish}
                   settings={settings}
-                  onExit={handleBackToMenu}
+                  onExit={handleBackFromLearnToDetail}
                   onCorrect={() => setLifetimeCorrect(p => p + 1)}
                />
             )}
@@ -1142,6 +1259,7 @@ const App: React.FC = () => {
                   set={activeSession}
                   settings={settings}
                   onExit={() => {
+                     setDetailSetId(activeSession.id);
                      setGameState(GameState.SET_DETAIL);
                      setActiveSetId(null);
                   }}

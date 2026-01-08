@@ -56,21 +56,21 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-y-8 gap-x-4 lg:gap-x-12">
                         {/* Row 1 */}
                         <div className="space-y-1">
-                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 h-6 flex-wrap">
+                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 flex-wrap mb-1">
                                 <Layers size={14} className="shrink-0" /> Cards Saved
                             </div>
                             <div className="text-2xl md:text-3xl font-bold text-text">{totalCards}</div>
                         </div>
 
                         <div className="space-y-1">
-                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 h-6 flex-wrap">
+                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 flex-wrap mb-1">
                                 <Star size={14} className="shrink-0" /> Starred
                             </div>
                             <div className="text-2xl md:text-3xl font-bold text-text">{totalStarred}</div>
                         </div>
 
                         <div className="space-y-1">
-                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 h-6 flex-wrap">
+                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 flex-wrap mb-1">
                                 <BookOpen size={14} className="shrink-0" /> Sets
                             </div>
                             <div className="text-2xl md:text-3xl font-bold text-text">{totalSets}</div>
@@ -78,7 +78,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
 
                         {/* Row 2 */}
                         <div className="space-y-1">
-                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 h-6 whitespace-nowrap">
+                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 whitespace-nowrap mb-1">
                                 <CheckCircle size={14} className="shrink-0" /> Lifetime Correct
                             </div>
                             <div className="text-2xl md:text-3xl font-bold text-text">{lifetimeCorrect}</div>
@@ -88,7 +88,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                         <div className="hidden md:block"></div>
 
                         <div className="space-y-1">
-                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 h-6 whitespace-nowrap">
+                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2 whitespace-nowrap mb-1">
                                 <TrendingUp size={14} className="shrink-0" /> Avg. Set Size
                             </div>
                             <div className="text-2xl md:text-3xl font-bold text-text">{avgSetSize}</div>

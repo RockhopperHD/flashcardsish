@@ -681,158 +681,68 @@ const NoStarredModal: React.FC<{
   );
 };
 
-// Set Configuration Modal (V2)
-const SetConfigurationModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  termLabel: string;
-  setTermLabel: (s: string) => void;
-  definitionLabel: string;
-  setDefinitionLabel: (s: string) => void;
-  termSideFields: CustomFieldDefinition[];
-  setTermSideFields: (f: CustomFieldDefinition[]) => void;
-  defSideFields: CustomFieldDefinition[];
-  setDefSideFields: (f: CustomFieldDefinition[]) => void;
-  showYear: boolean;
-  setShowYear: (b: boolean) => void;
-  settings: Settings;
-}> = ({
-  isOpen,
-  onClose,
-  termLabel,
-  setTermLabel,
-  definitionLabel,
-  setDefinitionLabel,
-  termSideFields,
-  setTermSideFields,
-  defSideFields,
-  setDefSideFields,
-  showYear,
-  setShowYear,
-  settings,
-}) => {
-  if (!isOpen) return null;
-
-  const updateTermField = (
-    index: number,
-    updates: Partial<CustomFieldDefinition>,
-  ) => {
-    if (index < termSideFields.length) {
-      const newArr = [...termSideFields];
-      newArr[index] = { ...newArr[index], ...updates };
-      // Auto-detect "Year" -> Number, only if changing name
-      if (
-        updates.name &&
-        updates.name.toLowerCase() === "years" &&
-        newArr[index].type === "text"
-      ) {
-        newArr[index].type = "number";
-      }
-      setTermSideFields(newArr);
-    }
-  };
-
-  const addTermField = () => {
-    if (termSideFields.length < 4) {
-      setTermSideFields([...termSideFields, { name: "", type: "text" }]);
-    }
-  };
-
-  const deleteTermField = (index: number) => {
-    setTermSideFields(termSideFields.filter((_, i) => i !== index));
-  };
-
-  const updateDefField = (
-    index: number,
-    updates: Partial<CustomFieldDefinition>,
-  ) => {
-    if (index < defSideFields.length) {
-      const newArr = [...defSideFields];
-      newArr[index] = { ...newArr[index], ...updates };
-      // Auto-detect "Year" -> Number
-      if (
-        updates.name &&
-        updates.name.toLowerCase() === "years" &&
-        newArr[index].type === "text"
-      ) {
-        newArr[index].type = "number";
-      }
-      setDefSideFields(newArr);
-    }
-  };
-
-  const addDefField = () => {
-    if (defSideFields.length < 4) {
-      setDefSideFields([...defSideFields, { name: "", type: "text" }]);
-    }
-  };
-
-  const deleteDefField = (index: number) => {
-    setDefSideFields(defSideFields.filter((_, i) => i !== index));
-  };
-
-  // Helper Tooltip Component
-  const HelperTooltip: React.FC<{
-    text: React.ReactNode;
-    show: boolean;
-    position?: "top" | "bottom";
-    type?: "default" | "error";
-  }> = ({ text, show, position = "top", type = "default" }) => {
-    if (!show || settings.hideTooltips) return null;
-    return (
+// Helper Tooltip Component
+const HelperTooltip: React.FC<{
+  text: React.ReactNode;
+  show: boolean;
+  position?: "top" | "bottom";
+  type?: "default" | "error";
+  hideTooltips: boolean;
+}> = ({ text, show, position = "top", type = "default", hideTooltips }) => {
+  if (!show || hideTooltips) return null;
+  return (
+    <div
+      className={clsx(
+        "absolute z-50 px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center left-1/2 -translate-x-1/2",
+        position === "top" ? "bottom-full mb-3" : "top-full mt-3",
+        type === "default" &&
+        "bg-[#422006] text-[#FEF3C7] border border-[#78350F]",
+        type === "error" &&
+        "bg-red text-white border border-red-700 shadow-red/20",
+      )}
+    >
+      {text}
       <div
         className={clsx(
-          "absolute z-50 px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center left-1/2 -translate-x-1/2",
-          position === "top" ? "bottom-full mb-3" : "top-full mt-3",
+          "absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45",
+          position === "top" ? "bottom-[-5px]" : "top-[-5px]",
           type === "default" &&
-            "bg-[#422006] text-[#FEF3C7] border border-[#78350F]",
-          type === "error" &&
-            "bg-red text-white border border-red-700 shadow-red/20",
+          "bg-[#422006] border-r border-b border-[#78350F]",
+          type === "error" && "bg-red",
         )}
-      >
-        {text}
-        <div
-          className={clsx(
-            "absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45",
-            position === "top" ? "bottom-[-5px]" : "top-[-5px]",
-            type === "default" &&
-              "bg-[#422006] border-r border-b border-[#78350F]",
-            type === "error" && "bg-red",
-          )}
-        ></div>
-      </div>
-    );
-  };
-
-  const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
-  const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(
-    null,
+      ></div>
+    </div>
   );
+};
 
-  const renderFieldRow = (
-    field: CustomFieldDefinition,
-    index: number,
-    update: (index: number, updates: Partial<CustomFieldDefinition>) => void,
-    remove: (index: number) => void,
-    isLast: boolean,
-    addNext: () => void,
-    side: "term" | "def", // Added side prop
-  ) => {
-    const isFocused = activeFieldId === `${side}-${index}`;
-
-    // Determine dynamic text for tooltip
-    const thisSideName =
-      side === "term" ? termLabel || "Terms" : definitionLabel || "Definition";
-    const otherSideName =
-      side === "term" ? definitionLabel || "Definition" : termLabel || "Terms";
-    let actionText = "";
-    if (field.type === "text")
-      actionText = "enter text corresponding to this field";
-    else if (field.type === "number")
-      actionText = "enter a number corresponding to this field";
-    else if (field.type === "ab")
-      actionText = "choose between two options you define";
-
+// Field Row Component
+const FieldRowComponent: React.FC<{
+  field: CustomFieldDefinition;
+  index: number;
+  update: (index: number, updates: Partial<CustomFieldDefinition>) => void;
+  remove: (index: number) => void;
+  isLast: boolean;
+  addNext: () => void;
+  side: "term" | "def";
+  activeFieldId: string | null;
+  setActiveFieldId: (id: string | null) => void;
+  termLabel: string;
+  definitionLabel: string;
+  hideTooltips: boolean;
+}> = ({
+  field,
+  index,
+  update,
+  remove,
+  isLast,
+  addNext,
+  side,
+  activeFieldId,
+  setActiveFieldId,
+  termLabel,
+  definitionLabel,
+  hideTooltips,
+}) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -850,6 +760,21 @@ const SetConfigurationModal: React.FC<{
       return () =>
         document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    const isFocused = activeFieldId === `${side}-${index}`;
+
+    // Determine dynamic text for tooltip
+    const thisSideName =
+      side === "term" ? termLabel || "Terms" : definitionLabel || "Definition";
+    const otherSideName =
+      side === "term" ? definitionLabel || "Definition" : termLabel || "Terms";
+    let actionText = "";
+    if (field.type === "text")
+      actionText = "enter text corresponding to this field";
+    else if (field.type === "number")
+      actionText = "enter a number corresponding to this field";
+    else if (field.type === "ab")
+      actionText = "choose between two options you define";
 
     return (
       <div
@@ -870,9 +795,10 @@ const SetConfigurationModal: React.FC<{
               <span>
                 In study mode, when you are presented with{" "}
                 <b>{otherSideName}</b> responding with <b>{thisSideName}</b>,
-                we’ll ask you to also <b>{actionText}</b>.
+                we'll ask you to also <b>{actionText}</b>.
               </span>
             }
+            hideTooltips={hideTooltips}
           />
         </div>
 
@@ -970,180 +896,293 @@ const SetConfigurationModal: React.FC<{
     );
   };
 
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
-      onMouseDown={onClose}
-    >
+// Set Configuration Modal (V2)
+const SetConfigurationModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  termLabel: string;
+  setTermLabel: (s: string) => void;
+  definitionLabel: string;
+  setDefinitionLabel: (s: string) => void;
+  termSideFields: CustomFieldDefinition[];
+  setTermSideFields: (f: CustomFieldDefinition[]) => void;
+  defSideFields: CustomFieldDefinition[];
+  setDefSideFields: (f: CustomFieldDefinition[]) => void;
+  showYear: boolean;
+  setShowYear: (b: boolean) => void;
+  settings: Settings;
+}> = ({
+  isOpen,
+  onClose,
+  termLabel,
+  setTermLabel,
+  definitionLabel,
+  setDefinitionLabel,
+  termSideFields,
+  setTermSideFields,
+  defSideFields,
+  setDefSideFields,
+  showYear,
+  setShowYear,
+  settings,
+}) => {
+    if (!isOpen) return null;
+
+    const updateTermField = (
+      index: number,
+      updates: Partial<CustomFieldDefinition>,
+    ) => {
+      if (index < termSideFields.length) {
+        const newArr = [...termSideFields];
+        newArr[index] = { ...newArr[index], ...updates };
+        // Auto-detect "Year" -> Number, only if changing name
+        if (
+          updates.name &&
+          updates.name.toLowerCase() === "years" &&
+          newArr[index].type === "text"
+        ) {
+          newArr[index].type = "number";
+        }
+        setTermSideFields(newArr);
+      }
+    };
+
+    const addTermField = () => {
+      if (termSideFields.length < 4) {
+        setTermSideFields([...termSideFields, { name: "", type: "text" }]);
+      }
+    };
+
+    const deleteTermField = (index: number) => {
+      setTermSideFields(termSideFields.filter((_, i) => i !== index));
+    };
+
+    const updateDefField = (
+      index: number,
+      updates: Partial<CustomFieldDefinition>,
+    ) => {
+      if (index < defSideFields.length) {
+        const newArr = [...defSideFields];
+        newArr[index] = { ...newArr[index], ...updates };
+        // Auto-detect "Year" -> Number
+        if (
+          updates.name &&
+          updates.name.toLowerCase() === "years" &&
+          newArr[index].type === "text"
+        ) {
+          newArr[index].type = "number";
+        }
+        setDefSideFields(newArr);
+      }
+    };
+
+    const addDefField = () => {
+      if (defSideFields.length < 4) {
+        setDefSideFields([...defSideFields, { name: "", type: "text" }]);
+      }
+    };
+
+    const deleteDefField = (index: number) => {
+      setDefSideFields(defSideFields.filter((_, i) => i !== index));
+    };
+
+
+
+    const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+    const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(
+      null,
+    );
+
+
+
+    return (
       <div
-        className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar"
-        onMouseDown={(e) => e.stopPropagation()}
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
+        onMouseDown={onClose}
       >
-        <h3 className="text-2xl font-bold text-text mb-2">Set Configuration</h3>
-        <p className="text-muted mb-8 text-sm leading-relaxed max-w-2xl">
-          You can tailor your flashcards set by renaming the main fields and
-          adding up to 4 custom fields per side. These custom fields allow you
-          to include additional information or specific answer types (text,
-          number, A/B choice) for a richer study experience.
-        </p>
+        <div
+          className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <h3 className="text-2xl font-bold text-text mb-2">Set Configuration</h3>
+          <p className="text-muted mb-8 text-sm leading-relaxed max-w-2xl">
+            You can tailor your flashcards set by renaming the main fields and
+            adding up to 4 custom fields per side. These custom fields allow you
+            to include additional information or specific answer types (text,
+            number, A/B choice) for a richer study experience.
+          </p>
 
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Term Side */}
-          <div className="space-y-4">
-            <div className="uppercase text-xs font-bold text-muted tracking-widest">
-              Terms Side
-            </div>
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Term Side */}
+            <div className="space-y-4">
+              <div className="uppercase text-xs font-bold text-muted tracking-widest">
+                Terms Side
+              </div>
 
-            <div className="flex items-center gap-2 relative">
-              <HelperTooltip
-                show={activeLabelSide === "term"}
-                text={
-                  <span>
-                    When you’re studying <b>Terms</b>, we’ll call the{" "}
-                    <b>Terms</b> side this word. You can put a language here, a
-                    special title, or anything else.
+              <div className="flex items-center gap-2 relative">
+                <HelperTooltip
+                  show={activeLabelSide === "term"}
+                  hideTooltips={settings.hideTooltips}
+                  text={
+                    <span>
+                      When you’re studying <b>Terms</b>, we’ll call the{" "}
+                      <b>Terms</b> side this word. You can put a language here, a
+                      special title, or anything else.
+                    </span>
+                  }
+                />
+                <input
+                  value={termLabel}
+                  onChange={(e) => setTermLabel(e.target.value)}
+                  onFocus={() => setActiveLabelSide("term")}
+                  onBlur={() => setActiveLabelSide(null)}
+                  className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                  placeholder="Term"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+                  Custom Fields
+                  <span className="text-xs font-normal text-muted">
+                    {termSideFields.length}/4
                   </span>
-                }
-              />
-              <input
-                value={termLabel}
-                onChange={(e) => setTermLabel(e.target.value)}
-                onFocus={() => setActiveLabelSide("term")}
-                onBlur={() => setActiveLabelSide(null)}
-                className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                placeholder="Term"
-              />
+                </label>
+                <div className="space-y-1">
+                  {termSideFields.map((field, i) => (
+                    <FieldRowComponent
+                      key={`term-${i}`}
+                      field={field}
+                      index={i}
+                      update={updateTermField}
+                      remove={deleteTermField}
+                      isLast={i === termSideFields.length - 1}
+                      addNext={addTermField}
+                      side="term"
+                      activeFieldId={activeFieldId}
+                      setActiveFieldId={setActiveFieldId}
+                      termLabel={termLabel}
+                      definitionLabel={definitionLabel}
+                      hideTooltips={settings.hideTooltips}
+                    />
+                  ))}
+                  {termSideFields.length < 4 && (
+                    <button
+                      onClick={addTermField}
+                      className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus size={14} /> Add Field
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                Custom Fields
-                <span className="text-xs font-normal text-muted">
-                  {termSideFields.length}/4
-                </span>
-              </label>
-              <div className="space-y-1">
-                {termSideFields.map((field, i) =>
-                  renderFieldRow(
-                    field,
-                    i,
-                    updateTermField,
-                    deleteTermField,
-                    i === termSideFields.length - 1,
-                    addTermField,
-                    "term",
-                  ),
-                )}
-                {termSideFields.length < 4 && (
-                  <button
-                    onClick={addTermField}
-                    className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Plus size={14} /> Add Field
-                  </button>
-                )}
+            {/* Definition Side */}
+            <div className="space-y-4">
+              <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
+                Definitions Side
+              </div>
+
+              <div className="flex items-center gap-2 relative">
+                <HelperTooltip
+                  show={activeLabelSide === "def"}
+                  hideTooltips={settings.hideTooltips}
+                  text={
+                    <span>
+                      When you’re studying <b>Definitions</b>, we’ll call the{" "}
+                      <b>Definitions</b> side this word. You can put a language
+                      here, a special title, or anything else.
+                    </span>
+                  }
+                />
+                <input
+                  value={definitionLabel}
+                  onChange={(e) => setDefinitionLabel(e.target.value)}
+                  onFocus={() => setActiveLabelSide("def")}
+                  onBlur={() => setActiveLabelSide(null)}
+                  className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                  placeholder="Definition"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+                  Custom Fields
+                  <span className="text-xs font-normal text-muted">
+                    {defSideFields.length}/4
+                  </span>
+                </label>
+                <div className="space-y-1">
+                  {defSideFields.map((field, i) => (
+                    <FieldRowComponent
+                      key={`def-${i}`}
+                      field={field}
+                      index={i}
+                      update={updateDefField}
+                      remove={deleteDefField}
+                      isLast={i === defSideFields.length - 1}
+                      addNext={addDefField}
+                      side="def"
+                      activeFieldId={activeFieldId}
+                      setActiveFieldId={setActiveFieldId}
+                      termLabel={termLabel}
+                      definitionLabel={definitionLabel}
+                      hideTooltips={settings.hideTooltips}
+                    />
+                  ))}
+                  {defSideFields.length < 4 && (
+                    <button
+                      onClick={addDefField}
+                      className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus size={14} /> Add Field
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Definition Side */}
-          <div className="space-y-4">
-            <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
-              Definitions Side
-            </div>
-
-            <div className="flex items-center gap-2 relative">
-              <HelperTooltip
-                show={activeLabelSide === "def"}
-                text={
-                  <span>
-                    When you’re studying <b>Definitions</b>, we’ll call the{" "}
-                    <b>Definitions</b> side this word. You can put a language
-                    here, a special title, or anything else.
-                  </span>
-                }
-              />
+          <div className="mt-8 pt-6 border-t border-outline/50 flex items-center justify-between">
+            <label className="flex items-center gap-3 cursor-pointer select-none">
               <input
-                value={definitionLabel}
-                onChange={(e) => setDefinitionLabel(e.target.value)}
-                onFocus={() => setActiveLabelSide("def")}
-                onBlur={() => setActiveLabelSide(null)}
-                className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                placeholder="Definition"
+                type="checkbox"
+                checked={showYear}
+                onChange={() => setShowYear(!showYear)}
+                className="hidden"
               />
-            </div>
-
-            <div>
-              <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                Custom Fields
-                <span className="text-xs font-normal text-muted">
-                  {defSideFields.length}/4
-                </span>
-              </label>
-              <div className="space-y-1">
-                {defSideFields.map((field, i) =>
-                  renderFieldRow(
-                    field,
-                    i,
-                    updateDefField,
-                    deleteDefField,
-                    i === defSideFields.length - 1,
-                    addDefField,
-                    "def",
-                  ),
+              <div
+                className={clsx(
+                  "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                  showYear
+                    ? "bg-accent border-accent text-bg"
+                    : "bg-panel-2 border-outline",
                 )}
-                {defSideFields.length < 4 && (
-                  <button
-                    onClick={addDefField}
-                    className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Plus size={14} /> Add Field
-                  </button>
-                )}
+              >
+                {showYear && <Check size={14} strokeWidth={4} />}
               </div>
-            </div>
-          </div>
-        </div>
+              <div>
+                <div className="text-sm font-bold text-text">
+                  Enable Year Field
+                </div>
+                <div className="text-xs text-muted">
+                  Adds a dedicated year input
+                </div>
+              </div>
+            </label>
 
-        <div className="mt-8 pt-6 border-t border-outline/50 flex items-center justify-between">
-          <label className="flex items-center gap-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showYear}
-              onChange={() => setShowYear(!showYear)}
-              className="hidden"
-            />
-            <div
-              className={clsx(
-                "w-5 h-5 rounded border flex items-center justify-center transition-colors",
-                showYear
-                  ? "bg-accent border-accent text-bg"
-                  : "bg-panel-2 border-outline",
-              )}
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:scale-105 transition-transform"
             >
-              {showYear && <Check size={14} strokeWidth={4} />}
-            </div>
-            <div>
-              <div className="text-sm font-bold text-text">
-                Enable Year Field
-              </div>
-              <div className="text-xs text-muted">
-                Adds a dedicated year input
-              </div>
-            </div>
-          </label>
-
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:scale-105 transition-transform"
-          >
-            OK
-          </button>
+              OK
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 // Builder Row Component
 const BuilderRowItem: React.FC<{
@@ -1691,7 +1730,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     isOpen: boolean;
     message: string;
     onConfirm: () => void;
-  }>({ isOpen: false, message: "", onConfirm: () => {} });
+  }>({ isOpen: false, message: "", onConfirm: () => { } });
   const [noStarredModalSet, setNoStarredModalSet] = useState<CardSet | null>(
     null,
   );
@@ -1703,37 +1742,37 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       return saved
         ? JSON.parse(saved)
         : [
-            {
-              id: "1",
-              term: "",
-              def: "",
-              year: "",
-              image: "",
-              customFields: [],
-              tags: [],
-              star: false,
-            },
-            {
-              id: "2",
-              term: "",
-              def: "",
-              year: "",
-              image: "",
-              customFields: [],
-              tags: [],
-              star: false,
-            },
-            {
-              id: "3",
-              term: "",
-              def: "",
-              year: "",
-              image: "",
-              customFields: [],
-              tags: [],
-              star: false,
-            },
-          ];
+          {
+            id: "1",
+            term: "",
+            def: "",
+            year: "",
+            image: "",
+            customFields: [],
+            tags: [],
+            star: false,
+          },
+          {
+            id: "2",
+            term: "",
+            def: "",
+            year: "",
+            image: "",
+            customFields: [],
+            tags: [],
+            star: false,
+          },
+          {
+            id: "3",
+            term: "",
+            def: "",
+            year: "",
+            image: "",
+            customFields: [],
+            tags: [],
+            star: false,
+          },
+        ];
     } catch {
       return [
         {
