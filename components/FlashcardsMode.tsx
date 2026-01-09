@@ -604,7 +604,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
 
                             {/* Main Content */}
                             <div className="flex-1 flex items-center justify-center">
-                                <div className="text-center max-w-full">
+                                <div className="text-left max-w-full w-full">
                                     {currentCard && (
                                         <>
                                             {currentCard.image && showTermFirst && (
@@ -670,7 +670,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
 
                             {/* Main Content */}
                             <div className="flex-1 flex items-center justify-center">
-                                <div className="text-center max-w-full">
+                                <div className="text-left max-w-full w-full">
                                     {currentCard && (
                                         <>
                                             {currentCard.image && !showTermFirst && (

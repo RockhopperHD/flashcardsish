@@ -1874,6 +1874,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [newFolderColor, setNewFolderColor] =
     useState<Folder["color"]>("brown");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [moveToMenuOpen, setMoveToMenuOpen] = useState(false);
 
   // Loading State for "Load Everything" strategy
   const [isBuilderReady, setIsBuilderReady] = useState(false);
@@ -1901,6 +1902,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
     }
   }, [initialEditSetId]);
+
+  // Close move menu when selection is cleared
+  useEffect(() => {
+    if (selectedSetIds.size === 0) {
+      setMoveToMenuOpen(false);
+    }
+  }, [selectedSetIds.size]);
 
   // Derived Lists
   const currentFolder = folders.find((f) => f.id === currentFolderId);
@@ -2076,12 +2084,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     handlePlaySet(newSet);
   };
 
-  const handleMoveSelectedToFolder = (folderId: string) => {
+  const handleMoveSelectedToFolder = (folderId: string | undefined) => {
     setLibrarySets((prev) =>
       prev.map((s) => (selectedSetIds.has(s.id) ? { ...s, folderId } : s)),
     );
     setSelectedSetIds(new Set());
     setMovingSetId(null); // Close any move UI if open
+    setMoveToMenuOpen(false); // Close the move menu
   };
 
   const handleCreateMultistudy = () => {
@@ -3537,34 +3546,55 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       >
                         New Folder
                       </button>
-                      {folders.length > 0 && (
-                        <div className="relative group">
-                          <button className="px-6 py-2 bg-panel-2 border border-outline text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg flex items-center gap-2">
-                            Move to...
-                          </button>
-                          <div className="absolute bottom-full left-0 mb-2 w-48 bg-panel border border-outline rounded-xl shadow-xl p-2 hidden group-hover:block animate-in fade-in slide-in-from-bottom-2">
-                            {folders.map((f) => (
+                      <div className="relative">
+                        <button
+                          onClick={() => setMoveToMenuOpen(!moveToMenuOpen)}
+                          className={clsx(
+                            "px-6 py-2 bg-panel-2 border text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg flex items-center gap-2",
+                            moveToMenuOpen ? "border-accent" : "border-outline"
+                          )}
+                        >
+                          Move to...
+                        </button>
+                        {moveToMenuOpen && (
+                          <>
+                            {/* Invisible overlay to catch clicks outside */}
+                            <div
+                              className="fixed inset-0 z-40"
+                              onClick={() => setMoveToMenuOpen(false)}
+                            />
+                            <div className="absolute bottom-full left-0 mb-2 w-52 bg-panel border border-outline rounded-xl shadow-xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
+                              {/* Main Library Option */}
                               <button
-                                key={f.id}
-                                onClick={() => handleMoveSelectedToFolder(f.id)}
-                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-panel-2 text-sm font-medium flex items-center gap-2"
+                                onClick={() => handleMoveSelectedToFolder(undefined)}
+                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-panel-2 text-sm font-medium flex items-center gap-2 border-b border-outline mb-1 pb-2"
                               >
-                                <div
-                                  className={clsx("w-2 h-2 rounded-full", {
-                                    "bg-accent": f.color === "brown",
-                                    "bg-red": f.color === "red",
-                                    "bg-blue": f.color === "blue",
-                                    "bg-yellow": f.color === "yellow",
-                                    "bg-green": f.color === "green",
-                                    "bg-purple": f.color === "purple",
-                                  })}
-                                />
-                                {f.name}
+                                <div className="w-2 h-2 rounded-full bg-muted" />
+                                Main Library
                               </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                              {folders.map((f) => (
+                                <button
+                                  key={f.id}
+                                  onClick={() => handleMoveSelectedToFolder(f.id)}
+                                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-panel-2 text-sm font-medium flex items-center gap-2"
+                                >
+                                  <div
+                                    className={clsx("w-2 h-2 rounded-full", {
+                                      "bg-accent": f.color === "brown",
+                                      "bg-red": f.color === "red",
+                                      "bg-blue": f.color === "blue",
+                                      "bg-yellow": f.color === "yellow",
+                                      "bg-green": f.color === "green",
+                                      "bg-purple": f.color === "purple",
+                                    })}
+                                  />
+                                  {f.name}
+                                </button>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
                       <button
                         onClick={handleBatchDelete}
                         className={clsx(
