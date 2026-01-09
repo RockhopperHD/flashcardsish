@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
-import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile } from '../utils';
-import { ChevronLeft, Pencil, X, Download } from 'lucide-react';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup } from '../utils';
+import { ChevronLeft, Pencil, X, Download, Info } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -22,6 +22,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [feedback, setFeedback] = useState<FeedbackState>({ type: 'idle' });
    const [isEditOpen, setIsEditOpen] = useState(false);
    const [isShaking, setIsShaking] = useState(false);
+
+   // Mixup Modal
+   const [isMixupModalOpen, setIsMixupModalOpen] = useState(false);
 
    // Streak state needs to track if it's "pending break"
    const [streak, setStreak] = useState(0);
@@ -268,10 +271,29 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   msg = `${settings.answerWithDefinition ? 'Definition' : 'Term'}/Year correct, but ${wrongField} is ${correctVal}`;
                }
             }
+
+            // Detect mixups with other cards
+            const customFieldDefs = set.version && set.version >= 2
+               ? (settings.answerWithDefinition ? set.defSideFields : set.termSideFields)?.map(f =>
+                  typeof f === 'string' ? { name: f, type: 'text' as const } : f
+               )
+               : set.customFieldNames?.map(name => ({ name, type: 'text' as const }));
+
+            const mixupItems = findMixup(
+               inputTerm,
+               inputYear,
+               inputCustom,
+               currentCard,
+               set.cards,
+               settings.answerWithDefinition,
+               customFieldDefs
+            );
+
             setFeedback({
                type: 'incorrect',
                message: msg,
-               customResults: { year: !result.isYearMatch, custom: result.customResults }
+               customResults: { year: !result.isYearMatch, custom: result.customResults },
+               mixupInfo: mixupItems.length > 0 ? { mixups: mixupItems } : undefined
             });
          }
          // Don't break streak YET. Wait for continue.
@@ -898,6 +920,21 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   </div>
                )}
 
+               {/* Mixup Alert Trigger */}
+               {feedback.type === 'incorrect' && feedback.mixupInfo && feedback.mixupInfo.mixups.length > 0 && (
+                  <div className="flex justify-start -mt-4 mb-2 animate-in fade-in slide-in-from-top-1">
+                     <button
+                        onClick={() => setIsMixupModalOpen(true)}
+                        className="flex items-center gap-2 text-accent hover:text-accent/80 transition-colors group"
+                     >
+                        <Info size={16} className="text-accent" />
+                        <span className="text-xs font-extrabold uppercase tracking-widest group-hover:underline decoration-2 underline-offset-4">
+                           Mixup Alert
+                        </span>
+                     </button>
+                  </div>
+               )}
+
                {/* Action Bar */}
                <div className="flex justify-end items-center pt-2 h-16">
                   <div className="flex gap-4">
@@ -943,17 +980,19 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   )}
 
                   {(feedback.type === 'incorrect' || feedback.type === 'reveal') && (
-                     <div className="flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 bg-red/10 border border-red/20 p-3 rounded-lg">
-                        <div className="text-red font-bold flex flex-col">
-                           <span>{feedback.message}</span>
-                           {currentCard.year && <span className="text-sm opacity-80">Year: {currentCard.year}</span>}
-                           {currentCard.customFields?.map(f => (
-                              <span key={f.name} className="text-sm opacity-80">{f.name}: {f.value}</span>
-                           ))}
+                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
+                        <div className="flex items-center justify-between bg-red/10 border border-red/20 p-3 rounded-lg">
+                           <div className="text-red font-bold flex flex-col">
+                              <span>{feedback.message}</span>
+                              {currentCard.year && <span className="text-sm opacity-80">Year: {currentCard.year}</span>}
+                              {currentCard.customFields?.map(f => (
+                                 <span key={f.name} className="text-sm opacity-80">{f.name}: {f.value}</span>
+                              ))}
+                           </div>
+                           <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
+                              Actually, I was right (O)
+                           </button>
                         </div>
-                        <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
-                           Actually, I was right (O)
-                        </button>
                      </div>
                   )}
                </div>
@@ -1109,6 +1148,83 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         Edit Anyway
                      </button>
                   </div>
+               </div>
+            </div>
+         )}
+         {/* Mixup Details Modal */}
+         {isMixupModalOpen && feedback.type === 'incorrect' && feedback.mixupInfo && feedback.mixupInfo.mixups.length > 0 && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsMixupModalOpen(false)}>
+               <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-2xl shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-6 border-b border-outline pb-4">
+                     <h2 className="text-xl font-bold text-accent flex items-center gap-2">
+                        <Info size={24} />
+                        Mixup Detected
+                     </h2>
+                     <button onClick={() => setIsMixupModalOpen(false)}><X size={24} className="text-muted hover:text-text" /></button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 mb-8">
+                     {/* Current Card */}
+                     <div className="space-y-4">
+                        <div className="text-sm font-bold text-muted uppercase tracking-widest border-b border-outline/50 pb-2">
+                           Current Card
+                        </div>
+                        <div>
+                           <div className="text-xs text-muted mb-1 uppercase">Term</div>
+                           <div className="text-lg font-bold text-text">{currentCard.term.join(' / ')}</div>
+                        </div>
+                        {currentCard.content && (
+                           <div>
+                              <div className="text-xs text-muted mb-1 uppercase">Definition</div>
+                              <div className="text-sm text-text/80 line-clamp-4">{currentCard.content}</div>
+                           </div>
+                        )}
+                        {currentCard.year && (
+                           <div>
+                              <div className="text-xs text-muted mb-1 uppercase">Year</div>
+                              <div className="text-base text-text">{currentCard.year}</div>
+                           </div>
+                        )}
+                     </div>
+
+                     {/* Mixed Up Card */}
+                     <div className="space-y-4">
+                        <div className="text-sm font-bold text-muted uppercase tracking-widest border-b border-outline/50 pb-2">
+                           Confused With
+                        </div>
+                        {(() => {
+                           const matchedCard = feedback.mixupInfo?.mixups[0]?.matchedCard;
+                           if (!matchedCard) return null;
+                           return (
+                              <>
+                                 <div>
+                                    <div className="text-xs text-muted mb-1 uppercase">Term</div>
+                                    <div className="text-lg font-bold text-accent">{matchedCard.term.join(' / ')}</div>
+                                 </div>
+                                 {matchedCard.content && (
+                                    <div>
+                                       <div className="text-xs text-muted mb-1 uppercase">Definition</div>
+                                       <div className="text-sm text-text/80 line-clamp-4">{matchedCard.content}</div>
+                                    </div>
+                                 )}
+                                 {matchedCard.year && (
+                                    <div>
+                                       <div className="text-xs text-muted mb-1 uppercase">Year</div>
+                                       <div className="text-base text-text">{matchedCard.year}</div>
+                                    </div>
+                                 )}
+                              </>
+                           );
+                        })()}
+                     </div>
+                  </div>
+
+                  <button
+                     onClick={() => setIsMixupModalOpen(false)}
+                     className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:scale-[1.02] transition-transform shadow-lg"
+                  >
+                     OK
+                  </button>
                </div>
             </div>
          )}

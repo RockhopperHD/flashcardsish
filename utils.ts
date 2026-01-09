@@ -159,6 +159,137 @@ export const checkDefinitionAnswer = (inputDefinition: string, inputYear: string
   };
 };
 
+// Find mixups - detect when user's wrong answer matches content from a different card
+export interface MixupItem {
+  field: 'term' | 'definition' | 'year' | string;
+  fieldType: 'text' | 'number';
+  inputValue: string;
+  matchedCardTerm: string;
+  matchedCard: Card;
+}
+
+export const findMixup = (
+  inputTerm: string,
+  inputYear: string,
+  inputCustom: Record<string, string>,
+  currentCard: Card,
+  allCards: Card[],
+  answerWithDefinition: boolean,
+  customFieldDefs?: { name: string; type: 'text' | 'number' | 'ab' }[]
+): MixupItem[] => {
+  const strip = (s: string) => {
+    let clean = s
+      .replace(/<h=[^>]+>/g, '')
+      .replace(/<\/h>/g, '')
+      .replace(/\*\*\*/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/__/g, '')
+      .replace(/`/g, '')
+      .replace(/<u>/g, '')
+      .replace(/<\/u>/g, '')
+      .replace(/<p>/gi, ' ')
+      .replace(/- /g, ' ');
+    clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
+  };
+
+  const mixups: MixupItem[] = [];
+  const strippedInput = strip(inputTerm);
+  const strippedYear = strip(inputYear);
+
+  // Helper to get display term for a card
+  const getDisplayTerm = (card: Card) => card.term[0] || 'Unknown';
+
+  // Check other cards for matches
+  for (const otherCard of allCards) {
+    if (otherCard.id === currentCard.id) continue;
+
+    const otherDisplayTerm = getDisplayTerm(otherCard);
+
+    // Check main answer field (term or definition depending on mode)
+    if (strippedInput) {
+      if (answerWithDefinition) {
+        // User is answering with definition - check if input matches other card's definition
+        const otherDefStripped = strip(otherCard.content);
+        // Only flag if current card's definition doesn't have the same value
+        if (strip(currentCard.content) !== otherDefStripped && strippedInput === otherDefStripped) {
+          mixups.push({
+            field: 'definition',
+            fieldType: 'text',
+            inputValue: otherCard.content.length > 50 ? otherCard.content.substring(0, 50) + '...' : otherCard.content,
+            matchedCardTerm: otherDisplayTerm,
+            matchedCard: otherCard
+          });
+        }
+      } else {
+        // User is answering with term - check if input matches other card's term
+        for (const otherTerm of otherCard.term) {
+          const otherTermStripped = strip(otherTerm);
+          // Only flag if current card's terms don't include this value
+          const currentTermsStripped = currentCard.term.map(t => strip(t));
+          if (!currentTermsStripped.includes(otherTermStripped) && strippedInput === otherTermStripped) {
+            mixups.push({
+              field: 'term',
+              fieldType: 'text',
+              inputValue: otherTerm,
+              matchedCardTerm: otherDisplayTerm,
+              matchedCard: otherCard
+            });
+            break; // Only need one match per card
+          }
+        }
+      }
+    }
+
+    // Check year
+    if (strippedYear && otherCard.year) {
+      const otherYearStripped = strip(otherCard.year);
+      // Only flag if current card's year is different or doesn't have a year
+      const currentYearStripped = currentCard.year ? strip(currentCard.year) : '';
+      if (currentYearStripped !== otherYearStripped && strippedYear === otherYearStripped) {
+        mixups.push({
+          field: 'year',
+          fieldType: 'number',
+          inputValue: otherCard.year,
+          matchedCardTerm: otherDisplayTerm,
+          matchedCard: otherCard
+        });
+      }
+    }
+
+    // Check custom fields
+    for (const [fieldName, inputValue] of Object.entries(inputCustom)) {
+      if (!inputValue) continue;
+      const strippedCustomInput = strip(inputValue);
+
+      const otherField = otherCard.customFields?.find(f => f.name === fieldName);
+      if (!otherField) continue;
+
+      const otherValueStripped = strip(otherField.value);
+      const currentField = currentCard.customFields?.find(f => f.name === fieldName);
+      const currentValueStripped = currentField ? strip(currentField.value) : '';
+
+      // Only flag if current card's field value is different
+      if (currentValueStripped !== otherValueStripped && strippedCustomInput === otherValueStripped) {
+        // Determine field type
+        const fieldDef = customFieldDefs?.find(d => d.name === fieldName);
+        const fieldType: 'text' | 'number' = fieldDef?.type === 'number' ? 'number' : 'text';
+
+        mixups.push({
+          field: fieldName,
+          fieldType,
+          inputValue: otherField.value,
+          matchedCardTerm: otherDisplayTerm,
+          matchedCard: otherCard
+        });
+      }
+    }
+  }
+
+  return mixups;
+};
+
 // Parsing Logic
 export const parseInput = (text: string): Partial<Card>[] => {
   if (!text.trim()) return [];

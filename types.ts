@@ -80,10 +80,22 @@ export enum GameState {
   DOCUMENTATION = 'DOCUMENTATION'
 }
 
+// Mixup detection info - when user confuses content from different cards
+export interface MixupInfo {
+  // Each mixup item describes what the user entered and which card it belongs to
+  mixups: Array<{
+    field: 'term' | 'definition' | 'year' | string; // field name, 'string' for custom fields
+    fieldType: 'text' | 'number'; // 'number' for year and number-only custom fields
+    inputValue: string; // What the user typed
+    matchedCardTerm: string; // The term of the card it actually belongs to
+    matchedCard: Card;
+  }>;
+}
+
 export type FeedbackState =
   | { type: 'idle' }
   | { type: 'correct'; correction?: string }
-  | { type: 'incorrect'; message: string; customResults?: { year?: boolean; custom?: Record<string, boolean> } }
+  | { type: 'incorrect'; message: string; customResults?: { year?: boolean; custom?: Record<string, boolean> }; mixupInfo?: MixupInfo }
   | { type: 'reveal'; message: string }
   | {
     type: 'retype_needed';
