@@ -31,6 +31,7 @@ import {
   Combine,
   Settings2,
   GripVertical,
+  Minus,
 } from "lucide-react";
 import {
   DragDropContext,
@@ -775,6 +776,8 @@ const FieldRowComponent: React.FC<{
       actionText = "enter a number corresponding to this field";
     else if (field.type === "ab")
       actionText = "choose between two options you define";
+    else if (field.type === "tf")
+      actionText = "choose between True and False";
 
     return (
       <div
@@ -838,11 +841,16 @@ const FieldRowComponent: React.FC<{
                     { val: "text", label: "Text" },
                     { val: "number", label: "Number" },
                     { val: "ab", label: "A/B" },
+                    { val: "tf", label: "T/F" },
                   ].map((opt) => (
                     <button
                       key={opt.val}
                       onClick={() => {
-                        update(index, { type: opt.val as CustomFieldType });
+                        const updates: any = { type: opt.val as CustomFieldType };
+                        if (opt.val === "tf") {
+                          updates.options = { a: "True", b: "False" };
+                        }
+                        update(index, updates);
                         setIsDropdownOpen(false);
                       }}
                       className={clsx(
@@ -1192,7 +1200,8 @@ const BuilderRowItem: React.FC<{
   definitionLabel: string;
   isDuplicate: boolean;
   isLast: boolean;
-  customFields: CustomFieldDefinition[];
+  termSideFields: CustomFieldDefinition[];
+  defSideFields: CustomFieldDefinition[];
   showYear: boolean;
   updateRow: (id: string, field: keyof BuilderRow, value: any) => void;
   removeRow: (id: string) => void;
@@ -1210,7 +1219,8 @@ const BuilderRowItem: React.FC<{
     definitionLabel,
     isDuplicate,
     isLast,
-    customFields,
+    termSideFields,
+    defSideFields,
     showYear,
     updateRow,
     removeRow,
@@ -1433,11 +1443,30 @@ const BuilderRowItem: React.FC<{
         </div>
 
         <div className="p-6">
+          {/* Image Preview (Above the grid so it doesn't affect alignment) */}
+          {row.image && (
+            <div className="relative rounded-xl overflow-hidden border border-outline bg-black/20 aspect-video flex items-center justify-center group/img mb-4 max-w-md">
+              <img
+                src={row.image}
+                alt="Card"
+                className="max-w-full max-h-full object-contain"
+              />
+              <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                <button
+                  onClick={() => updateRow(row.id, "image", "")}
+                  className="p-1.5 bg-red/50 text-white rounded-lg hover:bg-red/80 backdrop-blur-sm"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
             {/* Term Column */}
             <div className="relative group/term flex flex-col gap-3">
-              <div className="flex items-center gap-2 ml-1">
+              <div className="flex items-center gap-2 ml-1 min-h-[24px]">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">
                   {termLabel}
                 </label>
@@ -1448,27 +1477,8 @@ const BuilderRowItem: React.FC<{
                 )}
               </div>
 
-              {/* Image Preview (Inline with Term) */}
-              {row.image && (
-                <div className="relative rounded-xl overflow-hidden border border-outline bg-black/20 aspect-video flex items-center justify-center group/img mb-2">
-                  <img
-                    src={row.image}
-                    alt="Card"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                  <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover/img:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => updateRow(row.id, "image", "")}
-                      className="p-1.5 bg-red/50 text-white rounded-lg hover:bg-red/80 backdrop-blur-sm"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {isEditingTerm ? (
-                <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm">
+                <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
                   <textarea
                     ref={termTextareaRef}
                     value={row.term}
@@ -1478,7 +1488,7 @@ const BuilderRowItem: React.FC<{
                     onKeyDown={handleTermKeyDown}
                     placeholder="Enter term..."
                     rows={1}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed font-medium text-text"
+                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed font-medium text-text h-full"
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
                       target.style.height = "auto";
@@ -1492,7 +1502,7 @@ const BuilderRowItem: React.FC<{
                   onFocus={() => setIsEditingTerm(true)}
                   onClick={() => setIsEditingTerm(true)}
                   className={clsx(
-                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium",
+                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium flex-1 h-full",
                     row.term
                       ? "border-outline"
                       : "border-outline text-muted italic",
@@ -1505,7 +1515,7 @@ const BuilderRowItem: React.FC<{
 
             {/* Definition Column */}
             <div className="relative group/def flex flex-col gap-3">
-              <div className="flex items-center gap-2 mr-1 justify-end">
+              <div className="flex items-center gap-2 mr-1 justify-end min-h-[24px]">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">
                   {definitionLabel}
                 </label>
@@ -1516,7 +1526,7 @@ const BuilderRowItem: React.FC<{
                 )}
               </div>
               {isEditingDef ? (
-                <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm">
+                <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
                   <textarea
                     ref={textareaRef}
                     value={row.def}
@@ -1526,7 +1536,7 @@ const BuilderRowItem: React.FC<{
                     onKeyDown={handleDefKeyDown}
                     placeholder="Enter definition..."
                     rows={1}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed text-text/90"
+                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed font-medium text-text h-full"
                     onInput={(e) => {
                       const target = e.target as HTMLTextAreaElement;
                       target.style.height = "auto";
@@ -1540,7 +1550,7 @@ const BuilderRowItem: React.FC<{
                   onFocus={() => setIsEditingDef(true)}
                   onClick={() => setIsEditingDef(true)}
                   className={clsx(
-                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words text-text/90",
+                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium text-text flex-1 h-full",
                     row.def
                       ? "border-outline"
                       : "border-outline text-muted italic",
@@ -1555,128 +1565,174 @@ const BuilderRowItem: React.FC<{
           </div>
 
           {/* Bottom Row: Metadata Grid (Horizontal) */}
-          {(showYear || customFields.length > 0) && (
-            <div className="mt-6 pt-4 border-t border-outline/50 grid grid-cols-2 md:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-1">
-              {/* Year */}
-              {showYear && (
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
-                    Year
-                  </label>
-                  <input
-                    value={row.year}
-                    onChange={(e) => updateRow(row.id, "year", e.target.value)}
-                    placeholder="Year..."
-                    className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors placeholder:text-muted/50"
-                  />
-                </div>
-              )}
-
-              {/* Custom Fields */}
-              {customFields.map((field) => {
-                const val =
-                  row.customFields.find((f) => f.name === field.name)?.value ||
-                  "";
-
-                const handleCustomChange = (newValue: string) => {
-                  const newFields = row.customFields.filter(
-                    (f) => f.name !== field.name,
-                  );
-                  if (newValue || field.type === "ab") {
-                    newFields.push({ name: field.name, value: newValue });
-                  }
-                  updateRow(row.id, "customFields", newFields);
-                };
-
-                if (field.type === "ab") {
-                  const isB = val === field.options?.b;
-                  return (
-                    <div key={field.name} className="flex flex-col gap-2">
-                      <div
-                        className="text-xs font-bold text-muted uppercase tracking-wider ml-1 truncate"
-                        title={field.name}
-                      >
-                        {field.name}
-                      </div>
-                      <div className="flex w-full bg-panel-2 border border-outline rounded-lg p-1 relative h-[38px]">
-                        <div
-                          className={clsx(
-                            "absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent rounded transition-all duration-300 ease-out shadow-sm",
-                            isB ? "left-[calc(50%)]" : "left-1",
-                            !val && "opacity-20",
-                          )}
-                        />
-
-                        <button
-                          onClick={() =>
-                            handleCustomChange(field.options?.a || "A")
+          {(showYear ||
+            termSideFields.length > 0 ||
+            defSideFields.length > 0) && (
+              <div className="mt-6 pt-4 border-t border-outline/50 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-1">
+                {/* Term Side Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
+                  {/* Year */}
+                  {showYear && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
+                        Year
+                      </label>
+                      <input
+                        value={row.year}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "" || /^\d+$/.test(val)) {
+                            updateRow(row.id, "year", val);
                           }
-                          className={clsx(
-                            "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
-                            val === field.options?.a
-                              ? "text-bg"
-                              : "text-muted hover:text-text",
-                          )}
-                        >
-                          {field.options?.a || "A"}
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleCustomChange(field.options?.b || "B")
-                          }
-                          className={clsx(
-                            "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
-                            val === field.options?.b
-                              ? "text-bg"
-                              : "text-muted hover:text-text",
-                          )}
-                        >
-                          {field.options?.b || "B"}
-                        </button>
-                      </div>
+                        }}
+                        placeholder="Year..."
+                        className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors placeholder:text-muted/50"
+                      />
                     </div>
-                  );
-                }
-
-                // Text / Number
-                const isInvalidNumber =
-                  field.type === "number" && val !== "" && isNaN(Number(val));
-
-                return (
-                  <div
-                    key={field.name}
-                    className="flex flex-col gap-2 relative group/field"
-                  >
-                    <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1 flex justify-between items-center truncate">
-                      <span title={field.name}>{field.name}</span>
-                      {isInvalidNumber && (
-                        <span className="text-white bg-red px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide animate-pulse shadow-sm shadow-red/20">
-                          #
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      value={val}
-                      onChange={(e) => handleCustomChange(e.target.value)}
-                      placeholder={field.name}
-                      className={clsx(
-                        "w-full bg-panel-2 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors placeholder:text-muted/50",
-                        isInvalidNumber
-                          ? "border-red text-red focus:border-red"
-                          : "border-outline",
-                      )}
-                      title={isInvalidNumber ? "Numbers only" : field.name}
+                  )}
+                  {termSideFields.map((field) => (
+                    <CustomFieldInput
+                      key={`term-${field.name}`}
+                      field={field}
+                      row={row}
+                      updateRow={updateRow}
                     />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  ))}
+                </div>
+
+                {/* Def Side Fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
+                  {defSideFields.map((field) => (
+                    <CustomFieldInput
+                      key={`def-${field.name}`}
+                      field={field}
+                      row={row}
+                      updateRow={updateRow}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
         </div>
       </div>
     );
   },
 );
+
+const CustomFieldInput: React.FC<{
+  field: CustomFieldDefinition;
+  row: BuilderRow;
+  updateRow: (id: string, field: keyof BuilderRow, value: any) => void;
+}> = ({ field, row, updateRow }) => {
+  const val =
+    row.customFields.find((f) => f.name === field.name)?.value || "";
+
+  const handleCustomChange = (newValue: string) => {
+    const newFields = row.customFields.filter(
+      (f) => f.name !== field.name,
+    );
+    if (newValue || field.type === "ab" || field.type === "tf") {
+      newFields.push({ name: field.name, value: newValue });
+    }
+    updateRow(row.id, "customFields", newFields);
+  };
+
+  if (field.type === "ab" || field.type === "tf") {
+    const isTF = field.type === "tf";
+    const optionA = isTF ? "True" : field.options?.a || "A";
+    const optionB = isTF ? "False" : field.options?.b || "B";
+    const isA = val === optionA;
+    const isB = val === optionB;
+
+    return (
+      <div className="flex flex-col gap-2">
+        <label
+          className="text-xs font-bold text-muted uppercase tracking-wider ml-1 truncate"
+          title={field.name}
+        >
+          {field.name}
+        </label>
+        <div className="flex w-full bg-panel-2 border border-outline rounded-lg p-1 relative h-[38px]">
+          <div
+            className="absolute top-1 bottom-1 bg-accent rounded transition-all duration-300 ease-out shadow-sm"
+            style={{
+              width: "calc((100% - 8px) / 3)",
+              left: `calc(4px + (100% - 8px) / 3 * ${val === optionA ? 0 : val === optionB ? 2 : 1
+                })`,
+            }}
+          />
+
+          <button
+            onClick={() => handleCustomChange(optionA)}
+            className={clsx(
+              "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
+              val === optionA
+                ? "text-bg"
+                : "text-muted hover:text-text",
+            )}
+            title={optionA}
+          >
+            {optionA}
+          </button>
+
+          <button
+            onClick={() => handleCustomChange("")}
+            className={clsx(
+              "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
+              !val || (val !== optionA && val !== optionB)
+                ? "text-bg"
+                : "text-muted hover:text-text",
+            )}
+          >
+            <Minus size={14} strokeWidth={3} />
+          </button>
+
+          <button
+            onClick={() => handleCustomChange(optionB)}
+            className={clsx(
+              "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
+              val === optionB
+                ? "text-bg"
+                : "text-muted hover:text-text",
+            )}
+            title={optionB}
+          >
+            {optionB}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Text / Number
+  const isInvalidNumber =
+    field.type === "number" && val !== "" && isNaN(Number(val));
+
+  return (
+    <div className="flex flex-col gap-2 relative group/field">
+      <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1 flex justify-between items-center truncate">
+        <span title={field.name}>{field.name}</span>
+        {isInvalidNumber && (
+          <span className="text-white bg-red px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide animate-pulse shadow-sm shadow-red/20">
+            #
+          </span>
+        )}
+      </label>
+      <input
+        value={val}
+        onChange={(e) => handleCustomChange(e.target.value)}
+        placeholder={field.name}
+        className={clsx(
+          "w-full bg-panel-2 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors placeholder:text-muted/50",
+          isInvalidNumber
+            ? "border-red text-red focus:border-red"
+            : "border-outline",
+        )}
+        title={isInvalidNumber ? "Numbers only" : field.name}
+      />
+    </div>
+  );
+};
 
 export const StartMenu: React.FC<StartMenuProps> = ({
   librarySets,
@@ -2355,15 +2411,26 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     if (rows.some((r) => r.year.trim())) {
       setShowYear(true);
     }
+
     // Extract unique custom field names from parsed rows
     const allNames = new Set<string>();
     rows.forEach((r) => r.customFields.forEach((f) => allNames.add(f.name)));
-    setTermLabel("Term");
-    setDefinitionLabel("Definition");
-    setTermSideFields([]);
-    setDefSideFields(
-      Array.from(allNames).map((name) => ({ name, type: "text" })),
-    );
+
+    // Identify which fields are already known in the current configuration
+    const currentFieldNames = new Set([
+      ...termSideFields.map((f) => f.name),
+      ...defSideFields.map((f) => f.name),
+    ]);
+
+    // Find new fields that appeared in raw text but aren't in config
+    const newFields = Array.from(allNames)
+      .filter((name) => !currentFieldNames.has(name))
+      .map((name) => ({ name, type: "text" } as CustomFieldDefinition));
+
+    // If there are new fields, add them to defSideFields (default location)
+    if (newFields.length > 0) {
+      setDefSideFields((prev) => [...prev, ...newFields]);
+    }
 
     // Ensure at least 3 rows
     while (rows.length < 3) {
@@ -3788,10 +3855,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       definitionLabel={definitionLabel}
                                       isDuplicate={duplicateIds.has(row.id)}
                                       isLast={index === builderRows.length - 1}
-                                      customFields={[
-                                        ...termSideFields,
-                                        ...defSideFields,
-                                      ]}
+                                      termSideFields={termSideFields}
+                                      defSideFields={defSideFields}
                                       showYear={showYear}
                                       updateRow={updateRow}
                                       removeRow={removeRow}

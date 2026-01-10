@@ -1,4 +1,4 @@
-export type CustomFieldType = 'text' | 'number' | 'ab';
+export type CustomFieldType = 'text' | 'number' | 'ab' | 'tf';
 
 export interface CustomFieldDefinition {
   name: string;

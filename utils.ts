@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card } from './types';
+import { Card, CustomFieldDefinition } from './types';
 
 // Formatting Helper
 export const fmtTime = (ms: number): string => {
@@ -175,7 +175,7 @@ export const findMixup = (
   currentCard: Card,
   allCards: Card[],
   answerWithDefinition: boolean,
-  customFieldDefs?: { name: string; type: 'text' | 'number' | 'ab' }[]
+  customFieldDefs?: CustomFieldDefinition[]
 ): MixupItem[] => {
   const strip = (s: string) => {
     let clean = s

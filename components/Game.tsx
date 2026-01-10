@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup } from '../utils';
-import { ChevronLeft, Pencil, X, Download, Info } from 'lucide-react';
+import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -12,6 +12,85 @@ interface GameProps {
    onExit: () => void;
    onCorrect: () => void;
 }
+
+// Helper Component for Rendering Edit Fields
+const renderEditField = (
+   fieldDef: CustomFieldDefinition,
+   currentCard: Card,
+   handleUpdateCard: (id: string, updates: Partial<Card>) => void
+) => {
+   const fieldName = fieldDef.name;
+   const val = currentCard.customFields?.find(f => f.name === fieldName)?.value || '';
+
+   if (fieldDef.type === 'ab' || fieldDef.type === 'tf') {
+      const isTF = fieldDef.type === 'tf';
+      const optionA = isTF ? 'True' : fieldDef.options?.a || 'A';
+      const optionB = isTF ? 'False' : fieldDef.options?.b || 'B';
+
+      return (
+         <div key={fieldName}>
+            <label className="block text-xs font-bold text-muted uppercase mb-2 truncate" title={fieldName}>{fieldName}</label>
+            <div className="flex w-full bg-panel-2 border border-outline rounded-xl p-1 relative h-[42px]">
+               <div
+                  className="absolute top-1 bottom-1 bg-accent rounded-lg transition-all duration-300 ease-out shadow-sm"
+                  style={{
+                     width: "calc((100% - 8px) / 3)",
+                     left: `calc(4px + (100% - 8px) / 3 * ${val === optionA ? 0 : val === optionB ? 2 : 1})`,
+                  }}
+               />
+               <button
+                  onClick={() => {
+                     const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
+                     newFields.push({ name: fieldName, value: optionA });
+                     handleUpdateCard(currentCard.id, { customFields: newFields });
+                  }}
+                  className={clsx("flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors", val === optionA ? "text-bg" : "text-muted hover:text-text")}
+               >
+                  {isTF ? "T" : optionA}
+               </button>
+               <button
+                  onClick={() => {
+                     const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
+                     handleUpdateCard(currentCard.id, { customFields: newFields });
+                  }}
+                  className={clsx("flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors", (!val || (val !== optionA && val !== optionB)) ? "text-bg" : "text-muted hover:text-text")}
+               >
+                  <Minus size={14} strokeWidth={3} />
+               </button>
+               <button
+                  onClick={() => {
+                     const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
+                     newFields.push({ name: fieldName, value: optionB });
+                     handleUpdateCard(currentCard.id, { customFields: newFields });
+                  }}
+                  className={clsx("flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors", val === optionB ? "text-bg" : "text-muted hover:text-text")}
+               >
+                  {isTF ? "F" : optionB}
+               </button>
+            </div>
+         </div>
+      );
+   }
+
+   return (
+      <div key={fieldName}>
+         <label className="block text-xs font-bold text-muted uppercase mb-2 truncate" title={fieldName}>{fieldName}</label>
+         <input
+            value={val}
+            onChange={(e) => {
+               const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
+               if (e.target.value) {
+                  newFields.push({ name: fieldName, value: e.target.value });
+               }
+               handleUpdateCard(currentCard.id, { customFields: newFields });
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+            placeholder={`Enter ${fieldName}...`}
+            className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
+         />
+      </div>
+   );
+};
 
 export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect }) => {
    // Game State
@@ -131,10 +210,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    // Focus Management
    useEffect(() => {
+      if (isEditOpen) return; // Don't steal focus when edit modal is open
       if (feedback.type === 'idle' || feedback.type === 'retype_needed') {
          termInputRef.current?.focus();
       }
-   }, [feedback.type, currentId]);
+   }, [feedback.type, currentId, isEditOpen]);
 
    // Handlers
    const handleUpdateCard = (id: string, updates: Partial<Card>) => {
@@ -697,7 +777,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      })}
                   </div>
                ) : (
-                  <div className={clsx("grid grid-cols-1 md:grid-cols-12 gap-4 items-start", isShaking && "animate-shake")}>
+                  <div className={clsx("grid grid-cols-1 md:grid-cols-12 gap-4", isShaking && "animate-shake")}>
                      {(() => {
                         const isAnsweringWithDef = settings.answerWithDefinition;
                         const inputLabel = isAnsweringWithDef ? (set.definitionLabel || 'Definition') : (set.termLabel || 'Term');
@@ -760,7 +840,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         }
 
                         const renderTerm = () => (
-                           <div key="term" className={clsx("relative", termClass)}>
+                           <div key="term" className={clsx("relative flex flex-col", termClass)}>
                               {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
                                  <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
                                     Answer: {settings.answerWithDefinition
@@ -779,7 +859,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                     ? `Retype ${inputLabel.toLowerCase()}...`
                                     : `Type the ${inputLabel.toLowerCase()}...`}
                                  className={clsx(
-                                    "w-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
+                                    "w-full h-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
                                     feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
                                     feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green text-green bg-green/5"
                                  )}
@@ -789,7 +869,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         );
 
                         const renderYear = () => (
-                           <div key="year" className={clsx("relative", yearClass)}>
+                           <div key="year" className={clsx("relative flex flex-col", yearClass)}>
                               {feedback.type === 'retype_needed' && !feedback.results?.isYearMatch && (
                                  <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
                                     {currentCard.year}
@@ -804,7 +884,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  placeholder="Year"
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isYearMatch)}
                                  className={clsx(
-                                    "w-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
+                                    "w-full h-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text",
                                     (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !feedback.results?.isYearMatch)) ? "border-red text-red" : "border-outline text-text",
                                     feedback.type === 'retype_needed' && feedback.results?.isYearMatch && "border-green text-green bg-green/5"
                                  )}
@@ -828,16 +908,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  const isInvalidNumber = fieldDef.type === 'number' && val !== '' && /[^0-9.]/.test(val);
 
 
-                                 if (fieldDef.type === 'ab') {
-                                    const isB = val === fieldDef.options?.b;
-                                    // Default to A if empty? Or waiting state? Let's assume empty is unselected technically, but for switch it usually defaults.
-                                    // Let's default to A if empty for UI, but empty string in state until clicked?
-                                    // If we want it to be a valid switch, user must click.
-                                    // Or we can just render two buttons side-by-side.
-                                    // User requested "horizontal switch".
+                                 if (fieldDef.type === 'ab' || fieldDef.type === 'tf') {
+                                    const isTF = fieldDef.type === 'tf';
+                                    const optionA = isTF ? 'True' : fieldDef.options?.a || 'A';
+                                    const optionB = isTF ? 'False' : fieldDef.options?.b || 'B';
+                                    const isB = val === optionB;
 
                                     return (
-                                       <div key={fieldName} className={clsx("relative flex flex-col items-center justify-center p-4 bg-panel-2 border rounded-xl", customClasses[i],
+                                       <div key={fieldName} className={clsx("relative flex flex-col items-center justify-center p-4 bg-panel-2 border rounded-xl h-full", customClasses[i],
                                           (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red" : "border-outline",
                                           feedback.type === 'retype_needed' && isCorrect && "border-green bg-green/5"
                                        )}>
@@ -857,21 +935,21 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                                 onClick={() => {
                                                    const isDisabled = !isInteractive || (feedback.type === 'retype_needed' && isCorrect);
                                                    if (isDisabled) return;
-                                                   setInputCustom(prev => ({ ...prev, [fieldName]: fieldDef.options?.a || 'A' }));
+                                                   setInputCustom(prev => ({ ...prev, [fieldName]: optionA }));
                                                 }}
-                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === fieldDef.options?.a) ? "text-bg" : "text-muted")}
+                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionA) ? "text-bg" : "text-muted")}
                                              >
-                                                {fieldDef.options?.a || 'A'}
+                                                {isTF ? "T" : optionA}
                                              </button>
                                              <button
                                                 onClick={() => {
                                                    const isDisabled = !isInteractive || (feedback.type === 'retype_needed' && isCorrect);
                                                    if (isDisabled) return;
-                                                   setInputCustom(prev => ({ ...prev, [fieldName]: fieldDef.options?.b || 'B' }));
+                                                   setInputCustom(prev => ({ ...prev, [fieldName]: optionB }));
                                                 }}
-                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === fieldDef.options?.b) ? "text-bg" : "text-muted")}
+                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionB) ? "text-bg" : "text-muted")}
                                              >
-                                                {fieldDef.options?.b || 'B'}
+                                                {isTF ? "F" : optionB}
                                              </button>
                                           </div>
                                        </div>
@@ -879,7 +957,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  }
 
                                  return (
-                                    <div key={fieldName} className={clsx("relative", customClasses[i])}>
+                                    <div key={fieldName} className={clsx("relative flex flex-col", customClasses[i])}>
                                        {feedback.type === 'retype_needed' && !isCorrect && (
                                           <div className="absolute -top-6 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in">
                                              {field?.value}
@@ -898,7 +976,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                           placeholder={fieldName}
                                           disabled={!isInteractive || (feedback.type === 'retype_needed' && isCorrect)}
                                           className={clsx(
-                                             "w-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text transition-colors",
+                                             "w-full h-full bg-panel-2 border rounded-xl px-4 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 text-center placeholder-text/20 text-text transition-colors",
                                              (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect) || isInvalidNumber) ? "border-red text-red" : "border-outline text-text",
                                              feedback.type === 'retype_needed' && isCorrect && "border-green text-green bg-green/5"
                                           )}
@@ -1018,92 +1096,135 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             )
          }
          {/* Edit Modal */}
+
+         {/* Edit Modal (Redesigned) */}
          {
             isEditOpen && (
                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsEditOpen(false)}>
-                  <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
-                     <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-text">Edit Card</h2>
+                  <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-5xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+
+                     {/* Header */}
+                     <div className="flex justify-between items-center mb-8 border-b border-outline/50 pb-4">
+                        <div className="flex items-center gap-4">
+                           <h2 className="text-2xl font-bold text-text">Edit Card</h2>
+                           <div className="h-6 w-px bg-outline/50"></div>
+                           <button
+                              onClick={onExit}
+                              className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-accent hover:text-accent/80 transition-colors group"
+                              title="Exit Learn Mode and open this set in the full editor. Your session progress will be saved."
+                           >
+                              <ExternalLink size={14} />
+                              Open Full Editor
+                           </button>
+                        </div>
                         <button onClick={() => setIsEditOpen(false)}><X size={24} className="text-muted hover:text-text" /></button>
                      </div>
-                     <div className="space-y-4">
-                        <div>
-                           <label className="block text-xs font-bold text-muted uppercase mb-1">Term</label>
-                           <input
-                              value={(currentCard.tags && currentCard.tags.length > 0 ? currentCard.tags.map(t => `(${t})`).join(' ') + ' ' : '') + currentCard.term.join(' / ')}
-                              onChange={(e) => {
-                                 const val = e.target.value;
-                                 let text = val;
-                                 let tags: string[] = [];
-                                 const tagRegex = /^(\s*\([^)]+\)\s*)+/;
-                                 const match = text.match(tagRegex);
-                                 if (match) {
-                                    const fullTagString = match[0];
-                                    tags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
-                                    text = text.replace(tagRegex, '');
-                                 }
-                                 handleUpdateCard(currentCard.id, {
-                                    term: text.split('/').map(t => t.trim()),
-                                    tags: tags
-                                 });
-                              }}
-                              className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
-                           />
-                        </div>
-                        <div>
-                           <label className="block text-xs font-bold text-muted uppercase mb-1">Definition</label>
-                           <textarea
-                              value={currentCard.content}
-                              onChange={(e) => handleUpdateCard(currentCard.id, { content: e.target.value })}
-                              rows={3}
-                              className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none resize-none"
-                           />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+
+                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
+                        {/* LEFT COLUMN: TERM SIDE */}
+                        <div className="space-y-6">
+                           <div className="uppercase text-xs font-bold text-muted tracking-widest mb-4">Terms Side</div>
+
+                           {/* Main Term Input */}
                            <div>
-                              <label className="block text-xs font-bold text-muted uppercase mb-1">Year</label>
+                              <label className="block text-xs font-bold text-muted uppercase mb-2">{set.termLabel || "Term"}</label>
+                              <input
+                                 value={(currentCard.tags && currentCard.tags.length > 0 ? currentCard.tags.map(t => `(${t})`).join(' ') + ' ' : '') + currentCard.term.join(' / ')}
+                                 onChange={(e) => {
+                                    const val = e.target.value;
+                                    let text = val;
+                                    let tags: string[] = [];
+                                    const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+                                    const match = text.match(tagRegex);
+                                    if (match) {
+                                       const fullTagString = match[0];
+                                       tags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
+                                       text = text.replace(tagRegex, '');
+                                    }
+                                    handleUpdateCard(currentCard.id, {
+                                       term: text.split('/').map(t => t.trim()),
+                                       tags: tags
+                                    });
+                                 }}
+                                 onKeyDown={(e) => e.stopPropagation()}
+                                 className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
+                                 placeholder="Enter term..."
+                              />
+                           </div>
+
+                           {/* Year */}
+                           <div>
+                              <label className="block text-xs font-bold text-muted uppercase mb-2">Year</label>
                               <input
                                  value={currentCard.year || ''}
                                  onChange={(e) => handleUpdateCard(currentCard.id, { year: e.target.value })}
-                                 className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                                 onKeyDown={(e) => e.stopPropagation()}
+                                 className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
+                                 placeholder="Year..."
                               />
                            </div>
+
+                           {/* Term Side Custom Fields */}
+                           <div className="space-y-4">
+                              {(() => {
+                                 // Safely get term side fields. If V1, customFieldNames are generic, so we'll just put them all on Term side or split? 
+                                 // Let's put V1 all here if structure unknown, but V2 is prefered.
+                                 const fields = (set.version && set.version >= 2)
+                                    ? (set.termSideFields || [])
+                                    : (set.customFieldNames || []).map(n => ({ name: n, type: 'text' as const }));
+
+                                 return fields.map(fieldDef => renderEditField(fieldDef, currentCard, handleUpdateCard));
+                              })()}
+                           </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: DEFINITION SIDE */}
+                        <div className="space-y-6">
+                           <div className="uppercase text-xs font-bold text-muted tracking-widest mb-4 lg:text-right">Definitions Side</div>
+
+                           {/* Main Definition Input */}
                            <div>
-                              <label className="block text-xs font-bold text-muted uppercase mb-1">Image URL</label>
+                              <label className="block text-xs font-bold text-muted uppercase mb-2">{set.definitionLabel || "Definition"}</label>
+                              <input
+                                 value={currentCard.content}
+                                 onChange={(e) => handleUpdateCard(currentCard.id, { content: e.target.value })}
+                                 onKeyDown={(e) => e.stopPropagation()}
+                                 className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
+                                 placeholder="Enter definition..."
+                              />
+                           </div>
+
+                           {/* Image URL */}
+                           <div>
+                              <label className="block text-xs font-bold text-muted uppercase mb-2">Image URL</label>
                               <input
                                  value={currentCard.image || ''}
                                  onChange={(e) => handleUpdateCard(currentCard.id, { image: e.target.value })}
-                                 className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
+                                 onKeyDown={(e) => e.stopPropagation()}
+                                 className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
+                                 placeholder="https://..."
                               />
                            </div>
+
+                           {/* Definition Side Custom Fields */}
+                           <div className="space-y-4">
+                              {(() => {
+                                 const fields = (set.version && set.version >= 2)
+                                    ? (set.defSideFields || [])
+                                    : []; // If V1, we put them on Left, or we can just render nothing here. 
+
+                                 return fields.map(fieldDef => renderEditField(fieldDef, currentCard, handleUpdateCard));
+                              })()}
+                           </div>
                         </div>
-                        {/* Custom Fields Editing */}
-                        {set.customFieldNames?.map(fieldName => {
-                           const val = currentCard.customFields?.find(f => f.name === fieldName)?.value || '';
-                           return (
-                              <div key={fieldName}>
-                                 <label className="block text-xs font-bold text-muted uppercase mb-1">{fieldName}</label>
-                                 <input
-                                    value={val}
-                                    onChange={(e) => {
-                                       const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
-                                       if (e.target.value) {
-                                          newFields.push({ name: fieldName, value: e.target.value });
-                                       }
-                                       handleUpdateCard(currentCard.id, { customFields: newFields });
-                                    }}
-                                    className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-text focus:border-accent focus:outline-none"
-                                 />
-                              </div>
-                           );
-                        })}
-                        <button
-                           onClick={() => setIsEditOpen(false)}
-                           className="w-full py-3 bg-accent text-bg rounded-xl font-bold mt-4 hover:scale-105 transition-transform"
-                        >
-                           Save Changes
-                        </button>
                      </div>
+
+                     <button
+                        onClick={() => setIsEditOpen(false)}
+                        className="w-full py-4 bg-accent text-bg rounded-xl font-bold mt-8 hover:scale-[1.01] active:scale-[0.99] transition-all shadow-lg text-lg"
+                     >
+                        Save Changes
+                     </button>
                   </div>
                </div>
             )
