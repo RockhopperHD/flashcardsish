@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder } from './types';
-import { fmtTime, generateId } from './utils';
+import { fmtTime, generateId, sanitizeSet } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
 import { SetDetail } from './components/SetDetail';
@@ -71,7 +71,10 @@ const SettingsModal: React.FC<{
       darkMode: "Toggle between dark and light themes for the app.",
       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
       exportData: "Download all your flashcard sets, folders, and settings as a JSON file for backup or transfer.",
-      dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone."
+      dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone.",
+      batchLength: "Set the number of cards in a batch, which is a repeated round, before new cards are introduced. If this number exceeds half the number of cards in your set, this is overridden by half the number of cards in your set.",
+      shuffleCards: "When in Learn mode, shuffle terms so they don't appear in the same order as they are listed in the set.",
+      brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen."
    };
 
    const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
@@ -170,7 +173,7 @@ const SettingsModal: React.FC<{
             </label>
             {showTooltip && tooltips[id] && rect && (
                <div
-                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
+                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-80 max-w-[90vw] text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
                   style={{
                      top: rect.top - 12,
                      left: rect.left + (rect.width / 2),
@@ -209,7 +212,7 @@ const SettingsModal: React.FC<{
             {children}
             {showTooltip && rect && (
                <div
-                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-64 text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
+                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-80 max-w-[90vw] text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
                   style={{
                      top: rect.top - 12,
                      left: rect.left + (rect.width / 2),
@@ -256,7 +259,7 @@ const SettingsModal: React.FC<{
                         )}
                      >
                         <LayoutGrid size={18} className={activeTab === 'set' ? "text-accent" : "text-muted"} />
-                        <span className="font-medium">Set Settings</span>
+                        <span className="font-medium">Study Settings</span>
                      </button>
                      <button
                         onClick={() => setActiveTab('global')}
@@ -466,6 +469,34 @@ const SettingsModal: React.FC<{
                               </div>
                            </div>
                         </TooltipWrapper>
+
+                        {/* Batch Length */}
+                        <TooltipWrapper id="batchLength" tooltip={tooltips.batchLength}>
+                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                              <div className="flex items-center justify-between">
+                                 <span className="font-medium text-text">Batch Length</span>
+                                 <input
+                                    type="number"
+                                    min={3}
+                                    max={50}
+                                    value={settings.batchLength}
+                                    onChange={(e) => {
+                                       const val = parseInt(e.target.value);
+                                       if (!isNaN(val) && val >= 3 && val <= 50) {
+                                          onUpdate({ ...settings, batchLength: val });
+                                       }
+                                    }}
+                                    className="w-16 py-1 px-2 text-center bg-panel border border-outline rounded-lg text-sm font-bold text-text focus:border-accent focus:outline-none"
+                                 />
+                              </div>
+                           </div>
+                        </TooltipWrapper>
+
+                        {/* Shuffle Cards */}
+                        <SettingRow id="shuffleCards" label="Shuffle Cards" settingKey="shuffleCards" />
+
+                        {/* Brutal Mode */}
+                        <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" />
                      </div>
                   )}
 
@@ -603,7 +634,10 @@ const App: React.FC = () => {
       starredOnly: false,
       mode: 'standard',
       answerWithDefinition: false,
-      hideTooltips: false
+      hideTooltips: false,
+      batchLength: 10,
+      shuffleCards: true,
+      brutalMode: false
    });
 
    // Modals
@@ -625,6 +659,7 @@ const App: React.FC = () => {
    const [timerStart, setTimerStart] = useState<number>(0);
    const [timerNow, setTimerNow] = useState<number>(0);
    const [isTimerPaused, setIsTimerPaused] = useState(false);
+   const [isGameActive, setIsGameActive] = useState(false); // New state to hold timer until mode selection
    const [lastPauseTime, setLastPauseTime] = useState(0);
 
    // Renaming State
@@ -697,7 +732,11 @@ const App: React.FC = () => {
             // User just logged in (or session refreshed), fetch cloud data
             loadAllUserData().then(data => {
                if (data) {
-                  if (data.library_sets && data.library_sets.length > 0) setLibrarySets(data.library_sets);
+                  if (data.library_sets && data.library_sets.length > 0) {
+                     // Sanitize cloud sets to remove any zombie custom field data
+                     const sanitizedSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
+                     setLibrarySets(sanitizedSets);
+                  }
                   if (data.folders && data.folders.length > 0) setFolders(data.folders);
                   if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
 
@@ -740,7 +779,9 @@ const App: React.FC = () => {
          }
 
          if (setsToUse) {
-            setLibrarySets(setsToUse);
+            // Sanitize all sets on load to remove any zombie custom field data
+            const sanitizedSets = setsToUse.map(s => sanitizeSet(s));
+            setLibrarySets(sanitizedSets);
          }
          setIsLibraryLoaded(true);
 
@@ -804,10 +845,23 @@ const App: React.FC = () => {
       // Saved via effect
    };
 
+   // Reset isGameActive when game state changes
+   useEffect(() => {
+      if (gameState !== GameState.PLAYING && gameState !== GameState.FLASHCARDS) {
+         setIsGameActive(false);
+      }
+      // For Flashcards mode, auto-start timer since there's no submode selection
+      // For Learn mode (PLAYING), timer starts when user selects submode via onStartGame callback
+      else if (gameState === GameState.FLASHCARDS) {
+         setIsGameActive(true);
+      }
+   }, [gameState]);
+
    // Timer Logic
    useEffect(() => {
       let interval: number;
-      if (gameState === GameState.PLAYING && !isTimerPaused) {
+      // Only run timer if game is active (submode selected in Learn Mode, or standard mode)
+      if (gameState === GameState.PLAYING && isGameActive && !isTimerPaused) {
          if (timerStart === 0) setTimerStart(Date.now());
 
          interval = window.setInterval(() => {
@@ -815,7 +869,7 @@ const App: React.FC = () => {
          }, 500);
       }
       return () => clearInterval(interval);
-   }, [gameState, isTimerPaused, timerStart]);
+   }, [gameState, isGameActive, isTimerPaused, timerStart]);
 
    const toggleTimer = () => {
       if (isTimerPaused) {
@@ -856,7 +910,9 @@ const App: React.FC = () => {
    };
 
    const handleStartFromLibrary = (libSet: CardSet) => {
-      const updatedSet = { ...libSet, isSessionActive: true, lastPlayed: Date.now() };
+      // Sanitize the set to remove any zombie custom field data
+      const sanitized = sanitizeSet(libSet);
+      const updatedSet = { ...sanitized, isSessionActive: true, lastPlayed: Date.now() };
 
       setLibrarySets(prev => {
          const exists = prev.some(s => s.id === libSet.id);
@@ -875,6 +931,12 @@ const App: React.FC = () => {
    };
 
    const handleResumeSession = (session: CardSet) => {
+      // Sanitize to remove any zombie custom field data
+      const sanitized = sanitizeSet(session);
+
+      // Update in library with sanitized version
+      setLibrarySets(prev => prev.map(s => s.id === session.id ? sanitized : s));
+
       setActiveSetId(session.id);
       setTimerStart(Date.now());
       setTimerNow(Date.now());
@@ -1112,7 +1174,7 @@ const App: React.FC = () => {
                         setGameState(GameState.DOCUMENTATION);
                      }}
                      className="p-2 text-muted hover:text-text transition-colors"
-                     title="Documentation"
+                     title="How-To Guide"
                   >
                      <BookOpen size={20} />
                   </button>
@@ -1251,6 +1313,7 @@ const App: React.FC = () => {
                   settings={settings}
                   onExit={handleBackFromLearnToDetail}
                   onCorrect={() => setLifetimeCorrect(p => p + 1)}
+                  onStartGame={() => setIsGameActive(true)}
                />
             )}
 

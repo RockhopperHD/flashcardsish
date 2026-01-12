@@ -1207,6 +1207,7 @@ const BuilderRowItem: React.FC<{
   removeRow: (id: string) => void;
   onAddNext: () => void;
   onOpenImageModal: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onSwap: (id: string) => void;
   draggableProps?: DraggableProvided["draggableProps"];
   dragHandleProps?: DraggableProvided["dragHandleProps"];
@@ -1226,6 +1227,7 @@ const BuilderRowItem: React.FC<{
     removeRow,
     onAddNext,
     onOpenImageModal,
+    onDuplicate,
     onSwap,
     draggableProps,
     dragHandleProps,
@@ -1392,6 +1394,15 @@ const BuilderRowItem: React.FC<{
               title="Add Image"
             >
               <ImageIcon size={14} />
+            </button>
+            <button
+              onClick={() => onDuplicate(row.id)}
+              className={clsx(
+                "p-1.5 rounded-lg transition-colors text-muted hover:text-text hover:bg-panel-2 border border-transparent",
+              )}
+              title="Duplicate Card"
+            >
+              <Copy size={14} />
             </button>
             <button
               onClick={() => updateRow(row.id, "star", !row.star)}
@@ -2768,7 +2779,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           content: row.def.trim(),
           year: row.year.trim(),
           image: row.image,
-          customFields: row.customFields,
+          customFields: row.customFields.filter(f =>
+            [...termSideFields, ...defSideFields].some(def => def.name === f.name)
+          ),
           mastery: 0,
           star: row.star,
           tags: tags,
@@ -2927,6 +2940,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     },
     [],
   );
+
+  const duplicateRow = (id: string) => {
+    setBuilderRows((prev) => {
+      const index = prev.findIndex((r) => r.id === id);
+      if (index === -1) return prev;
+      const rowToClone = prev[index];
+      const newRow: BuilderRow = {
+        ...rowToClone,
+        id: generateId(),
+        // Clear originalCardId so it's treated as a new card
+        originalCardId: undefined,
+      };
+      const newRows = [...prev];
+      newRows.splice(index + 1, 0, newRow);
+      return newRows;
+    });
+  };
 
   const removeRow = useCallback((id: string) => {
     setBuilderRows((prev) => {
@@ -3862,6 +3892,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       removeRow={removeRow}
                                       onAddNext={addRow}
                                       onOpenImageModal={openImageModal}
+                                      onDuplicate={duplicateRow}
                                       onSwap={swapRow}
                                       draggableProps={provided.draggableProps}
                                       dragHandleProps={provided.dragHandleProps}

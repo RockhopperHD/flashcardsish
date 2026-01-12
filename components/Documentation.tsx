@@ -533,7 +533,7 @@ const FormattingDemo: React.FC = () => {
 };
 
 // ============================================
-// MAIN DOCUMENTATION COMPONENT
+// MAIN HOW-TO GUIDE COMPONENT
 // ============================================
 
 export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
@@ -680,23 +680,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                         </div>
                     </div>
 
-                    <div className="bg-panel-2 border border-outline rounded-xl p-5 mt-8">
-                        <h4 className="font-bold text-accent mb-3 flex items-center gap-2"><Sparkles size={18} className="text-accent" /> Pro Tips</h4>
-                        <ul className="space-y-2 text-muted text-sm">
-                            <li className="flex items-start gap-2">
-                                <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                <span>[Placeholder tip 1]</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                                <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                <span>[Placeholder tip 2]</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                                <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                <span>[Placeholder tip 3]</span>
-                            </li>
-                        </ul>
-                    </div>
+
                 </div>
             )
         },
@@ -1234,7 +1218,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                 <div className="w-64 shrink-0 hidden md:block">
                     <div className="sticky top-24">
                         <h3 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 px-2">
-                            Documentation
+                            How-To Guide
                         </h3>
                         <nav className="space-y-1">
                             {sections.filter(s => s.id !== 'contact').map((section) => (

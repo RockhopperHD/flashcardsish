@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup } from '../utils';
-import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink } from 'lucide-react';
+import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock } from 'lucide-react';
 import clsx from 'clsx';
 
 interface GameProps {
@@ -11,7 +11,52 @@ interface GameProps {
    settings: Settings;
    onExit: () => void;
    onCorrect: () => void;
+   onStartGame: () => void;
 }
+
+// Learn Sub-Mode Types
+type LearnSubMode = 'zen' | 'batch';
+
+// Batch mode card tracking
+interface BatchCardState {
+   cardId: string;
+   trickyCount: number; // How many times this card has been gotten wrong in a row
+   repeatedMistakes: number; // For cards at 1/2 mastery when reintroduced
+   firstTry: boolean; // True if never gotten wrong
+   mistakeCount: number; // Total number of mistakes ever
+   mixupCount: number; // Number of mixup alerts triggered
+}
+
+// Encouraging messages for batch mode
+const BATCH_MESSAGES_PERFECT = [
+   "Perfect round!",
+   "Flawless!",
+   "Amazing work!",
+   "You nailed it!",
+   "100% accuracy!",
+   "Incredible!",
+   "Outstanding!"
+];
+
+const BATCH_MESSAGES_GOOD = [
+   "You're doing great!",
+   "Nice progress!",
+   "Keep it up!",
+   "Well done!",
+   "Good job!",
+   "Solid work!",
+   "Making strides!"
+];
+
+const BATCH_MESSAGES_NEEDS_WORK = [
+   "Keep practicing!",
+   "You've got this!",
+   "Don't give up!",
+   "Practice makes perfect!",
+   "Stay focused!",
+   "Almost there!",
+   "Keep pushing!"
+];
 
 // Helper Component for Rendering Edit Fields
 const renderEditField = (
@@ -92,7 +137,10 @@ const renderEditField = (
    );
 };
 
-export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect }) => {
+export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect, onStartGame }) => {
+   // Learn Sub-Mode Selection
+   const [subMode, setSubMode] = useState<LearnSubMode | null>(null);
+
    // Game State
    const [currentId, setCurrentId] = useState<string | null>(null);
    const [inputTerm, setInputTerm] = useState('');
@@ -120,28 +168,50 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [showEditWarning, setShowEditWarning] = useState(false);
    const [suppressEditWarning, setSuppressEditWarning] = useState(false);
 
+   // Batch Mode State
+   const [batchCards, setBatchCards] = useState<Card[]>([]);
+   const [batchIndex, setBatchIndex] = useState(0);
+   const [batchCardStates, setBatchCardStates] = useState<Map<string, BatchCardState>>(new Map());
+   const [batchProgress, setBatchProgress] = useState(0); // Cards completed correctly in current batch
+   const [batchCorrectInBatch, setBatchCorrectInBatch] = useState<Set<string>>(new Set()); // Cards marked correct this batch
+   const [batchPerfectInBatch, setBatchPerfectInBatch] = useState<Set<string>>(new Set()); // Cards got correct on first try in batch
+   const [showBatchBreak, setShowBatchBreak] = useState(false);
+   const [seenCardIds, setSeenCardIds] = useState<Set<string>>(new Set()); // All cards ever shown
+   const [batchProgressBarWidth, setBatchProgressBarWidth] = useState(0);
+
    // Refs
    const termInputRef = useRef<HTMLInputElement>(null);
    const yearInputRef = useRef<HTMLInputElement>(null);
 
-   // Derived Order
-   const activeQueue = useMemo(() => {
-      let candidates = set.cards;
-
-      // Settings Filter: Starred Only
+   // Base cards (respecting starred only setting)
+   const baseCards = useMemo(() => {
+      let candidates = [...set.cards];
       if (settings.starredOnly) {
          candidates = candidates.filter(c => c.star);
       }
+      return candidates;
+   }, [set.cards, settings.starredOnly]);
 
+   // Calculate effective batch size
+   const effectiveBatchSize = useMemo(() => {
+      const halfDeck = Math.floor(baseCards.length / 2);
+      return Math.min(settings.batchLength, halfDeck, baseCards.length);
+   }, [settings.batchLength, baseCards.length]);
+
+   // Derived Order (for Zen mode)
+   const activeQueue = useMemo(() => {
+      let candidates = [...baseCards];
       const unmastered = candidates.filter(c => c.mastery < 2);
 
-      // Simple shuffle
-      for (let i = unmastered.length - 1; i > 0; i--) {
-         const j = Math.floor(Math.random() * (i + 1));
-         [unmastered[i], unmastered[j]] = [unmastered[j], unmastered[i]];
+      // Shuffle if setting is on
+      if (settings.shuffleCards) {
+         for (let i = unmastered.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [unmastered[i], unmastered[j]] = [unmastered[j], unmastered[i]];
+         }
       }
       return unmastered;
-   }, [set.cards, settings.starredOnly]);
+   }, [baseCards, settings.shuffleCards]);
 
    const currentCard = useMemo(() => {
       if (!currentId) return activeQueue[0] || null;
@@ -156,8 +226,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       return c;
    }, [set.cards, settings.starredOnly]);
 
-   // Initialize & Stable Card Selection
+   // Initialize & Stable Card Selection (for Zen mode)
    useEffect(() => {
+      // Only applies to Zen mode
+      if (subMode !== 'zen') return;
+
       // FIX: Do not switch card if we are showing feedback (correct/incorrect/reveal)
       if (feedback.type === 'correct' || feedback.type === 'incorrect' || feedback.type === 'reveal') return;
 
@@ -179,7 +252,50 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             }
          }
       }
-   }, [activeQueue, currentId, set.cards, onFinish, settings.starredOnly]);
+   }, [activeQueue, currentId, set.cards, onFinish, settings.starredOnly, subMode, feedback.type]);
+
+   // Initialize Batch Mode
+   useEffect(() => {
+      if (subMode !== 'batch' || batchCards.length > 0) return;
+
+      // Get unmastered cards
+      let candidates = [...baseCards].filter(c => c.mastery < 2);
+
+      // Shuffle if setting is on
+      if (settings.shuffleCards) {
+         for (let i = candidates.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+         }
+      }
+
+      // Take first batch
+      const firstBatch = candidates.slice(0, effectiveBatchSize);
+      setBatchCards(firstBatch);
+      setBatchIndex(0);
+      setSeenCardIds(new Set(firstBatch.map(c => c.id)));
+      setBatchCorrectInBatch(new Set());
+      setBatchPerfectInBatch(new Set());
+      setBatchProgress(0);
+
+      // Initialize card states
+      const newStates = new Map<string, BatchCardState>();
+      firstBatch.forEach(card => {
+         newStates.set(card.id, {
+            cardId: card.id,
+            trickyCount: 0,
+            repeatedMistakes: 0,
+            firstTry: true,
+            mistakeCount: 0,
+            mixupCount: 0
+         });
+      });
+      setBatchCardStates(newStates);
+
+      if (firstBatch.length > 0) {
+         setCurrentId(firstBatch[0].id);
+      }
+   }, [subMode, batchCards.length, baseCards, settings.shuffleCards, effectiveBatchSize]);
 
    // Generate Options for Multiple Choice
    useEffect(() => {
@@ -239,19 +355,57 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       }
       setPendingStreakBreak(false);
 
-      const next = activeQueue.find(c => c.id !== currentId);
-      if (next) {
-         setCurrentId(next.id);
-      } else if (activeQueue.length > 0) {
-         setCurrentId(activeQueue[0].id);
-      } else {
-         onFinish();
-         return;
+      if (subMode === 'zen') {
+         const next = activeQueue.find(c => c.id !== currentId);
+         if (next) {
+            setCurrentId(next.id);
+         } else if (activeQueue.length > 0) {
+            setCurrentId(activeQueue[0].id);
+         } else {
+            onFinish();
+            return;
+         }
+      } else if (subMode === 'batch') {
+         // Check if batch is complete
+         if (batchProgress >= effectiveBatchSize) {
+            setShowBatchBreak(true);
+            return;
+         }
+
+         // Move to next card in batch
+         const nextIndex = batchIndex + 1;
+         if (nextIndex < batchCards.length) {
+            setBatchIndex(nextIndex);
+            setCurrentId(batchCards[nextIndex].id);
+         } else {
+            // Should not happen if logic is correct, but safe fallback
+            // Maybe we just finished the last card and it was correct?
+            if (batchProgress >= effectiveBatchSize) {
+               setShowBatchBreak(true);
+            } else {
+               // Loop back or Error? 
+               // If we ran out of cards but progress < size, it means something is wrong or 
+               // we should have re-added cards. 
+               // However, re-added cards are appended, so length grows.
+               // If we are here, means nextIndex >= cards.length.
+               // It's possible if we just answered the last card correctly.
+               setShowBatchBreak(true); // Treat as break if end of queue reached
+            }
+         }
       }
+
       setFeedback({ type: 'idle' });
       setInputTerm('');
       setInputYear('');
       setInputCustom({});
+   };
+
+   const handleDownloadSession = () => {
+      const exportSet = {
+         ...set,
+         cards: set.cards.map(c => ({ ...c, mastery: 0 }))
+      };
+      downloadFile(`${set.name}.flashcards`, JSON.stringify(exportSet, null, 2), 'json');
    };
 
    const handleAttempt = () => {
@@ -260,10 +414,17 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
       if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
 
+      // Determine active definitions
+      const activeFieldDefs = set.version && set.version >= 2
+         ? (settings.answerWithDefinition ? set.defSideFields : set.termSideFields)?.map(f =>
+            typeof f === 'string' ? { name: f, type: 'text' as const } : f
+         )
+         : set.customFieldNames?.map(name => ({ name, type: 'text' as const }));
+
       // Use appropriate check function based on answerWithDefinition setting
       const result = settings.answerWithDefinition
-         ? checkDefinitionAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors)
-         : checkAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors);
+         ? checkDefinitionAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors, activeFieldDefs)
+         : checkAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors, activeFieldDefs);
 
       // Normalize result - in definition mode, isDefinitionMatch maps to isTermMatch conceptually
       const isMainAnswerMatch = settings.answerWithDefinition
@@ -275,28 +436,59 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const wasRetyping = feedback.type === 'retype_needed';
 
          if (!wasRetyping) {
-            const newMastery = Math.min(2, currentCard.mastery + 1);
+            // Logic for Mastery and Streak
+            if (subMode === 'zen') {
+               const newMastery = Math.min(2, currentCard.mastery + 1);
+               const newStreak = streak + 1;
+               setStreak(newStreak);
 
-            // Consolidate updates to prevent race condition
-            const newStreak = streak + 1;
-            setStreak(newStreak);
+               let newTopStreak = topStreak;
+               if (newStreak > topStreak) {
+                  setTopStreak(newStreak);
+                  newTopStreak = newStreak;
+               }
 
-            let newTopStreak = topStreak;
-            if (newStreak > topStreak) {
-               setTopStreak(newStreak);
-               newTopStreak = newStreak;
+               const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+
+               onUpdateSet({ ...set, cards: newCards, topStreak: newTopStreak });
+               setPendingStreakBreak(false);
+            } else if (subMode === 'batch') {
+               // BATCH MODE CORRECT LOGIC
+               const cardState = batchCardStates.get(currentCard.id);
+               const isFirstCorrectInBatch = !batchCorrectInBatch.has(currentCard.id);
+
+               if (isFirstCorrectInBatch) {
+                  const newCorrectSet = new Set(batchCorrectInBatch);
+                  newCorrectSet.add(currentCard.id);
+                  setBatchCorrectInBatch(newCorrectSet);
+                  setBatchProgress(prev => prev + 1);
+
+                  // Only award mastery if it's the first try (no previous mistakes in this batch)
+                  if (cardState?.firstTry) {
+                     const newMastery = Math.min(2, currentCard.mastery + 1);
+                     const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+                     onUpdateSet({ ...set, cards: newCards });
+
+                     const newPerfectSet = new Set(batchPerfectInBatch);
+                     newPerfectSet.add(currentCard.id);
+                     setBatchPerfectInBatch(newPerfectSet);
+                  }
+               }
+
+               // Reduce tricky count and reset repeated mistakes
+               if (cardState) {
+                  const newStates = new Map(batchCardStates);
+                  newStates.set(currentCard.id, {
+                     ...cardState,
+                     trickyCount: Math.max(0, cardState.trickyCount - 1),
+                     repeatedMistakes: 0 // Reset on correct
+                  });
+                  setBatchCardStates(newStates);
+               }
+
+               // Check for batch completion happens in nextCard or useEffect
+               setPendingStreakBreak(false);
             }
-
-            const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
-
-            // Single atomic update
-            onUpdateSet({
-               ...set,
-               cards: newCards,
-               topStreak: newTopStreak
-            });
-
-            setPendingStreakBreak(false);
          } else {
             setPendingStreakBreak(true);
          }
@@ -337,7 +529,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                });
                setInputCustom(newCustom);
             }
+            return;
          } else {
+            // Standard Incorrect Feedback
             let msg = settings.answerWithDefinition
                ? `Answer: ${currentCard.content.length > 100 ? currentCard.content.substring(0, 100) + '...' : currentCard.content}`
                : `Answer: ${currentCard.term.join(' / ')}`;
@@ -375,6 +569,41 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                customResults: { year: !result.isYearMatch, custom: result.customResults },
                mixupInfo: mixupItems.length > 0 ? { mixups: mixupItems } : undefined
             });
+
+            // LOGIC FOR INCORRECT ANSWER
+            if (subMode === 'zen') {
+               // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
+               if (settings.brutalMode && currentCard.mastery === 1) {
+                  const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: 0 } : c);
+                  onUpdateSet({ ...set, cards: newCards });
+               }
+            } else if (subMode === 'batch') {
+               // BATCH MODE INCORRECT LOGIC
+               const cardState = batchCardStates.get(currentCard.id);
+               if (cardState) {
+                  const newRepeated = cardState.repeatedMistakes + 1;
+                  const newStates = new Map(batchCardStates);
+                  newStates.set(currentCard.id, {
+                     ...cardState,
+                     firstTry: false, // Mark as failed first try
+                     mistakeCount: cardState.mistakeCount + 1,
+                     trickyCount: cardState.trickyCount + 1,
+                     repeatedMistakes: newRepeated
+                  });
+                  setBatchCardStates(newStates);
+
+                  // Re-queue card to end of batch
+                  const newBatchCalls = [...batchCards];
+                  newBatchCalls.push(currentCard);
+                  setBatchCards(newBatchCalls);
+
+                  // Reset Mastery if "tricky" or repeated mistakes >= 2
+                  if (currentCard.mastery === 1 && newRepeated >= 2) {
+                     const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: 0 } : c);
+                     onUpdateSet({ ...set, cards: newCards });
+                  }
+               }
+            }
          }
          // Don't break streak YET. Wait for continue.
          setPendingStreakBreak(true);
@@ -418,6 +647,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             : currentCard.term.join(' / ');
          setFeedback({ type: 'incorrect', message: `Correct Answer: ${correctAnswer}` });
          setPendingStreakBreak(true);
+
+         // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
+         if (subMode === 'zen' && settings.brutalMode && currentCard.mastery === 1) {
+            const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: 0 } : c);
+            onUpdateSet({ ...set, cards: newCards });
+         }
       }
    };
 
@@ -530,18 +765,316 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       if (currentCard) handleUpdateCard(currentCard.id, { star: !currentCard.star });
    };
 
-   const handleDownloadSession = () => {
-      const exportSet = {
-         ...set,
-         cards: set.cards.map(c => ({
-            ...c,
-            mastery: 0
-         }))
-      };
-      downloadFile(`${set.name}.flashcards`, JSON.stringify(exportSet, null, 2), 'json');
+   const startNextBatch = () => {
+      // Determine composition of next batch
+      const masteredCount = set.cards.filter(c => c.mastery > 0).length;
+      const totalCards = set.cards.length;
+      const isHalfMastered = masteredCount >= totalCards / 2;
+
+      let nextBatch: Card[] = [];
+      const unmastered = baseCards.filter(c => c.mastery === 0);
+      const inProgress = baseCards.filter(c => c.mastery === 1);
+
+      if (isHalfMastered && inProgress.length > 0) {
+         // Mixed Batch (30% Review)
+         const reviewCount = Math.max(1, Math.floor(effectiveBatchSize * 0.3));
+         const newCount = effectiveBatchSize - reviewCount;
+
+         const shuffledReview = [...inProgress].sort(() => 0.5 - Math.random());
+         const reviewCards = shuffledReview.slice(0, reviewCount);
+
+         // Prioritize unmastered for new slots
+         const shuffledNew = [...unmastered].sort(() => 0.5 - Math.random());
+         const newCards = shuffledNew.slice(0, newCount);
+
+         // Fill gaps if needed
+         if (newCards.length < newCount) {
+            const moreReview = shuffledReview.slice(reviewCount, reviewCount + (newCount - newCards.length));
+            nextBatch = [...newCards, ...reviewCards, ...moreReview];
+         } else if (reviewCards.length < reviewCount) {
+            const moreNew = shuffledNew.slice(newCount, newCount + (reviewCount - reviewCards.length));
+            nextBatch = [...newCards, ...moreNew, ...reviewCards];
+         } else {
+            nextBatch = [...newCards, ...reviewCards];
+         }
+      } else {
+         // Standard Batch
+         if (unmastered.length > 0) {
+            const shuffledNew = [...unmastered].sort(() => 0.5 - Math.random());
+            nextBatch = shuffledNew.slice(0, effectiveBatchSize);
+         } else if (inProgress.length > 0) {
+            const shuffledReview = [...inProgress].sort(() => 0.5 - Math.random());
+            nextBatch = shuffledReview.slice(0, effectiveBatchSize);
+         }
+      }
+
+      if (nextBatch.length === 0) {
+         onFinish();
+         return;
+      }
+
+      if (settings.shuffleCards) {
+         nextBatch.sort(() => 0.5 - Math.random());
+      }
+
+      setBatchCards(nextBatch);
+      setBatchIndex(0);
+      setSeenCardIds(prev => {
+         const next = new Set(prev);
+         nextBatch.forEach(c => next.add(c.id));
+         return next;
+      });
+      setBatchCorrectInBatch(new Set());
+      setBatchPerfectInBatch(new Set());
+      setBatchProgress(0);
+      setShowBatchBreak(false);
+
+      setCurrentId(nextBatch[0].id);
+
+      // Init states for new batch
+      const newStates = new Map(batchCardStates);
+      nextBatch.forEach(card => {
+         if (!newStates.has(card.id)) {
+            newStates.set(card.id, {
+               cardId: card.id,
+               trickyCount: 0,
+               repeatedMistakes: 0,
+               firstTry: true,
+               mistakeCount: 0,
+               mixupCount: 0
+            });
+         } else {
+            const s = newStates.get(card.id)!;
+            newStates.set(card.id, {
+               ...s,
+               firstTry: true,
+               trickyCount: 0
+            });
+         }
+      });
+      setBatchCardStates(newStates);
    };
 
    const isInteractive = feedback.type === 'idle' || feedback.type === 'retype_needed';
+
+   // BREAK SCREEN
+   if (showBatchBreak && subMode === 'batch') {
+      // Calculation for motivation
+      // Calculate accuracy for this batch (unique cards perfect / total unique cards)
+      // actually batchPerfectInBatch has the IDs of cards perfect in this batch
+      const perfectCount = batchPerfectInBatch.size;
+      const accuracy = perfectCount / effectiveBatchSize;
+
+      let message = BATCH_MESSAGES_GOOD[Math.floor(Math.random() * BATCH_MESSAGES_GOOD.length)];
+      if (accuracy === 1) message = BATCH_MESSAGES_PERFECT[Math.floor(Math.random() * BATCH_MESSAGES_PERFECT.length)];
+      else if (accuracy < 0.5) message = BATCH_MESSAGES_NEEDS_WORK[Math.floor(Math.random() * BATCH_MESSAGES_NEEDS_WORK.length)];
+
+      // List of cards in this batch (unique)
+      // We want to show "All cards introduced so far" or just "Current Batch"?
+      // Requirement: "Lists all cards introduced so far with "pill tags" indicating their status"
+      const visibleCards = set.cards.filter(c => seenCardIds.has(c.id));
+
+      return (
+         <div className="w-full max-w-4xl mx-auto pb-20 pt-8 animate-in fade-in">
+            <div className="text-center mb-10">
+               <div className="inline-block px-4 py-1.5 rounded-full bg-accent/10 text-accent font-bold text-sm tracking-wider uppercase mb-4">
+                  Batch Complete
+               </div>
+               <h2 className="text-4xl font-extrabold text-text mb-4">{message}</h2>
+               <p className="text-muted">Take a breath. Here is how you are doing.</p>
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+               <div className="bg-panel border border-outline rounded-xl p-4 text-center">
+                  <div className="text-3xl font-bold text-text mb-1">{perfectCount}/{effectiveBatchSize}</div>
+                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Perfect This Batch</div>
+               </div>
+               <div className="bg-panel border border-outline rounded-xl p-4 text-center">
+                  <div className="text-3xl font-bold text-text mb-1">{baseCards.filter(c => c.mastery === 2).length}</div>
+                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Mastered Total</div>
+               </div>
+               <div className="bg-panel border border-outline rounded-xl p-4 text-center">
+                  <div className="text-3xl font-bold text-text mb-1">{streak}</div>
+                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Current Streak</div>
+               </div>
+               <div className="bg-panel border border-outline rounded-xl p-4 text-center">
+                  <div className="text-3xl font-bold text-text mb-1">{baseCards.length - baseCards.filter(c => c.mastery === 2).length}</div>
+                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Remaining</div>
+               </div>
+            </div>
+
+            {/* Card List */}
+            <div className="bg-panel border border-outline rounded-2xl overflow-hidden mb-10">
+               <div className="p-4 border-b border-outline bg-panel-2/50 flex justify-between items-center">
+                  <h3 className="font-bold text-text">Session Progress</h3>
+                  <span className="text-xs font-bold text-muted uppercase tracking-wider">{visibleCards.length} Cards Seen</span>
+               </div>
+               <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
+                  {visibleCards.map(card => {
+                     const state = batchCardStates.get(card.id);
+                     const isPerfect = card.mastery === 2 && state?.mistakeCount === 0;
+                     const isFocus = (state?.mistakeCount || 0) >= 3;
+                     const isConfusing = (state?.mixupCount || 0) >= 2;
+
+                     return (
+                        <div key={card.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-panel-2 transition-colors border border-transparent hover:border-outline/50">
+                           <div className="flex-1 min-w-0">
+                              <div className="font-bold text-text truncate">{card.term.join(' / ')}</div>
+                              <div className="text-xs text-muted truncate">{card.content}</div>
+                           </div>
+
+                           {/* Status Pills */}
+                           <div className="flex gap-2 shrink-0">
+                              {isPerfect && (
+                                 <div className="px-2 py-1 rounded-lg bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center gap-1.5" title="First Try: Mastered and never wrong">
+                                    <Star size={12} fill="currentColor" />
+                                    <span className="text-[10px] font-bold uppercase">First Try</span>
+                                 </div>
+                              )}
+                              {isFocus && (
+                                 <div className="px-2 py-1 rounded-lg bg-red/10 text-red border border-red/20 flex items-center gap-1.5" title="Focus: Got wrong 3+ times">
+                                    <CloudLightning size={12} />
+                                    <span className="text-[10px] font-bold uppercase">Focus</span>
+                                 </div>
+                              )}
+                              {isConfusing && (
+                                 <div className="px-2 py-1 rounded-lg bg-green/10 text-green border border-green/20 flex items-center gap-1.5" title="Confusing: Mixed up frequently">
+                                    <Wind size={12} />
+                                    <span className="text-[10px] font-bold uppercase">Confusing</span>
+                                 </div>
+                              )}
+
+                              {/* Mastery Dots (Small) */}
+                              <div className="flex gap-0.5 items-center px-2">
+                                 <div className={clsx("w-1.5 h-1.5 rounded-full", card.mastery >= 1 ? "bg-green" : "bg-outline/50")} />
+                                 <div className={clsx("w-1.5 h-1.5 rounded-full", card.mastery >= 2 ? "bg-green" : "bg-outline/50")} />
+                              </div>
+                           </div>
+                        </div>
+                     );
+                  })}
+               </div>
+            </div>
+
+            <div className="flex justify-center">
+               <button
+                  autoFocus
+                  onClick={startNextBatch}
+                  className="px-12 py-4 bg-text text-bg rounded-xl font-extrabold text-lg shadow-xl hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+               >
+                  Continue to Next Batch
+                  <ChevronLeft size={20} className="rotate-180" />
+               </button>
+            </div>
+         </div>
+      );
+   }
+
+   // Mode Selection Screen
+   if (!subMode) {
+      const isBatchDisabled = baseCards.length < 10;
+
+      return (
+         <div className="w-full max-w-4xl mx-auto pb-20 pt-0 animate-in fade-in">
+            {/* Back Button */}
+            <button
+               onClick={onExit}
+               className="mb-8 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
+            >
+               <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
+                  <ChevronLeft size={16} />
+               </div>
+               Back
+            </button>
+
+            <div className="text-center mb-12">
+               <h1 className="text-4xl font-bold text-text mb-3">Learn Mode</h1>
+               <p className="text-muted text-lg">Choose how you want to study</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+               {/* Zen Mode */}
+               <button
+                  onClick={() => { setSubMode('zen'); onStartGame(); }}
+                  className="group relative bg-panel border-2 border-outline hover:border-accent rounded-2xl p-8 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10 text-left"
+               >
+                  <div className="absolute top-4 right-4 p-2 rounded-lg bg-panel-2 text-muted group-hover:text-accent transition-colors">
+                     <Zap size={24} />
+                  </div>
+                  <div>
+                     <h3 className="text-2xl font-bold text-text mb-2">Zen</h3>
+                     <p className="text-muted text-sm leading-relaxed">
+                        Run through your cards quickly to refresh your memory. Presents cards in one heap with no interruptions or breaks. Best for short decks and quick prep.
+                     </p>
+                  </div>
+                  <div className="mt-6 flex gap-2">
+                     <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">ENTER</span>
+                     <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">O</span>
+                  </div>
+               </button>
+
+               {/* Batch Mode */}
+               <button
+                  onClick={() => { if (!isBatchDisabled) { setSubMode('batch'); onStartGame(); } }}
+                  disabled={isBatchDisabled}
+                  className={clsx(
+                     "group relative bg-panel border-2 rounded-2xl p-8 transition-all text-left",
+                     isBatchDisabled
+                        ? "border-outline/50 opacity-60 cursor-not-allowed"
+                        : "border-outline hover:border-accent hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10"
+                  )}
+               >
+                  {isBatchDisabled && (
+                     <div className="absolute top-4 left-4 p-1.5 rounded-lg bg-panel-2 text-muted">
+                        <Lock size={14} />
+                     </div>
+                  )}
+                  <div className={clsx(
+                     "absolute top-4 right-4 p-2 rounded-lg bg-panel-2 transition-colors",
+                     isBatchDisabled ? "text-muted/50" : "text-muted group-hover:text-accent"
+                  )}>
+                     <Layers size={24} />
+                  </div>
+                  <div>
+                     <h3 className={clsx(
+                        "text-2xl font-bold mb-2",
+                        isBatchDisabled ? "text-text/50" : "text-text"
+                     )}>Batch</h3>
+                     <p className={clsx(
+                        "text-sm leading-relaxed",
+                        isBatchDisabled ? "text-muted/50" : "text-muted"
+                     )}>
+                        Run through your cards slower to build mastery. Chops your deck up into smaller pieces to focus on. Better for longer decks and deeper memorization.
+                     </p>
+                  </div>
+                  <div className="mt-6 flex gap-2">
+                     {isBatchDisabled ? (
+                        <span className="px-2 py-1 bg-red/10 rounded text-xs font-bold text-red/70">
+                           Requires 10+ cards
+                        </span>
+                     ) : (
+                        <>
+                           <span className="px-2 py-1 bg-accent/10 rounded text-xs font-mono text-accent">
+                              Batch Size: {effectiveBatchSize}
+                           </span>
+                        </>
+                     )}
+                  </div>
+               </button>
+            </div>
+
+            {/* Card count info */}
+            <div className="text-center mt-8 text-muted text-sm">
+               {settings.starredOnly ? (
+                  <span>Studying {baseCards.length} starred cards</span>
+               ) : (
+                  <span>{baseCards.length} cards in this set</span>
+               )}
+            </div>
+         </div>
+      );
+   }
 
    if (!currentCard) return null;
 
@@ -577,40 +1110,53 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                )}
             </div>
 
-            {/* Mastery Stats */}
-            <div className="flex gap-3">
-               {[0, 1, 2].map(level => (
-                  <div key={level} className="relative">
-                     {confirmResetLevel === level && (
-                        <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
-                           CONFIRM?
-                        </div>
-                     )}
-                     <div
-                        onClick={() => {
-                           if (confirmResetLevel === level) demoteLevel(level);
-                           else if (counts[level] > 0) {
-                              setConfirmResetLevel(level);
-                              setTimeout(() => setConfirmResetLevel(null), 3000);
-                           }
-                        }}
-                        className={clsx(
-                           "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
-                           "bg-panel border-outline",
-                           counts[level] > 0 && "hover:border-accent"
+            {/* Mastery Stats (Only show in Zen Mode) */}
+            {subMode === 'zen' && (
+               <div className="flex gap-3">
+                  {[0, 1, 2].map(level => (
+                     <div key={level} className="relative">
+                        {confirmResetLevel === level && (
+                           <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
+                              CONFIRM?
+                           </div>
                         )}
-                     >
-                        <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
-                        <div className="flex gap-1">
-                           {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
-                           {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
-                           {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
+                        <div
+                           onClick={() => {
+                              if (confirmResetLevel === level) demoteLevel(level);
+                              else if (counts[level] > 0) {
+                                 setConfirmResetLevel(level);
+                                 setTimeout(() => setConfirmResetLevel(null), 3000);
+                              }
+                           }}
+                           className={clsx(
+                              "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
+                              "bg-panel border-outline",
+                              counts[level] > 0 && "hover:border-accent"
+                           )}
+                        >
+                           <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
+                           <div className="flex gap-1">
+                              {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
+                              {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
+                              {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
+                           </div>
                         </div>
                      </div>
-                  </div>
-               ))}
-            </div>
+                  ))}
+               </div>
+            )}
          </div>
+
+         {/* Batch Progress Bar */}
+         {subMode === 'batch' && (
+            <div className="w-full h-1.5 bg-panel-2 rounded-full mb-6 overflow-hidden">
+               <div
+                  className="h-full bg-accent transition-all duration-500 ease-out"
+                  style={{ width: `${(batchProgress / effectiveBatchSize) * 100}%` }}
+               />
+            </div>
+         )}
+
 
          {/* Main Card Area */}
          <div className={clsx(

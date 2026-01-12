@@ -1,5 +1,60 @@
 import React from 'react';
-import { Card, CustomFieldDefinition } from './types';
+import { Card, CardSet, CustomFieldDefinition } from './types';
+
+// Sanitize a set by removing zombie custom field data from cards
+// This ensures cards only contain data for fields that are actually defined
+export const sanitizeSet = (set: CardSet): CardSet => {
+  // Get the list of valid field names from the set's definitions
+  const validFieldNames = new Set<string>();
+
+  if (set.version && set.version >= 2) {
+    // V2 schema: use termSideFields and defSideFields
+    set.termSideFields?.forEach(f => {
+      const name = typeof f === 'string' ? f : f.name;
+      if (name) validFieldNames.add(name);
+    });
+    set.defSideFields?.forEach(f => {
+      const name = typeof f === 'string' ? f : f.name;
+      if (name) validFieldNames.add(name);
+    });
+  } else if (set.customFieldNames) {
+    // V1 schema: use customFieldNames
+    set.customFieldNames.forEach(name => validFieldNames.add(name));
+  }
+  // If no field definitions exist at all, validFieldNames is empty
+  // This means ALL custom field data on cards is zombie data
+
+  // Sanitize each card's customFields
+  const sanitizedCards = set.cards.map(card => {
+    if (!card.customFields || card.customFields.length === 0) {
+      return card;
+    }
+
+    // If there are no valid definitions, remove all custom fields
+    if (validFieldNames.size === 0) {
+      const { customFields, ...rest } = card;
+      return rest as Card;
+    }
+
+    // Filter to only valid fields
+    const filteredFields = card.customFields.filter(f => validFieldNames.has(f.name));
+
+    if (filteredFields.length === card.customFields.length) {
+      return card; // No changes needed
+    }
+
+    if (filteredFields.length === 0) {
+      const { customFields, ...rest } = card;
+      return rest as Card;
+    }
+
+    return { ...card, customFields: filteredFields };
+  });
+
+  // Only create a new object if changes were made
+  const hasChanges = sanitizedCards.some((c, i) => c !== set.cards[i]);
+  return hasChanges ? { ...set, cards: sanitizedCards } : set;
+};
 
 // Formatting Helper
 export const fmtTime = (ms: number): string => {
@@ -32,7 +87,14 @@ export const distance = (a: string, b: string): number => {
 };
 
 // Check answer logic
-export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: Record<string, string>, card: Card, strict: boolean = false) => {
+export const checkAnswer = (
+  inputTerm: string,
+  inputYear: string,
+  inputCustom: Record<string, string>,
+  card: Card,
+  strict: boolean = false,
+  customFieldDefs?: CustomFieldDefinition[]
+) => {
   const strip = (s: string) => {
     // Strip markdown: **, *, __, `, <h=...>
     let clean = s
@@ -44,7 +106,8 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
       .replace(/__/g, '')
       .replace(/`/g, '')
       .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '');    // Normalize and remove diacritics
+      .replace(/<\/u>/g, '');
+    // Normalize and remove diacritics
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
@@ -73,17 +136,29 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
     isYearMatch = strip(inputYear) === strip(card.year);
   }
 
-  // 3. Check Custom Fields
+  // 3. Check Custom Fields (Only fields present in definitions, if provided)
   let isCustomMatch = true;
   const customResults: Record<string, boolean> = {};
 
   if (card.customFields) {
     for (const field of card.customFields) {
+      // If definitions provided, skip if this field isn't in them
+      if (customFieldDefs && !customFieldDefs.some(d => d.name === field.name)) {
+        continue;
+      }
+
       const input = inputCustom[field.name] || '';
       const match = strip(input) === strip(field.value);
       customResults[field.name] = match;
       if (!match) isCustomMatch = false;
     }
+
+    // Also check for missing required fields (in definitions) that user didn't input?
+    // Actually, if we loop card.customFields, we check fields that HAVE VALUES on the card.
+    // That's usually correct. 
+    // BUT: If a field is defined but has NO value on card? Then we shouldn't check it?
+    // Current logic: loops card.customFields. 
+    // This is correct: we only check fields that exist on the card AND are enabled in definitions.
   }
 
   return {
@@ -98,7 +173,14 @@ export const checkAnswer = (inputTerm: string, inputYear: string, inputCustom: R
 };
 
 // Check definition answer logic (for "Answer with Definition" mode)
-export const checkDefinitionAnswer = (inputDefinition: string, inputYear: string, inputCustom: Record<string, string>, card: Card, strict: boolean = false) => {
+export const checkDefinitionAnswer = (
+  inputDefinition: string,
+  inputYear: string,
+  inputCustom: Record<string, string>,
+  card: Card,
+  strict: boolean = false,
+  customFieldDefs?: CustomFieldDefinition[]
+) => {
   const strip = (s: string) => {
     // Strip markdown: **, *, __, `, <h=...>
     let clean = s
@@ -142,6 +224,11 @@ export const checkDefinitionAnswer = (inputDefinition: string, inputYear: string
 
   if (card.customFields) {
     for (const field of card.customFields) {
+      // If definitions provided, skip if this field isn't in them
+      if (customFieldDefs && !customFieldDefs.some(d => d.name === field.name)) {
+        continue;
+      }
+
       const input = inputCustom[field.name] || '';
       const match = strip(input) === strip(field.value);
       customResults[field.name] = match;

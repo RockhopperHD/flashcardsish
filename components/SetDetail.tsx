@@ -57,7 +57,8 @@ const TermRow: React.FC<{
     card: Card;
     index: number;
     onToggleStar: () => void;
-}> = ({ card, index, onToggleStar }) => {
+    showMastery?: boolean;
+}> = ({ card, index, onToggleStar, showMastery = false }) => {
     return (
         <div className="group flex gap-4 p-4 bg-panel border border-outline rounded-xl hover:border-accent/30 transition-all">
             {/* Index */}
@@ -94,34 +95,36 @@ const TermRow: React.FC<{
                 )}
             </div>
 
-            {/* Mastery Indicator */}
-            <div className="pt-0.5 shrink-0">
-                {card.mastery >= 2 ? (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-green/10 border border-green/20 rounded-lg">
-                        <div className="flex flex-col gap-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+            {/* Mastery Indicator (only shown when showMastery is true) */}
+            {showMastery && (
+                <div className="pt-0.5 shrink-0">
+                    {card.mastery >= 2 ? (
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-green/10 border border-green/20 rounded-lg">
+                            <div className="flex flex-col gap-0.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+                                <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase text-green">Done</span>
                         </div>
-                        <span className="text-[10px] font-bold uppercase text-green">Done</span>
-                    </div>
-                ) : card.mastery === 1 ? (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-yellow/10 border border-yellow/20 rounded-lg">
-                        <div className="flex flex-col gap-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-yellow"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                    ) : card.mastery === 1 ? (
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-yellow/10 border border-yellow/20 rounded-lg">
+                            <div className="flex flex-col gap-0.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-yellow"></div>
+                                <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase text-yellow">In Progress</span>
                         </div>
-                        <span className="text-[10px] font-bold uppercase text-yellow">In Progress</span>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
-                        <div className="flex flex-col gap-0.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
-                            <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                    ) : (
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
+                            <div className="flex flex-col gap-0.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                                <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                            </div>
+                            <span className="text-[10px] font-bold uppercase text-muted">New</span>
                         </div>
-                        <span className="text-[10px] font-bold uppercase text-muted">New</span>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
 
             {/* Star Button */}
             <button
@@ -137,6 +140,7 @@ const TermRow: React.FC<{
         </div>
     );
 };
+
 
 export const SetDetail: React.FC<SetDetailProps> = ({
     set,
