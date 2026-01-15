@@ -1,7 +1,7 @@
 import React from 'react';
 import { User } from '@supabase/supabase-js';
 import { CardSet } from '../types';
-import { Cloud, Calendar, TrendingUp, BookOpen, Star, Layers, CheckCircle } from 'lucide-react';
+import { Cloud, Calendar, TrendingUp, BookOpen, Star, Layers, CheckCircle, User as UserIcon } from 'lucide-react';
 import clsx from 'clsx';
 
 interface ProfileCardProps {
@@ -10,6 +10,17 @@ interface ProfileCardProps {
     librarySets: CardSet[];
     className?: string;
 }
+
+// Generate initials from user info
+const getInitials = (user: User | null): string => {
+    if (!user) return '?';
+    const name = user.user_metadata?.full_name || user.email || '';
+    const parts = name.split(/[@\s]+/);
+    if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return (parts[0]?.[0] || '?').toUpperCase();
+};
 
 export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect, librarySets, className }) => {
     // Dynamic Stats
@@ -31,11 +42,20 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                 {/* Avatar */}
                 <div className="flex-shrink-0">
                     {user ? (
-                        <img
-                            src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'User')}&background=random&size=256`}
-                            alt="Profile"
-                            className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-text object-cover bg-panel shadow-sm"
-                        />
+                        user.user_metadata?.avatar_url ? (
+                            <img
+                                src={user.user_metadata.avatar_url}
+                                alt="Profile"
+                                className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-text object-cover bg-panel shadow-sm"
+                            />
+                        ) : (
+                            // Fallback: Show initials locally instead of calling external API
+                            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-text bg-panel-2 flex items-center justify-center shadow-sm">
+                                <span className="text-4xl md:text-5xl font-bold text-accent">
+                                    {getInitials(user)}
+                                </span>
+                            </div>
+                        )
                     ) : (
                         <div className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-text bg-panel flex items-center justify-center shadow-sm">
                             <Cloud size={64} className="text-text" />

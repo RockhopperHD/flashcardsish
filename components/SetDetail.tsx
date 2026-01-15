@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings } from '../types';
 import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2 } from 'lucide-react';
-import { renderMarkdown, renderInline, downloadFile } from '../utils';
+import { renderMarkdown, renderInline, downloadFile, sanitizeImageUrl } from '../utils';
 import clsx from 'clsx';
 
 interface SetDetailProps {
@@ -67,9 +67,9 @@ const TermRow: React.FC<{
             </div>
 
             {/* Image (if exists) */}
-            {card.image && (
+            {sanitizeImageUrl(card.image) && (
                 <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border border-outline bg-panel-2 flex items-center justify-center">
-                    <img src={card.image} alt="Card" className="w-full h-full object-cover" loading="lazy" />
+                    <img src={sanitizeImageUrl(card.image)} alt="Card" className="w-full h-full object-cover" loading="lazy" />
                 </div>
             )}
 

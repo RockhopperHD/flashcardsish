@@ -1,6 +1,79 @@
 import React from 'react';
 import { Card, CardSet, CustomFieldDefinition } from './types';
 
+// --- IMAGE URL SECURITY ---
+
+/**
+ * Validates an image URL for security.
+ * - Allows data: URIs (for locally uploaded images)
+ * - Allows https: URLs only for remote images
+ * - Blocks javascript:, file:, and other potentially dangerous protocols
+ * - Blocks http: URLs (insecure, mixed content)
+ * 
+ * @param url - The URL to validate
+ * @returns true if the URL is safe to use, false otherwise
+ */
+export const isValidImageUrl = (url: string | undefined | null): boolean => {
+  if (!url || typeof url !== 'string') return false;
+
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  // Allow data: URIs (base64 encoded images from file uploads)
+  if (trimmed.startsWith('data:image/')) {
+    // Block SVG data URIs as they can contain scripts
+    if (trimmed.startsWith('data:image/svg')) {
+      return false;
+    }
+    return true;
+  }
+
+  // Only allow https: for remote URLs
+  if (trimmed.startsWith('https://')) {
+    return true;
+  }
+
+  // Block everything else (http:, javascript:, file:, etc.)
+  return false;
+};
+
+/**
+ * Sanitizes an image URL, returning empty string if invalid.
+ * Use this before rendering any user-provided image URLs.
+ */
+export const sanitizeImageUrl = (url: string | undefined | null): string => {
+  if (isValidImageUrl(url)) {
+    return url!.trim();
+  }
+  return '';
+};
+
+/**
+ * Validates a file type for image upload security.
+ * Blocks SVG files (can contain scripts) and other non-image types.
+ * 
+ * @param file - The File object to validate
+ * @returns true if the file type is safe, false otherwise
+ */
+export const isValidImageFile = (file: File): boolean => {
+  const safeTypes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/gif',
+    'image/webp',
+    'image/avif',
+    'image/bmp'
+  ];
+
+  // Block SVG explicitly (can contain scripts)
+  if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
+    return false;
+  }
+
+  return safeTypes.includes(file.type.toLowerCase());
+};
+
 // Sanitize a set by removing zombie custom field data from cards
 // This ensures cards only contain data for fields that are actually defined
 export const sanitizeSet = (set: CardSet): CardSet => {

@@ -2,6 +2,43 @@ import { get, set } from 'idb-keyval';
 import { CardSet, Folder, Settings } from './types';
 import { supabase } from './src/supabaseClient';
 
+/**
+ * SECURITY: Supabase Row-Level Security (RLS) Requirements
+ * 
+ * The 'profiles' table MUST have RLS enabled with the following policies:
+ * 
+ * 1. SELECT: auth.uid() = id
+ *    - Users can only read their own profile data
+ * 
+ * 2. INSERT: auth.uid() = id  
+ *    - Users can only create their own profile (on first login)
+ * 
+ * 3. UPDATE: auth.uid() = id
+ *    - Users can only update their own profile data
+ * 
+ * 4. DELETE: auth.uid() = id
+ *    - Users can only delete their own profile data
+ * 
+ * Without these policies, any authenticated user could access other users' data!
+ * 
+ * SQL to enable RLS:
+ * ```sql
+ * ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ * 
+ * CREATE POLICY "Users can view own profile" ON profiles
+ *   FOR SELECT USING (auth.uid() = id);
+ * 
+ * CREATE POLICY "Users can insert own profile" ON profiles
+ *   FOR INSERT WITH CHECK (auth.uid() = id);
+ * 
+ * CREATE POLICY "Users can update own profile" ON profiles
+ *   FOR UPDATE USING (auth.uid() = id);
+ * 
+ * CREATE POLICY "Users can delete own profile" ON profiles
+ *   FOR DELETE USING (auth.uid() = id);
+ * ```
+ */
+
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';

@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+/* Custom theme configuration for Tailwind v4 */
+@theme {
+    /* Custom colors using CSS variables */
+    --color-bg: var(--bg);
+    --color-panel: var(--panel);
+    --color-panel-2: var(--panel-2);
+    --color-text: var(--text);
+    --color-muted: var(--muted);
+    --color-accent: var(--accent);
+    --color-red: var(--red);
+    --color-yellow: var(--yellow);
+    --color-green: var(--green);
+    --color-blue: var(--blue);
+    --color-purple: var(--purple);
+    --color-pill: #1e1913;
+    --color-outline: var(--outline);
+
+    /* Font families */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* Custom animations */
+    --animate-glow-pulse: glowPulse 1s ease-out;
+    --animate-fall: fall 3s linear forwards;
+}
+
+@keyframes glowPulse {
+    0% {
+        box-shadow: 0 0 0px var(--green);
+    }
+
+    50% {
+        box-shadow: 0 0 25px 10px rgba(147, 210, 108, 0.7);
+    }
+
+    100% {
+        box-shadow: 0 0 0px var(--green);
+    }
+}
+
+@keyframes fall {
+    to {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+    }
+}

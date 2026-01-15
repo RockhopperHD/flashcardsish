@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardSet, Settings } from '../types';
-import { renderMarkdown, renderInline } from '../utils';
+import { renderMarkdown, renderInline, sanitizeImageUrl } from '../utils';
 import {
     ArrowLeft,
     ArrowRight,
@@ -607,10 +607,10 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                                 <div className="text-left max-w-full w-full">
                                     {currentCard && (
                                         <>
-                                            {currentCard.image && showTermFirst && (
+                                            {sanitizeImageUrl(currentCard.image) && showTermFirst && (
                                                 <div className="mb-6 flex justify-center">
                                                     <img
-                                                        src={currentCard.image}
+                                                        src={sanitizeImageUrl(currentCard.image)}
                                                         alt=""
                                                         className="max-h-[150px] w-auto rounded-xl border border-outline"
                                                     />
@@ -673,10 +673,10 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                                 <div className="text-left max-w-full w-full">
                                     {currentCard && (
                                         <>
-                                            {currentCard.image && !showTermFirst && (
+                                            {sanitizeImageUrl(currentCard.image) && !showTermFirst && (
                                                 <div className="mb-6 flex justify-center">
                                                     <img
-                                                        src={currentCard.image}
+                                                        src={sanitizeImageUrl(currentCard.image)}
                                                         alt=""
                                                         className="max-h-[150px] w-auto rounded-xl border border-outline"
                                                     />

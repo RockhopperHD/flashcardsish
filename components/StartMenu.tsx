@@ -56,6 +56,8 @@ import {
   renderMarkdown,
   renderInline,
   extractCategory,
+  isValidImageFile,
+  sanitizeImageUrl,
 } from "../utils";
 import clsx from "clsx";
 
@@ -263,7 +265,11 @@ const ImageModal: React.FC<{
   }, [isOpen, initialValue]);
 
   const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) return;
+    // Security: Validate file type to block SVG and other dangerous formats
+    if (!isValidImageFile(file)) {
+      console.warn('Blocked image upload: Invalid or potentially unsafe file type:', file.type);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -326,7 +332,7 @@ const ImageModal: React.FC<{
             type="file"
             ref={fileInputRef}
             className="hidden"
-            accept="image/*"
+            accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/avif,image/bmp"
             onChange={(e) => e.target.files && handleFile(e.target.files[0])}
           />
           <Upload size={32} className="text-muted mb-2" />
@@ -1455,10 +1461,10 @@ const BuilderRowItem: React.FC<{
 
         <div className="p-6">
           {/* Image Preview (Above the grid so it doesn't affect alignment) */}
-          {row.image && (
+          {sanitizeImageUrl(row.image) && (
             <div className="relative rounded-xl overflow-hidden border border-outline bg-black/20 aspect-video flex items-center justify-center group/img mb-4 max-w-md">
               <img
-                src={row.image}
+                src={sanitizeImageUrl(row.image)}
                 alt="Card"
                 className="max-w-full max-h-full object-contain"
               />

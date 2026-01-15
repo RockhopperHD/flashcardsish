@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
-import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup } from '../utils';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl } from '../utils';
 import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -1235,10 +1235,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      <div className="w-full gap-8 items-center">
                         <div className={clsx("flex flex-col gap-4", currentCard.image ? "md:flex-row md:items-center" : "")}>
 
-                           {currentCard.image && (
+                           {sanitizeImageUrl(currentCard.image) && (
                               <div className="flex-shrink-0 mx-auto md:mx-0">
                                  <img
-                                    src={currentCard.image}
+                                    src={sanitizeImageUrl(currentCard.image)}
                                     alt="Card visual"
                                     className="rounded-xl max-h-[300px] w-auto object-contain border border-outline shadow-sm bg-bg/50"
                                  />
