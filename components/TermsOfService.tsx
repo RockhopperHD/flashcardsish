@@ -75,7 +75,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <div className="space-y-3 text-muted leading-relaxed">
                             <p>
                                 <strong className="text-text">4.1</strong> You may use Flashcardsish without creating an account.
-                                However, to enable cloud synchronization, you must sign in using Google OAuth.
+                                However, to enable cloud synchronization and to upload images, you must sign in using Google OAuth.
                             </p>
                             <p>
                                 <strong className="text-text">4.2</strong> You are responsible for maintaining the confidentiality

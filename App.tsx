@@ -17,6 +17,7 @@ import { supabase } from './src/supabaseClient';
 import { User } from '@supabase/supabase-js';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
+import { CursorTooltip } from './components/CursorTooltip';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
@@ -40,7 +41,7 @@ const SettingsModal: React.FC<{
    initialTab?: 'set' | 'global' | 'you';
 }> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set' }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-   const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you'>(initialTab);
+   const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder'>(initialTab);
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
    // Reset activeTab when initialTab changes (e.g., opening from different triggers)
@@ -74,7 +75,9 @@ const SettingsModal: React.FC<{
       dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone.",
       batchLength: "Set the number of cards in a batch, which is a repeated round, before new cards are introduced. If this number exceeds half the number of cards in your set, this is overridden by half the number of cards in your set.",
       shuffleCards: "When in Learn mode, shuffle terms so they don't appear in the same order as they are listed in the set.",
-      brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen."
+      brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen.",
+      importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
+      importOverride: "Choose how Flashcardsish handles duplicates when pasting raw text. If a card in your raw text matches the term or definition of one already in the set…\n\n• Keep Old: …the one already in the set will be kept and the one in the raw text will be ignored.\n• Add Duplicate: …the new one in the raw text will be added anyway, creating a duplicate card.\n• Override Old: …the new card in the raw text will replace the old card that already exists.",
    };
 
    const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
@@ -141,28 +144,20 @@ const SettingsModal: React.FC<{
       );
    };
 
-   // Setting Row Component with tooltip support
+   // SettingRow Component with tooltip support
    const SettingRow: React.FC<{
       id: string;
       label: string;
       settingKey: keyof Settings;
       alwaysShowTooltip?: boolean;
    }> = ({ id, label, settingKey, alwaysShowTooltip }) => {
-      const [hovered, setHovered] = useState(false);
-      const [rect, setRect] = useState<DOMRect | null>(null);
-      const showTooltip = alwaysShowTooltip ? hovered : (hovered && !settings.hideTooltips);
-
-      const updateRect = (e: React.MouseEvent) => {
-         setRect(e.currentTarget.getBoundingClientRect());
-      };
-
       return (
-         <div className="relative">
-            <label
-               className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
-               onMouseEnter={(e) => { setHovered(true); updateRect(e); }}
-               onMouseLeave={() => setHovered(false)}
-            >
+         <CursorTooltip
+            content={tooltips[id]}
+            isEnabled={alwaysShowTooltip || !settings.hideTooltips}
+            tooltipClassName="w-80 max-w-[90vw]"
+         >
+            <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
                <span className="font-medium text-text">{label}</span>
                <div
                   onClick={(e) => { e.stopPropagation(); toggle(settingKey); }}
@@ -171,20 +166,7 @@ const SettingsModal: React.FC<{
                   <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings[settingKey] ? "translate-x-6" : "translate-x-0")} />
                </div>
             </label>
-            {showTooltip && tooltips[id] && rect && (
-               <div
-                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-80 max-w-[90vw] text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
-                  style={{
-                     top: rect.top - 12,
-                     left: rect.left + (rect.width / 2),
-                     transform: 'translate(-50%, -100%)'
-                  }}
-               >
-                  {tooltips[id]}
-                  <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-[#422006] border-r border-b border-[#78350F]"></div>
-               </div>
-            )}
-         </div>
+         </CursorTooltip>
       );
    };
 
@@ -193,37 +175,17 @@ const SettingsModal: React.FC<{
       id: string;
       tooltip: string;
       hideWhenSetting?: boolean;
-      children: React.ReactNode;
+      children: React.ReactElement;
    }> = ({ id, tooltip, hideWhenSetting = true, children }) => {
-      const [hovered, setHovered] = useState(false);
-      const [rect, setRect] = useState<DOMRect | null>(null);
-      const showTooltip = hideWhenSetting ? (hovered && !settings.hideTooltips) : hovered;
-
-      const updateRect = (e: React.MouseEvent) => {
-         setRect(e.currentTarget.getBoundingClientRect());
-      };
-
+      // Ensure children is a single ReactElement as required by CursorTooltip
       return (
-         <div
-            className="relative"
-            onMouseEnter={(e) => { setHovered(true); updateRect(e); }}
-            onMouseLeave={() => setHovered(false)}
+         <CursorTooltip
+            content={tooltip}
+            isEnabled={hideWhenSetting ? !settings.hideTooltips : true}
+            tooltipClassName="w-80 max-w-[90vw]"
          >
             {children}
-            {showTooltip && rect && (
-               <div
-                  className="fixed z-[100] px-4 py-3 rounded-lg text-xs font-medium shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-80 max-w-[90vw] text-center bg-[#422006] text-[#FEF3C7] border border-[#78350F]"
-                  style={{
-                     top: rect.top - 12,
-                     left: rect.left + (rect.width / 2),
-                     transform: 'translate(-50%, -100%)'
-                  }}
-               >
-                  {tooltip}
-                  <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-[#422006] border-r border-b border-[#78350F]"></div>
-               </div>
-            )}
-         </div>
+         </CursorTooltip>
       );
    };
 
@@ -262,6 +224,18 @@ const SettingsModal: React.FC<{
                         <span className="font-medium">Study Settings</span>
                      </button>
                      <button
+                        onClick={() => setActiveTab('builder')}
+                        className={clsx(
+                           "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all text-sm",
+                           activeTab === 'builder'
+                              ? "bg-accent/10 text-accent border border-accent/20"
+                              : "text-muted hover:text-text hover:bg-panel-2"
+                        )}
+                     >
+                        <FileText size={18} className={activeTab === 'builder' ? "text-accent" : "text-muted"} />
+                        <span className="font-medium">Builder Settings</span>
+                     </button>
+                     <button
                         onClick={() => setActiveTab('global')}
                         className={clsx(
                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all text-sm",
@@ -294,11 +268,19 @@ const SettingsModal: React.FC<{
                         <span className="font-medium">You</span>
                      </button>
                   </nav>
+
+                  {!settings.hideTooltips && (
+                     <div className="mt-6 px-2">
+                        <p className="text-[10px] text-muted text-center opacity-60">
+                           Hover over a setting to learn what it does.
+                        </p>
+                     </div>
+                  )}
                </div>
 
                {/* Mobile Tab Selector */}
                <div className="md:hidden p-4 border-b border-outline w-full shrink-0">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                      <button
                         onClick={() => setActiveTab('set')}
                         className={clsx(
@@ -309,6 +291,17 @@ const SettingsModal: React.FC<{
                         )}
                      >
                         Set
+                     </button>
+                     <button
+                        onClick={() => setActiveTab('builder')}
+                        className={clsx(
+                           "py-2 px-4 rounded-lg text-sm font-bold transition-all",
+                           activeTab === 'builder'
+                              ? "bg-accent text-bg"
+                              : "bg-panel-2 text-muted hover:text-text"
+                        )}
+                     >
+                        Builder
                      </button>
                      <button
                         onClick={() => setActiveTab('global')}
@@ -500,6 +493,48 @@ const SettingsModal: React.FC<{
                      </div>
                   )}
 
+                  {activeTab === 'builder' && (
+                     <div className="space-y-4">
+                        <TooltipWrapper id="importAppend" tooltip={tooltips.importAppend}>
+                           <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
+                              <span className="font-medium text-text">Append Import</span>
+                              <div
+                                 onClick={(e) => { e.stopPropagation(); toggle('importAppend'); }}
+                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.importAppend ? "bg-accent" : "bg-outline")}
+                              >
+                                 <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.importAppend ? "translate-x-6" : "translate-x-0")} />
+                              </div>
+                           </label>
+                        </TooltipWrapper>
+
+                        <TooltipWrapper id="importOverride" tooltip={tooltips.importOverride}>
+                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                              <span className="font-medium text-text block mb-3">Duplicate Strategy</span>
+                              <div className="grid grid-cols-3 gap-2">
+                                 {[
+                                    { value: 'keep', label: 'Keep Old' },
+                                    { value: 'duplicate', label: 'Add Duplicate' },
+                                    { value: 'override', label: 'Override Old' }
+                                 ].map((opt) => (
+                                    <button
+                                       key={opt.value}
+                                       onClick={() => onUpdate({ ...settings, importOverride: opt.value as any })}
+                                       className={clsx(
+                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all border",
+                                          settings.importOverride === opt.value
+                                             ? "bg-accent text-bg border-accent"
+                                             : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                       )}
+                                    >
+                                       {opt.label}
+                                    </button>
+                                 ))}
+                              </div>
+                           </div>
+                        </TooltipWrapper>
+                     </div>
+                  )}
+
                   {activeTab === 'global' && (
                      <div className="space-y-4">
                         {/* Hide Helper Tooltips - Always shows its own tooltip */}
@@ -637,7 +672,9 @@ const App: React.FC = () => {
       hideTooltips: false,
       batchLength: 10,
       shuffleCards: true,
-      brutalMode: false
+      brutalMode: false,
+      importAppend: false,
+      importOverride: 'keep'
    });
 
    // Modals
@@ -684,7 +721,96 @@ const App: React.FC = () => {
       window.location.reload();
    };
 
+   // --- IMAGE UPLOAD HELPERS ---
 
+   // Compress and resize image before upload
+   const compressImage = (file: File): Promise<Blob> => {
+      return new Promise((resolve, reject) => {
+         const img = new Image();
+         const url = URL.createObjectURL(file);
+
+         img.onload = () => {
+            URL.revokeObjectURL(url);
+
+            const MAX_WIDTH = 1280;
+            const QUALITY = 0.7;
+
+            let width = img.width;
+            let height = img.height;
+
+            // Scale down if wider than MAX_WIDTH
+            if (width > MAX_WIDTH) {
+               height = (height * MAX_WIDTH) / width;
+               width = MAX_WIDTH;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+               reject(new Error('Could not get canvas context'));
+               return;
+            }
+
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob(
+               (blob) => {
+                  if (blob) {
+                     resolve(blob);
+                  } else {
+                     reject(new Error('Failed to compress image'));
+                  }
+               },
+               'image/jpeg',
+               QUALITY
+            );
+         };
+
+         img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('Failed to load image'));
+         };
+
+         img.src = url;
+      });
+   };
+
+   // Upload image to Supabase Storage and return public URL
+   const handleImageUpload = async (file: File): Promise<string> => {
+      if (!user) {
+         throw new Error('You must be logged in to upload images');
+      }
+
+      // Compress the image
+      const compressedBlob = await compressImage(file);
+
+      // Generate unique path: userId/timestamp.jpg
+      const timestamp = Date.now();
+      const filePath = `${user.id}/${timestamp}.jpg`;
+
+      // Upload to Supabase Storage 'images' bucket
+      const { data, error } = await supabase.storage
+         .from('images')
+         .upload(filePath, compressedBlob, {
+            contentType: 'image/jpeg',
+            upsert: false
+         });
+
+      if (error) {
+         console.error('Upload error:', error);
+         throw new Error(`Upload failed: ${error.message}`);
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+         .from('images')
+         .getPublicUrl(data.path);
+
+      return urlData.publicUrl;
+   };
 
    const handleDeleteData = async () => {
       const result = await deleteAllUserData();
@@ -1276,6 +1402,7 @@ const App: React.FC = () => {
                   lifetimeCorrect={lifetimeCorrect}
                   initialEditSetId={editRequestSetId}
                   onClearEditRequest={() => setEditRequestSetId(null)}
+                  onUploadImage={handleImageUpload}
                />
             )}
 

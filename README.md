@@ -16,11 +16,9 @@ Like other flashcards apps (notably the one that rhymes with *Bizlet*), Flashcar
 * **O to Override:** This is an intuitive keyboard shortcut that lets you move on from flashcards without picking up your mouse, letting you truly lock in.  
 * **Folders:** Categorize sets.  
 * **Multistudy:** Don’t want to merge sets, but want to study more than one at once? Use the multistudy feature to make a lump learn session to drill everything together.  
-* **Cloud Sync:** You can sign into Google to sync your cards across devices, and your data isn’t collected for advertising\! Doing so is also completely free.  
+* **Cloud Sync:** You can sign into Google to sync your cards across devices, and your data isn’t collected for advertising\! Doing so is also completely free, and allows you to upload images.  
 * **Download Sets:** Don’t want to sign into Google or need to send it to a friend? You can download sets as `.flashcards` files\* and send or keep them for your own use. You can also directly edit those in a text editor, or use the `.flashcards` format for your own program(s).  
 * …and more\!
-
-\**Flashcards files are literally just JSONs.*
 
 Flashcardsish is being actively updated, too\!
 

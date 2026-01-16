@@ -1510,7 +1510,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                           </div>
                                        )}
                                        {isInvalidNumber && (
-                                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-red text-white text-xs font-bold rounded shadow-lg whitespace-nowrap z-20 animate-in fade-in slide-in-from-bottom-1 after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-red">
+                                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 bg-[#7f1d1d] text-white text-xs font-bold rounded shadow-lg whitespace-nowrap z-20 animate-in fade-in slide-in-from-bottom-1 after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-[#7f1d1d]">
                                              Numbers Only
                                           </div>
                                        )}

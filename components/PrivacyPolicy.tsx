@@ -48,7 +48,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                             <div>
                                 <h4 className="font-bold text-text mb-2">2.1 Information from Google OAuth</h4>
                                 <p className="text-muted leading-relaxed">
-                                    You don't have to sign in with Google for Flashcardsish to function. When you sign in using Google, we receive and store:
+                                    You don't have to sign in with Google for Flashcardsish to function, though signing in is required for features like image uploading. When you sign in using Google, we receive and store:
                                 </p>
                                 <ul className="list-disc pl-5 mt-2 space-y-1 text-muted">
                                     <li>Your email address</li>
@@ -91,6 +91,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         </p>
                         <ul className="list-disc pl-5 space-y-1 text-muted">
                             <li>Enable cloud synchronization of your flashcard data across devices (saving your sets online)</li>
+                            <li>Host your uploaded images securely</li>
                             <li>Authenticate your identity and manage your account (making sure only you can access your data if you keep your account safe and treat it as intended)</li>
                         </ul>
                     </section>

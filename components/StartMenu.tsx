@@ -49,6 +49,7 @@ import {
   CustomFieldDefinition,
   CustomFieldType,
 } from "../types";
+import { CursorTooltip } from "./CursorTooltip";
 import {
   parseInput,
   generateId,
@@ -60,6 +61,8 @@ import {
   sanitizeImageUrl,
 } from "../utils";
 import clsx from "clsx";
+import { AddSetModal } from "./AddSetModal";
+import { RawTextImport } from "./RawTextImport";
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -78,6 +81,7 @@ interface StartMenuProps {
   onDuplicateLibrarySet: (id: string) => void;
   initialEditSetId?: string | null;
   onClearEditRequest?: () => void;
+  onUploadImage?: (file: File) => Promise<string>;
 }
 
 interface BuilderRow {
@@ -253,39 +257,63 @@ const ImageModal: React.FC<{
   onClose: () => void;
   onSave: (url: string) => void;
   initialValue: string;
-}> = ({ isOpen, onClose, onSave, initialValue }) => {
+  onUploadImage?: (file: File) => Promise<string>;
+}> = ({ isOpen, onClose, onSave, initialValue, onUploadImage }) => {
   const [urlInput, setUrlInput] = useState(initialValue);
   const [dragActive, setDragActive] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setUrlInput(initialValue);
+      setUploadError(null);
+      setIsUploading(false);
     }
   }, [isOpen, initialValue]);
 
-  const handleFile = (file: File) => {
+  const handleFile = async (file: File) => {
     // Security: Validate file type to block SVG and other dangerous formats
     if (!isValidImageFile(file)) {
       console.warn('Blocked image upload: Invalid or potentially unsafe file type:', file.type);
+      setUploadError('Invalid file type. Please use JPEG, PNG, GIF, or WebP.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        onSave(reader.result);
+    setUploadError(null);
+
+    // If cloud upload is available, use it
+    if (onUploadImage) {
+      setIsUploading(true);
+      try {
+        const publicUrl = await onUploadImage(file);
+        onSave(publicUrl);
         onClose();
+      } catch (error) {
+        console.error('Upload failed:', error);
+        setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+      } finally {
+        setIsUploading(false);
       }
-    };
-    reader.readAsDataURL(file);
+    } else {
+      // Fallback to Base64 for guests
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === "string") {
+          onSave(reader.result);
+          onClose();
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (!isUploading && e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFile(e.dataTransfer.files[0]);
     }
   };
@@ -295,7 +323,7 @@ const ImageModal: React.FC<{
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
-      onMouseDown={onClose}
+      onMouseDown={isUploading ? undefined : onClose}
     >
       <div
         className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95"
@@ -303,7 +331,7 @@ const ImageModal: React.FC<{
       >
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold text-text">Add Image</h3>
-          <button onClick={onClose}>
+          <button onClick={onClose} disabled={isUploading} className={isUploading ? "opacity-50 cursor-not-allowed" : ""}>
             <X size={24} className="text-muted hover:text-text" />
           </button>
         </div>
@@ -311,35 +339,60 @@ const ImageModal: React.FC<{
         {/* Upload Section */}
         <div
           className={clsx(
-            "border-2 border-dashed rounded-xl h-36 flex flex-col items-center justify-center cursor-pointer transition-colors",
-            dragActive
-              ? "border-accent bg-accent/10"
-              : "border-outline hover:border-accent hover:bg-panel-2",
+            "border-2 border-dashed rounded-xl h-36 flex flex-col items-center justify-center transition-colors relative",
+            isUploading
+              ? "border-accent/50 bg-accent/5 cursor-wait"
+              : dragActive
+                ? "border-accent bg-accent/10 cursor-pointer"
+                : "border-outline hover:border-accent hover:bg-panel-2 cursor-pointer",
           )}
           onDragEnter={(e) => {
+            if (isUploading) return;
             e.preventDefault();
             setDragActive(true);
           }}
           onDragLeave={(e) => {
+            if (isUploading) return;
             e.preventDefault();
             setDragActive(false);
           }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => !isUploading && fileInputRef.current?.click()}
         >
           <input
             type="file"
             ref={fileInputRef}
             className="hidden"
             accept="image/jpeg,image/jpg,image/png,image/gif,image/webp,image/avif,image/bmp"
-            onChange={(e) => e.target.files && handleFile(e.target.files[0])}
+            onChange={(e) => e.target.files && !isUploading && handleFile(e.target.files[0])}
+            disabled={isUploading}
           />
-          <Upload size={32} className="text-muted mb-2" />
-          <p className="text-sm text-muted font-medium">
-            Drag & drop or click to upload
-          </p>
+
+          {isUploading ? (
+            <>
+              {/* Spinner */}
+              <div className="w-8 h-8 border-3 border-accent/30 border-t-accent rounded-full animate-spin mb-2"></div>
+              <p className="text-sm text-accent font-medium">
+                Uploading...
+              </p>
+            </>
+          ) : (
+            <>
+              <Upload size={32} className="text-muted mb-2" />
+              <p className="text-sm text-muted font-medium">
+                Drag & drop or click to upload
+              </p>
+            </>
+          )}
         </div>
+
+        {/* Error Message */}
+        {uploadError && (
+          <div className="mt-3 p-3 bg-red/10 border border-red/20 rounded-lg">
+            <p className="text-sm text-red">{uploadError}</p>
+          </div>
+        )}
 
         <div className="flex items-center gap-4 my-5">
           <div className="h-px bg-outline flex-1"></div>
@@ -356,13 +409,20 @@ const ImageModal: React.FC<{
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="Paste image link..."
             className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 focus:outline-none focus:border-accent transition-colors text-sm"
+            disabled={isUploading}
           />
           <button
             onClick={() => {
               onSave(urlInput);
               onClose();
             }}
-            className="px-5 py-3 bg-panel-2 border border-outline hover:bg-accent hover:text-bg rounded-xl font-bold transition-all text-sm whitespace-nowrap"
+            disabled={isUploading}
+            className={clsx(
+              "px-5 py-3 bg-panel-2 border border-outline rounded-xl font-bold transition-all text-sm whitespace-nowrap",
+              isUploading
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-accent hover:text-bg"
+            )}
           >
             Save
           </button>
@@ -786,127 +846,123 @@ const FieldRowComponent: React.FC<{
       actionText = "choose between True and False";
 
     return (
-      <div
-        key={index}
-        className="relative group/field-row"
-        onFocus={() => setActiveFieldId(`${side}-${index}`)}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-            setActiveFieldId(null);
-          }
-        }}
+      <CursorTooltip
+        content={
+          <span>
+            In study mode, when you are presented with{" "}
+            <b>{otherSideName}</b> responding with <b>{thisSideName}</b>,
+            we'll ask you to also <b>{actionText}</b>.
+          </span>
+        }
+        isEnabled={!hideTooltips}
       >
-        <div className="absolute left-1/2 -translate-x-1/2 -top-2 w-0 h-0">
-          <HelperTooltip
-            show={isFocused}
-            position="top"
-            text={
-              <span>
-                In study mode, when you are presented with{" "}
-                <b>{otherSideName}</b> responding with <b>{thisSideName}</b>,
-                we'll ask you to also <b>{actionText}</b>.
-              </span>
+        <div
+          key={index}
+          className="relative group/field-row"
+          onFocus={() => setActiveFieldId(`${side}-${index}`)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setActiveFieldId(null);
             }
-            hideTooltips={hideTooltips}
-          />
-        </div>
+          }}
+        >
+          <div className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3">
+            <div className="flex items-center gap-2">
+              <input
+                value={field.name}
+                onChange={(e) => update(index, { name: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addNext();
+                  }
+                }}
+                className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
+                placeholder="Field Name"
+                autoFocus={!field.name}
+                spellCheck={false}
+                data-ms-editor="true"
+              />
 
-        <div className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3">
-          <div className="flex items-center gap-2">
-            <input
-              value={field.name}
-              onChange={(e) => update(index, { name: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addNext();
-                }
-              }}
-              className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
-              placeholder="Field Name"
-              autoFocus={!field.name}
-              spellCheck={false}
-              data-ms-editor="true"
-            />
+              {/* Custom Dropdown */}
+              <div className="relative w-32 flex-shrink-0" ref={dropdownRef}>
+                <button
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
+                >
+                  <span className="capitalize truncate">
+                    {field.type === "ab" ? "A/B" : field.type}
+                  </span>
+                  <Settings2 size={12} className="opacity-50 flex-shrink-0" />
+                </button>
 
-            {/* Custom Dropdown */}
-            <div className="relative w-32 flex-shrink-0" ref={dropdownRef}>
+                {isDropdownOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-full bg-panel border border-outline rounded-xl shadow-xl z-[60] overflow-hidden animate-in zoom-in-95">
+                    {[
+                      { val: "text", label: "Text" },
+                      { val: "number", label: "Number" },
+                      { val: "ab", label: "A/B" },
+                      { val: "tf", label: "T/F" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        onClick={() => {
+                          const updates: any = { type: opt.val as CustomFieldType };
+                          if (opt.val === "tf") {
+                            updates.options = { a: "True", b: "False" };
+                          }
+                          update(index, updates);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={clsx(
+                          "w-full text-left px-4 py-2 text-sm hover:bg-panel-2 transition-colors",
+                          field.type === opt.val
+                            ? "text-accent font-bold bg-accent/5"
+                            : "text-text",
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
+                onClick={() => remove(index)}
+                className="p-2 text-muted hover:text-red transition-colors"
               >
-                <span className="capitalize truncate">
-                  {field.type === "ab" ? "A/B" : field.type}
-                </span>
-                <Settings2 size={12} className="opacity-50 flex-shrink-0" />
+                <X size={16} />
               </button>
-
-              {isDropdownOpen && (
-                <div className="absolute top-full right-0 mt-1 w-full bg-panel border border-outline rounded-xl shadow-xl z-[60] overflow-hidden animate-in zoom-in-95">
-                  {[
-                    { val: "text", label: "Text" },
-                    { val: "number", label: "Number" },
-                    { val: "ab", label: "A/B" },
-                    { val: "tf", label: "T/F" },
-                  ].map((opt) => (
-                    <button
-                      key={opt.val}
-                      onClick={() => {
-                        const updates: any = { type: opt.val as CustomFieldType };
-                        if (opt.val === "tf") {
-                          updates.options = { a: "True", b: "False" };
-                        }
-                        update(index, updates);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={clsx(
-                        "w-full text-left px-4 py-2 text-sm hover:bg-panel-2 transition-colors",
-                        field.type === opt.val
-                          ? "text-accent font-bold bg-accent/5"
-                          : "text-text",
-                      )}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
-
-            <button
-              onClick={() => remove(index)}
-              className="p-2 text-muted hover:text-red transition-colors"
-            >
-              <X size={16} />
-            </button>
+            {field.type === "ab" && (
+              <div className="flex gap-2">
+                <input
+                  value={field.options?.a || ""}
+                  onChange={(e) =>
+                    update(index, {
+                      options: { a: e.target.value, b: field.options?.b || "" },
+                    })
+                  }
+                  placeholder="Option A"
+                  className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+                />
+                <input
+                  value={field.options?.b || ""}
+                  onChange={(e) =>
+                    update(index, {
+                      options: { a: field.options?.a || "", b: e.target.value },
+                    })
+                  }
+                  placeholder="Option B"
+                  className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+                  onFocus={() => setActiveFieldId(`${side}-${index}`)} // Ensure focus triggers specific row
+                />
+              </div>
+            )}
           </div>
-          {field.type === "ab" && (
-            <div className="flex gap-2">
-              <input
-                value={field.options?.a || ""}
-                onChange={(e) =>
-                  update(index, {
-                    options: { a: e.target.value, b: field.options?.b || "" },
-                  })
-                }
-                placeholder="Option A"
-                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
-              />
-              <input
-                value={field.options?.b || ""}
-                onChange={(e) =>
-                  update(index, {
-                    options: { a: field.options?.a || "", b: e.target.value },
-                  })
-                }
-                placeholder="Option B"
-                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
-                onFocus={() => setActiveFieldId(`${side}-${index}`)} // Ensure focus triggers specific row
-              />
-            </div>
-          )}
         </div>
-      </div>
+      </CursorTooltip>
     );
   };
 
@@ -925,6 +981,14 @@ const SetConfigurationModal: React.FC<{
   showYear: boolean;
   setShowYear: (b: boolean) => void;
   settings: Settings;
+  importAppend?: boolean;
+  setImportAppend?: (b: boolean) => void;
+  importOverride?: "keep" | "duplicate" | "override";
+  setImportOverride?: (s: "keep" | "duplicate" | "override") => void;
+  rawText?: string;
+  setRawText?: (s: string) => void;
+  onImportContinue?: (cards: Partial<Card>[]) => void;
+  hideImportButton?: boolean;
 }> = ({
   isOpen,
   onClose,
@@ -939,7 +1003,24 @@ const SetConfigurationModal: React.FC<{
   showYear,
   setShowYear,
   settings,
+  importAppend,
+  setImportAppend,
+  importOverride,
+  setImportOverride,
+  rawText,
+  setRawText,
+  onImportContinue,
+  hideImportButton,
 }) => {
+    const [mode, setMode] = useState<"config" | "import">("config");
+    const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+    const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(null);
+
+    // Reset mode on open
+    useEffect(() => {
+      if (isOpen) setMode("config");
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const updateTermField = (
@@ -1002,10 +1083,30 @@ const SetConfigurationModal: React.FC<{
 
 
 
-    const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
-    const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(
-      null,
-    );
+    if (mode === "import" && rawText !== undefined && setRawText && onImportContinue) {
+      return (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
+          onMouseDown={onClose}
+        >
+          <div
+            className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-6xl h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <RawTextImport
+              onClose={() => setMode('config')}
+              onContinue={(cards) => {
+                onImportContinue(cards);
+                onClose();
+              }}
+              rawText={rawText}
+              setRawText={setRawText}
+              isModal={true}
+            />
+          </div>
+        </div>
+      );
+    }
 
 
 
@@ -1018,7 +1119,18 @@ const SetConfigurationModal: React.FC<{
           className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <h3 className="text-2xl font-bold text-text mb-2">Set Configuration</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-2xl font-bold text-text">Set Configuration</h3>
+            {!hideImportButton && (
+              <button
+                onClick={() => setMode("import")}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel-2 border border-outline hover:border-accent text-xs font-bold text-muted hover:text-text transition-all"
+              >
+                <FileText size={14} />
+                Import Raw Text
+              </button>
+            )}
+          </div>
           <p className="text-muted mb-8 text-sm leading-relaxed max-w-2xl">
             You can tailor your flashcards set by renaming the main fields and
             adding up to 4 custom fields per side. These custom fields allow you
@@ -1218,6 +1330,7 @@ const BuilderRowItem: React.FC<{
   draggableProps?: DraggableProvided["draggableProps"];
   dragHandleProps?: DraggableProvided["dragHandleProps"];
   innerRef?: (element: HTMLElement | null) => void;
+  wysiwyg: boolean;
 }> = React.memo(
   ({
     row,
@@ -1238,6 +1351,7 @@ const BuilderRowItem: React.FC<{
     draggableProps,
     dragHandleProps,
     innerRef,
+    wysiwyg, // New prop
   }) => {
     const termData = useMemo(() => extractCategory(row.term), [row.term]);
     const defData = useMemo(() => extractCategory(row.def), [row.def]);
@@ -1389,18 +1503,28 @@ const BuilderRowItem: React.FC<{
           </div>
 
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => onOpenImageModal(row.id)}
-              className={clsx(
-                "p-1.5 rounded-lg transition-colors border border-transparent",
-                row.image
-                  ? "text-accent bg-accent/10 border-accent/20"
-                  : "text-muted hover:text-text hover:bg-panel-2",
-              )}
-              title="Add Image"
-            >
-              <ImageIcon size={14} />
-            </button>
+            {/* Image button/thumbnail */}
+            {sanitizeImageUrl(row.image) ? (
+              <button
+                onClick={() => onOpenImageModal(row.id)}
+                className="w-[26px] h-[26px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
+                title="Change Image"
+              >
+                <img
+                  src={sanitizeImageUrl(row.image)}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ) : (
+              <button
+                onClick={() => onOpenImageModal(row.id)}
+                className="p-1.5 rounded-lg transition-colors border border-transparent text-muted hover:text-text hover:bg-panel-2"
+                title="Add Image"
+              >
+                <ImageIcon size={14} />
+              </button>
+            )}
             <button
               onClick={() => onDuplicate(row.id)}
               className={clsx(
@@ -1460,24 +1584,7 @@ const BuilderRowItem: React.FC<{
         </div>
 
         <div className="p-6">
-          {/* Image Preview (Above the grid so it doesn't affect alignment) */}
-          {sanitizeImageUrl(row.image) && (
-            <div className="relative rounded-xl overflow-hidden border border-outline bg-black/20 aspect-video flex items-center justify-center group/img mb-4 max-w-md">
-              <img
-                src={sanitizeImageUrl(row.image)}
-                alt="Card"
-                className="max-w-full max-h-full object-contain"
-              />
-              <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover/img:opacity-100 transition-opacity">
-                <button
-                  onClick={() => updateRow(row.id, "image", "")}
-                  className="p-1.5 bg-red/50 text-white rounded-lg hover:bg-red/80 backdrop-blur-sm"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-          )}
+
 
           {/* Main Content Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
@@ -1525,7 +1632,7 @@ const BuilderRowItem: React.FC<{
                       : "border-outline text-muted italic",
                   )}
                 >
-                  {row.term ? renderMarkdown(termData.body) : "Enter term..."}
+                  {row.term ? (wysiwyg ? renderMarkdown(termData.body) : termData.body) : "Enter term..."}
                 </div>
               )}
             </div>
@@ -1574,7 +1681,7 @@ const BuilderRowItem: React.FC<{
                   )}
                 >
                   {row.def
-                    ? renderMarkdown(defData.body)
+                    ? (wysiwyg ? renderMarkdown(defData.body) : defData.body)
                     : "Enter definition..."}
                 </div>
               )}
@@ -1768,9 +1875,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   setFolders,
   initialEditSetId,
   onClearEditRequest,
+  onUploadImage,
 }) => {
-  const [view, setView] = useState<"menu" | "builder">("menu");
-  const [builderMode, setBuilderMode] = useState<"visual" | "raw">("visual");
+  const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
+  const [showAddSetModal, setShowAddSetModal] = useState(false);
+  const [importAppend, setImportAppend] = useState(true);
+  const [importOverride, setImportOverride] = useState<'keep' | 'duplicate' | 'override'>('keep');
+  const [builderMode, setBuilderMode] = useState<"visual" | "raw">("visual"); // Deprecated?
+  const [wysiwyg, setWysiwyg] = useState(true);
+  const [showWysiwygHelp, setShowWysiwygHelp] = useState(false);
   const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
 
   // V2 Set Configuration State
@@ -1807,6 +1920,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [noStarredModalSet, setNoStarredModalSet] = useState<CardSet | null>(
     null,
   );
+
+
 
   // Builder State
   const [builderRows, setBuilderRows] = useState<BuilderRow[]>(() => {
@@ -1883,6 +1998,27 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   });
   const [rawText, setRawText] = useState("");
   const [setName, setSetName] = useState("");
+
+  // Tooltip State for Disabled Buttons
+  const [hoveredButton, setHoveredButton] = useState<"save" | "study" | null>(
+    null,
+  );
+
+  const missingRequirements = useMemo(() => {
+    const list: string[] = [];
+    if (!setName.trim()) list.push("Add a set name");
+
+    let hasCards = false;
+    if (builderMode === "visual") {
+      hasCards = builderRows.some((r) => r.term.trim() || r.def.trim());
+    } else {
+      hasCards = rawText.trim().length > 0;
+    }
+
+    if (!hasCards) list.push("Add at least one term");
+
+    return list;
+  }, [setName, builderRows, builderMode, rawText]);
 
   const onDragEnd = (result: DropResult) => {
     if (!result.destination) {
@@ -2284,7 +2420,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   }, [builderRows, builderMode]);
 
-  const handleCreateNew = () => {
+  const startBuilderScratch = () => {
     setSetName("");
     setEditingSetId(null);
     setTermLabel("Term");
@@ -2334,6 +2470,97 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         .replace(",", "");
     setSetName(defaultName);
     setView("builder");
+    setBuilderMode("visual");
+  };
+
+  const startRawImport = () => {
+    // Initialize builder state just in case, or just switch view?
+    // Better to initialize so we have a clean slate if we cancel or something?
+    // No, raw import page is separate.
+    // But we should probably set the default name etc.
+    setSetName("");
+    setEditingSetId(null);
+    setTermLabel("Term");
+    setDefinitionLabel("Definition");
+    setTermSideFields([]);
+    setDefSideFields([]);
+    setRawText("");
+    // We don't set builderRows yet.
+
+    const defaultName =
+      "New Set " +
+      new Date()
+        .toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+        .replace(",", "");
+    setSetName(defaultName);
+
+    setView("raw-text");
+  };
+
+  const handleCreateNew = () => {
+    setShowAddSetModal(true);
+  };
+
+  const handleRawTextContinue = (cards: Partial<Card>[]) => {
+    // Convert cards to BuilderRows
+    const newRows: BuilderRow[] = cards.map((c, i) => {
+      let term = c.term?.[0] || "";
+      // Tags handling if needed... (assuming raw text import parses tags? not yet implemented in RawTextImport but let's assume safely)
+      return {
+        id: generateId() + "_imported_" + i,
+        term: term,
+        def: c.content || "",
+        year: c.year || "",
+        image: c.image || "",
+        customFields: c.customFields || [],
+        tags: c.tags || [],
+        star: c.star || false
+      };
+    });
+
+    // Auto-enable Years if detected in import
+    if (cards.some((c) => c.year && c.year.trim())) setShowYear(true);
+
+    // Merge Logic based on importAppend & importOverride
+    if (!settings.importAppend) {
+      // If not appending, replace entirely
+      setBuilderRows(newRows);
+    } else {
+      // Append mode
+      setBuilderRows(prev => {
+        const result = [...prev];
+        const strategy = settings.importOverride || 'keep';
+
+        newRows.forEach(row => {
+          // Check for duplicate by term
+          // Note: This matches exact case. If we ignored case, it would be checking settings.ignoreCapitalization?
+          // For builder, we usually stick to exact string match for overrides.
+          const existingIndex = result.findIndex(r => r.term === row.term);
+
+          if (existingIndex === -1) {
+            // No match, just add
+            result.push(row);
+          } else {
+            // Match found
+            if (strategy === 'duplicate') {
+              result.push(row);
+            } else if (strategy === 'override') {
+              // Replace existing with new
+              result[existingIndex] = row;
+            }
+            // if 'keep', we ignore the new row
+          }
+        });
+        return result;
+      });
+    }
+
+    setView("builder");
+    setBuilderMode("visual");
   };
 
   const handleBackToLibrary = () => {
@@ -2357,6 +2584,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setView("menu");
     setSetName("");
     setBuilderRows([]); // Reset handled by next enter
+    setRawText("");
   };
 
   const handleSaveAndExit = () => {
@@ -3078,6 +3306,25 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setDefSideFields={setDefSideFields}
         showYear={showYear}
         setShowYear={setShowYear}
+        importAppend={importAppend}
+        setImportAppend={setImportAppend}
+        importOverride={importOverride}
+        setImportOverride={setImportOverride}
+        rawText={rawText}
+        setRawText={setRawText}
+        onImportContinue={handleRawTextContinue}
+        hideImportButton={view === "raw-text"}
+      />
+
+      <AddSetModal
+        isOpen={showAddSetModal}
+        onClose={() => setShowAddSetModal(false)}
+        onStartScratch={startBuilderScratch}
+        onStartRaw={startRawImport}
+        onImportFile={() => {
+          setShowAddSetModal(false);
+          fileInputRef.current?.click();
+        }}
       />
 
       <UnsavedChangesModal
@@ -3096,6 +3343,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             ? builderRows.find((r) => r.id === editingImageRowId)?.image || ""
             : ""
         }
+        onUploadImage={onUploadImage}
       />
 
       <WarningModal
@@ -3150,40 +3398,61 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       />
 
       {/* Header */}
+      {/* Header */}
       <div className="mb-10 text-left">
-        {view === "menu" && (
-          <div className="text-accent font-mono text-sm mb-1 tracking-widest uppercase opacity-80">
-            {currentDate}
-          </div>
+        {/* Back Button for separate views */}
+        {(view === "builder" || view === "raw-text") && (
+          <button
+            onClick={handleBackToLibrary}
+            className="mb-4 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
+          >
+            <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
+              <ArrowLeft size={16} />
+            </div>
+            Back to Library
+          </button>
         )}
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
-            {view === "menu" ? greeting : "List Builder"}
-          </h1>
-        </div>
-        <p className="text-muted text-lg">
-          {view === "menu"
-            ? "Study a deck or create a new one below."
-            : "Build decks here!"}
-        </p>
-      </div>
 
-      {view === "builder" && (
-        <button
-          onClick={handleBackToLibrary}
-          className="mb-6 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
-        >
-          <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-            <ArrowLeft size={16} />
-          </div>
-          Back to Library
-        </button>
-      )}
+        {/* Date/Subtitle */}
+        {view === "menu" ? (
+          <>
+            <div className="text-accent font-mono text-sm mb-1 tracking-widest uppercase opacity-80">
+              {currentDate}
+            </div>
+            <div className="flex items-center justify-between">
+              <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
+                {greeting}
+              </h1>
+            </div>
+            <p className="text-muted text-lg">
+              Study a deck or create a new one below.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
+              List Builder
+            </h1>
+            <p className="text-accent font-bold text-2xl animate-in slide-in-from-left-2 fade-in duration-500">
+              {view === "raw-text" ? "Import Raw Text" : "Visual Editor"}
+            </p>
+          </>
+        )}
+      </div>
 
       <div className="space-y-12">
         {/* MENU MODE */}
         {view === "menu" && (
-          <div className="max-w-4xl mx-auto">
+          <div
+            className="max-w-4xl mx-auto"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileUpload({ target: { files: e.dataTransfer.files } } as any);
+              }
+            }}
+          >
             {/* ONGOING SESSIONS */}
             {ongoingSessions.length > 0 && (
               <div className="mb-8">
@@ -3381,16 +3650,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </button>
                   )}
                   <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold text-muted hover:text-text hover:border-accent transition-colors"
-                  >
-                    <Upload size={14} /> Import
-                  </button>
-                  <button
                     onClick={handleCreateNew}
                     className="flex items-center gap-2 px-3 py-1.5 bg-text text-bg rounded-lg text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
                   >
-                    <Plus size={14} /> Create
+                    <Plus size={14} /> Add
                   </button>
                 </div>
               </div>
@@ -3666,7 +3929,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               className="fixed inset-0 z-40"
                               onClick={() => setMoveToMenuOpen(false)}
                             />
-                            <div className="absolute bottom-full left-0 mb-2 w-52 bg-panel border border-outline rounded-xl shadow-xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
+                            <div className="absolute bottom-full left-0 mb-2 w-64 max-h-60 overflow-y-auto bg-panel border border-outline rounded-xl shadow-xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
                               {/* Main Library Option */}
                               <button
                                 onClick={() => handleMoveSelectedToFolder(undefined)}
@@ -3791,9 +4054,26 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           </div>
         )}
 
-        {/* BUILDER MODE */}
+        {/* RAW TEXT IMPORT MODE */}
+        {view === "raw-text" && (
+          <RawTextImport
+            onClose={() => {
+              if (rawText.trim()) setShowUnsavedModal(true);
+              else handleBackToLibrary();
+            }}
+            onContinue={handleRawTextContinue}
+            rawText={rawText}
+            setRawText={setRawText}
+          />
+        )}
+
         {view === "builder" && (
           <div className="animate-in zoom-in-95 duration-300 space-y-6">
+            <p className="text-sm text-text/60 leading-relaxed max-w-4xl">
+              Use this menu to build your set. Use markdown to format your cards and buttons on screen to star cards or swap them. You can drag cards using the left-side handles to change their order. Use Set Configuration to adjust and add custom fields.
+            </p>
+
+
             {/* 1. Header Panel (Floating Container) */}
             <div className="bg-panel border border-outline rounded-2xl p-6 shadow-lg">
               <div className="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -3804,7 +4084,26 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   className="bg-panel-2 border border-outline rounded-xl px-4 py-2 text-text w-full md:w-auto min-w-[300px] focus:outline-none focus:border-accent transition-colors font-bold"
                 />
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-6">
+                  {/* WYSIWYG Toggle */}
+                  <CursorTooltip
+                    content="Toggle whether the card previews are shown as Markdown or formatted."
+                    isEnabled={!settings.hideTooltips}
+                  >
+                    <label className="flex items-center gap-2 cursor-pointer select-none group">
+                      <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", wysiwyg ? "bg-accent border-accent text-bg" : "bg-panel-2 border-outline group-hover:border-text")}>
+                        {wysiwyg && <Check size={14} strokeWidth={4} />}
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={wysiwyg}
+                        onChange={(e) => setWysiwyg(e.target.checked)}
+                        className="hidden"
+                      />
+                      <span className="text-sm font-bold text-muted group-hover:text-text transition-colors">WYSIWYG</span>
+                    </label>
+                  </CursorTooltip>
+
                   <button
                     onClick={() => setIsConfigModalOpen(true)}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
@@ -3813,32 +4112,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     Set Configuration
                   </button>
 
-                  <div className="h-6 w-px bg-outline"></div>
 
-                  <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1">
-                    <button
-                      onClick={() => switchMode("visual")}
-                      className={clsx(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                        builderMode === "visual"
-                          ? "bg-panel shadow-sm text-accent"
-                          : "text-muted hover:text-text",
-                      )}
-                    >
-                      <LayoutList size={16} /> Visual
-                    </button>
-                    <button
-                      onClick={() => switchMode("raw")}
-                      className={clsx(
-                        "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all",
-                        builderMode === "raw"
-                          ? "bg-panel shadow-sm text-accent"
-                          : "text-muted hover:text-text",
-                      )}
-                    >
-                      <FileText size={16} /> Raw Text
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
@@ -3903,6 +4177,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       draggableProps={provided.draggableProps}
                                       dragHandleProps={provided.dragHandleProps}
                                       innerRef={provided.innerRef}
+                                      wysiwyg={wysiwyg}
                                     />
                                   )}
                                 </Draggable>
@@ -3964,18 +4239,85 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
 
               <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                <button
-                  onClick={handleSaveToLibrary}
-                  className="flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text hover:border-accent transition-all"
+                <div
+                  className="relative"
+                  onMouseEnter={() => setHoveredButton("save")}
+                  onMouseLeave={() => setHoveredButton(null)}
                 >
-                  <FolderOpen size={18} /> Save to Library
-                </button>
-                <button
-                  onClick={handleStartSessionNow}
-                  className="flex items-center justify-center gap-2 bg-accent text-bg px-8 py-3 rounded-xl font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
+                  <HelperTooltip
+                    show={
+                      hoveredButton === "save" && missingRequirements.length > 0
+                    }
+                    hideTooltips={false}
+                    type="error"
+                    position="top"
+                    text={
+                      <div className="text-left px-2">
+                        <div className="font-bold mb-1">Set Incomplete:</div>
+                        <ul className="list-disc pl-4 space-y-0.5">
+                          {missingRequirements.map((req, i) => (
+                            <li key={i}>{req}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    }
+                  />
+                  <button
+                    onClick={
+                      missingRequirements.length === 0
+                        ? handleSaveToLibrary
+                        : undefined
+                    }
+                    className={clsx(
+                      "flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text transition-all w-full md:w-auto",
+                      missingRequirements.length > 0
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:border-accent",
+                    )}
+                  >
+                    <FolderOpen size={18} /> Save to Library
+                  </button>
+                </div>
+
+                <div
+                  className="relative"
+                  onMouseEnter={() => setHoveredButton("study")}
+                  onMouseLeave={() => setHoveredButton(null)}
                 >
-                  <Play size={18} fill="currentColor" /> Study Now
-                </button>
+                  <HelperTooltip
+                    show={
+                      hoveredButton === "study" && missingRequirements.length > 0
+                    }
+                    hideTooltips={false}
+                    type="error"
+                    position="top"
+                    text={
+                      <div className="text-left px-2">
+                        <div className="font-bold mb-1">Set Incomplete:</div>
+                        <ul className="list-disc pl-4 space-y-0.5">
+                          {missingRequirements.map((req, i) => (
+                            <li key={i}>{req}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    }
+                  />
+                  <button
+                    onClick={
+                      missingRequirements.length === 0
+                        ? handleStartSessionNow
+                        : undefined
+                    }
+                    className={clsx(
+                      "flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full md:w-auto",
+                      missingRequirements.length === 0
+                        ? "bg-accent text-bg hover:scale-105 active:scale-95"
+                        : "bg-accent/50 text-bg/80 cursor-not-allowed shadow-none",
+                    )}
+                  >
+                    <Play size={18} fill="currentColor" /> Study Now
+                  </button>
+                </div>
               </div>
             </div>
 

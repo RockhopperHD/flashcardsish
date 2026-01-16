@@ -256,7 +256,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
             {/* Modes Grid */}
             <div className="mb-12">
                 <h2 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 pl-1">Study Modes</h2>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                     {/* Learn - Active */}
                     <ModeButton
                         label="Learn"
@@ -272,36 +272,6 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                         isActive={false}
                         onClick={onStartFlashcards}
                     />
-
-                    {/* Mystery Mode Placeholders */}
-                    <div className="relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-outline/30 bg-panel-2/20 transition-all">
-                        <div className="p-3 rounded-xl bg-panel-3/50">
-                            <span className="text-2xl font-bold text-muted/30">?</span>
-                        </div>
-                        <span className="font-bold text-sm text-muted/30">???</span>
-                    </div>
-
-                    <div className="relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-outline/30 bg-panel-2/20 transition-all">
-                        <div className="p-3 rounded-xl bg-panel-3/50">
-                            <span className="text-2xl font-bold text-muted/30">?</span>
-                        </div>
-                        <span className="font-bold text-sm text-muted/30">???</span>
-                    </div>
-
-                    <div className="relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-outline/30 bg-panel-2/20 transition-all">
-                        <div className="p-3 rounded-xl bg-panel-3/50">
-                            <span className="text-2xl font-bold text-muted/30">?</span>
-                        </div>
-                        <span className="font-bold text-sm text-muted/30">???</span>
-                    </div>
-
-                    {/* More modes coming soon */}
-                    <div className="relative flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-dashed border-outline/50 bg-panel-2/30">
-                        <div className="text-center">
-                            <div className="text-muted/50 text-sm font-medium">More modes</div>
-                            <div className="text-muted/30 text-xs">coming soon</div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
