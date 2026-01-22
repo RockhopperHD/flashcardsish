@@ -17,7 +17,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         <Shield size={24} className="text-accent" />
                         <div>
                             <h2 className="text-xl font-bold text-text">Privacy Policy</h2>
-                            <div className="text-sm text-muted">Last updated: January 2, 2026</div>
+                            <div className="text-sm text-muted">Last updated: January 22, 2026</div>
                         </div>
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
