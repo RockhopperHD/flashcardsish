@@ -149,25 +149,22 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <div className="space-y-3 text-muted leading-relaxed">
                             <p>
                                 <strong className="text-text">7.1</strong> The Service relies on third-party services including
-                                Google (for authentication) and Supabase (for data storage). These services operate under their
+                                Google (for authentication and data storage via Google Drive). These services operate under their
                                 own terms of service and privacy policies.
                             </p>
                             <p>
                                 <strong className="text-text">7.2</strong> We are not responsible for:
                             </p>
                             <ul className="list-disc pl-5 space-y-1">
-                                <li>Outages, downtime, or service interruptions of Google or Supabase</li>
+                                <li>Outages, downtime, or service interruptions of Google Drive</li>
                                 <li>Data breaches or security incidents originating from third-party services</li>
                                 <li>Changes to third-party terms, policies, or pricing that affect the Service</li>
                                 <li>Data loss or corruption caused by third-party service failures</li>
                             </ul>
                             <p>
-                                <strong className="text-text">7.3</strong> Your use of Google OAuth is subject to{' '}
+                                <strong className="text-text">7.3</strong> Your use of Google OAuth and Google Drive is subject to{' '}
                                 <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
                                     Google's Terms of Service
-                                </a>. Your data stored via Supabase is subject to{' '}
-                                <a href="https://supabase.com/terms" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                    Supabase's Terms of Service
                                 </a>.
                             </p>
                         </div>

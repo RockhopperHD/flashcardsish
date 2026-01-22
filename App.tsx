@@ -13,8 +13,7 @@ import { FlashcardsMode } from './components/FlashcardsMode';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File } from 'lucide-react';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData } from './storage';
-import { supabase } from './src/supabaseClient';
-import { User } from '@supabase/supabase-js';
+import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { CursorTooltip } from './components/CursorTooltip';
@@ -34,7 +33,7 @@ const SettingsModal: React.FC<{
    onExportData: () => void;
    librarySets: CardSet[];
    // User props for "You" tab
-   user: User | null;
+   user: GoogleDriveUser | null;
    lifetimeCorrect: number;
    onLogin: () => void;
    onLogout: () => void;
@@ -78,6 +77,7 @@ const SettingsModal: React.FC<{
       brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen.",
       importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
       importOverride: "Choose how Flashcardsish handles duplicates when pasting raw text. If a card in your raw text matches the term or definition of one already in the set…\n\n• Keep Old: …the one already in the set will be kept and the one in the raw text will be ignored.\n• Add Duplicate: …the new one in the raw text will be added anyway, creating a duplicate card.\n• Override Old: …the new card in the raw text will replace the old card that already exists.",
+      autoCloseImageWindow: "When enabled, pasting any text in the image URL space instantly closes the window and attempts to use that image. If it fails, it will upload a broken image, but you can always re-attempt the upload.",
    };
 
    const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
@@ -532,6 +532,18 @@ const SettingsModal: React.FC<{
                               </div>
                            </div>
                         </TooltipWrapper>
+
+                        <TooltipWrapper id="autoCloseImageWindow" tooltip={tooltips.autoCloseImageWindow}>
+                           <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
+                              <span className="font-medium text-text">Automatically Close Image Window</span>
+                              <div
+                                 onClick={(e) => { e.stopPropagation(); toggle('autoCloseImageWindow'); }}
+                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.autoCloseImageWindow ? "bg-accent" : "bg-outline")}
+                              >
+                                 <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.autoCloseImageWindow ? "translate-x-6" : "translate-x-0")} />
+                              </div>
+                           </label>
+                        </TooltipWrapper>
                      </div>
                   )}
 
@@ -650,7 +662,7 @@ const App: React.FC = () => {
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
    const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
 
-   const [user, setUser] = useState<User | null>(null);
+   const [user, setUser] = useState<GoogleDriveUser | null>(null);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
    const [folders, setFolders] = useState<Folder[]>([]);
@@ -674,7 +686,8 @@ const App: React.FC = () => {
       shuffleCards: true,
       brutalMode: false,
       importAppend: false,
-      importOverride: 'keep'
+      importOverride: 'keep',
+      autoCloseImageWindow: false
    });
 
    // Modals
@@ -708,16 +721,17 @@ const App: React.FC = () => {
    // --- AUTH & CLOUD SYNC ---
 
    const handleLogin = async () => {
-      await supabase.auth.signInWithOAuth({
-         provider: 'google',
-         options: { redirectTo: window.location.origin } // or your specific supabase callback URL
-      });
+      try {
+         await googleDrive.signIn();
+      } catch (error) {
+         console.error('Failed to sign in:', error);
+         alert('Failed to sign in. Please try again.');
+      }
    };
 
    const handleLogout = async () => {
-      await supabase.auth.signOut();
+      await googleDrive.signOut();
       setUser(null);
-      // Optional: clear local state or reload to reset
       window.location.reload();
    };
 
@@ -778,7 +792,7 @@ const App: React.FC = () => {
       });
    };
 
-   // Upload image to Supabase Storage and return public URL
+   // Upload image to Google Drive and return file ID
    const handleImageUpload = async (file: File): Promise<string> => {
       if (!user) {
          throw new Error('You must be logged in to upload images');
@@ -787,36 +801,27 @@ const App: React.FC = () => {
       // Compress the image
       const compressedBlob = await compressImage(file);
 
-      // Generate unique path: userId/timestamp.jpg
-      const timestamp = Date.now();
-      const filePath = `${user.id}/${timestamp}.jpg`;
-
-      // Upload to Supabase Storage 'images' bucket
-      const { data, error } = await supabase.storage
-         .from('images')
-         .upload(filePath, compressedBlob, {
-            contentType: 'image/jpeg',
-            upsert: false
-         });
-
-      if (error) {
-         console.error('Upload error:', error);
-         throw new Error(`Upload failed: ${error.message}`);
+      // Get the app folder ID
+      const folderId = localStorage.getItem('flashcardsish-drive-folder-id');
+      if (!folderId) {
+         throw new Error('Drive folder not initialized');
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-         .from('images')
-         .getPublicUrl(data.path);
+      // Generate unique filename: timestamp.jpg
+      const timestamp = Date.now();
+      const filename = `${timestamp}.jpg`;
 
-      return urlData.publicUrl;
+      // Upload to Google Drive and get file ID
+      const fileId = await googleDrive.uploadImage(folderId, compressedBlob, filename);
+
+      return fileId; // Return the Drive file ID instead of URL
    };
 
    const handleDeleteData = async () => {
       const result = await deleteAllUserData();
       if (result.success) {
          // Sign out and reload
-         await supabase.auth.signOut();
+         await googleDrive.signOut();
          setUser(null);
          window.location.reload();
       } else {
@@ -845,33 +850,51 @@ const App: React.FC = () => {
       URL.revokeObjectURL(url);
    };
 
-   // Listen for Auth Changes
+   // Listen for Auth Changes and Initialize Google Drive
    useEffect(() => {
-      // Check initial session
-      supabase.auth.getSession().then(({ data: { session } }) => {
-         setUser(session?.user ?? null);
-      });
+      const initializeAuth = async () => {
+         try {
+            await googleDrive.init();
+            const currentUser = await googleDrive.getSession();
+            setUser(currentUser);
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-         setUser(session?.user ?? null);
-         if (session?.user) {
-            // User just logged in (or session refreshed), fetch cloud data
-            loadAllUserData().then(data => {
+            if (currentUser) {
+               // User just logged in, fetch cloud data
+               const data = await loadAllUserData();
                if (data) {
                   if (data.library_sets && data.library_sets.length > 0) {
-                     // Sanitize cloud sets to remove any zombie custom field data
                      const sanitizedSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
                      setLibrarySets(sanitizedSets);
                   }
                   if (data.folders && data.folders.length > 0) setFolders(data.folders);
                   if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
-
                }
-            });
+            }
+         } catch (error) {
+            console.error('Failed to initialize Google Drive:', error);
+         }
+      };
+
+      initializeAuth();
+
+      // Listen for sign-in state changes
+      const unsubscribe = googleDrive.onAuthStateChange(async (newUser) => {
+         setUser(newUser);
+         if (newUser) {
+            // User just logged in, fetch cloud data
+            const data = await loadAllUserData();
+            if (data) {
+               if (data.library_sets && data.library_sets.length > 0) {
+                  const sanitizedSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
+                  setLibrarySets(sanitizedSets);
+               }
+               if (data.folders && data.folders.length > 0) setFolders(data.folders);
+               if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
+            }
          }
       });
 
-      return () => subscription.unsubscribe();
+      return () => unsubscribe();
    }, []);
 
 
@@ -1355,7 +1378,7 @@ const App: React.FC = () => {
                   >
                      {user ? (
                         <img
-                           src={user.user_metadata?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
+                           src={user.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
                            alt="Profile"
                            className="w-6 h-6 rounded-full"
                         />
@@ -1364,7 +1387,7 @@ const App: React.FC = () => {
                            <Cloud size={14} className="text-muted" />
                         </div>
                      )}
-                     <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
+                     <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
                   </button>
 
                   <button

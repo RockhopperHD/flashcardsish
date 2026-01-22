@@ -4,14 +4,15 @@ import { Card, CardSet, CustomFieldDefinition } from './types';
 // --- IMAGE URL SECURITY ---
 
 /**
- * Validates an image URL for security.
+ * Validates an image URL or Google Drive file ID for security.
  * - Allows data: URIs (for locally uploaded images)
  * - Allows https: URLs only for remote images
+ * - Allows Google Drive file IDs (short alphanumeric strings)
  * - Blocks javascript:, file:, and other potentially dangerous protocols
  * - Blocks http: URLs (insecure, mixed content)
  * 
- * @param url - The URL to validate
- * @returns true if the URL is safe to use, false otherwise
+ * @param url - The URL or file ID to validate
+ * @returns true if the URL/ID is safe to use, false otherwise
  */
 export const isValidImageUrl = (url: string | undefined | null): boolean => {
   if (!url || typeof url !== 'string') return false;
@@ -33,19 +34,57 @@ export const isValidImageUrl = (url: string | undefined | null): boolean => {
     return true;
   }
 
+  // Allow Google Drive file IDs (they are short alphanumeric strings, typically 25-50 chars)
+  // Google Drive file IDs contain letters, numbers, hyphens, and underscores
+  if (/^[a-zA-Z0-9_-]{20,100}$/.test(trimmed)) {
+    return true;
+  }
+
   // Block everything else (http:, javascript:, file:, etc.)
   return false;
 };
 
 /**
- * Sanitizes an image URL, returning empty string if invalid.
+ * Check if a string is a Google Drive file ID
+ */
+export const isGoogleDriveFileId = (value: string | undefined | null): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  // Drive file IDs are alphanumeric with hyphens/underscores, and don't start with http/data
+  return /^[a-zA-Z0-9_-]{20,100}$/.test(trimmed) &&
+    !trimmed.startsWith('http') &&
+    !trimmed.startsWith('data:');
+};
+
+/**
+ * Convert image reference (URL or Drive ID) to a usable URL
+ * Returns empty string if invalid
+ */
+export const getImageUrl = (value: string | undefined | null): string => {
+  if (!value || typeof value !== 'string') return '';
+
+  const trimmed = value.trim();
+
+  // If it's already a valid URL or data URI, return it
+  if (trimmed.startsWith('https://') || trimmed.startsWith('data:image/')) {
+    return isValidImageUrl(trimmed) ? trimmed : '';
+  }
+
+  // If it's a Google Drive file ID, convert to Drive API URL
+  if (isGoogleDriveFileId(trimmed)) {
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+    return `https://www.googleapis.com/drive/v3/files/${trimmed}?alt=media&key=${apiKey}`;
+  }
+
+  return '';
+};
+
+/**
+ * Sanitizes an image URL/ID, returning empty string if invalid.
  * Use this before rendering any user-provided image URLs.
  */
 export const sanitizeImageUrl = (url: string | undefined | null): string => {
-  if (isValidImageUrl(url)) {
-    return url!.trim();
-  }
-  return '';
+  return getImageUrl(url);
 };
 
 /**

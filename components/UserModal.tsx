@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User } from '@supabase/supabase-js';
+import { GoogleDriveUser } from '../src/googleDriveClient';
 import { ProfileCard } from './ProfileCard';
 import { X, LogIn, Cloud } from 'lucide-react';
 
@@ -8,7 +8,7 @@ import { CardSet } from '../types';
 interface UserModalProps {
     isOpen: boolean;
     onClose: () => void;
-    user: User | null;
+    user: GoogleDriveUser | null;
     lifetimeCorrect: number;
     onLogin: () => void;
     onLogout: () => void;

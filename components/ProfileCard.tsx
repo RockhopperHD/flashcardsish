@@ -1,20 +1,20 @@
 import React from 'react';
-import { User } from '@supabase/supabase-js';
+import { GoogleDriveUser } from '../src/googleDriveClient';
 import { CardSet } from '../types';
 import { Cloud, Calendar, TrendingUp, BookOpen, Star, Layers, CheckCircle, User as UserIcon } from 'lucide-react';
 import clsx from 'clsx';
 
 interface ProfileCardProps {
-    user: User | null;
+    user: GoogleDriveUser | null;
     lifetimeCorrect: number;
     librarySets: CardSet[];
     className?: string;
 }
 
 // Generate initials from user info
-const getInitials = (user: User | null): string => {
+const getInitials = (user: GoogleDriveUser | null): string => {
     if (!user) return '?';
-    const name = user.user_metadata?.full_name || user.email || '';
+    const name = user.name || user.email || '';
     const parts = name.split(/[@\s]+/);
     if (parts.length >= 2) {
         return (parts[0][0] + parts[1][0]).toUpperCase();
@@ -31,8 +31,9 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
 
 
 
-    // Join Date
-    const joinDate = user?.created_at ? new Date(user.created_at) : new Date();
+    // Join Date - GoogleDrive doesn't provide created_at, so we'll use current date as fallback
+    // You might want to store this in your Drive data file if needed
+    const joinDate = new Date(); // Default to now since Google Drive doesn't track account creation
     const formattedJoinDate = joinDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
     return (
@@ -42,9 +43,9 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                 {/* Avatar */}
                 <div className="flex-shrink-0">
                     {user ? (
-                        user.user_metadata?.avatar_url ? (
+                        user.picture ? (
                             <img
-                                src={user.user_metadata.avatar_url}
+                                src={user.picture}
                                 alt="Profile"
                                 className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-text object-cover bg-panel shadow-sm"
                             />
@@ -66,7 +67,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                 {/* Info */}
                 <div className="flex-grow w-full">
                     <h2 className="text-3xl md:text-5xl font-bold text-text mb-2 tracking-tight">
-                        Hello, {user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
+                        Hello, {user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'User'}
                     </h2>
                     <p className="text-base md:text-lg text-muted/80 font-medium mb-10 flex items-center gap-2">
                         <Calendar size={18} />

@@ -11,7 +11,8 @@ export interface Card {
   term: string[];
   content: string;
   year?: string; // Optional year field
-  image?: string; // Optional image URL or Base64
+  image?: string; // Optional image URL or Base64 (definition side)
+  termImage?: string; // Optional image URL or Base64 (term side)
   customFields?: { name: string; value: string }[]; // Optional custom fields
   tags?: string[]; // Optional tags
   mastery: number; // 0: Unseen, 1: Learning, 2: Learned
@@ -33,6 +34,7 @@ export interface CardSet {
   definitionLabel?: string; // default "Definition"
   termSideFields?: CustomFieldDefinition[]; // Custom fields shown on term side
   defSideFields?: CustomFieldDefinition[]; // Custom fields shown on definition side
+  enableTermCards?: boolean; // Enable images on term side (default false)
   lastPlayed: number; // Timestamp
   elapsedTime: number; // Time spent in ms
   topStreak: number;
@@ -65,6 +67,7 @@ export interface Settings {
   brutalMode: boolean; // Zen mode: if wrong at 1/2 mastery, reset to 0/2 (default false)
   importAppend?: boolean;
   importOverride?: 'keep' | 'duplicate' | 'override';
+  autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
 }
 
 export interface Badge {

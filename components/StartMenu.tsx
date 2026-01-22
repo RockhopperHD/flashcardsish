@@ -90,6 +90,7 @@ interface BuilderRow {
   def: string;
   year: string;
   image: string;
+  termImage: string;
   customFields: { name: string; value: string }[];
   tags: string[]; // Kept for internal state if needed, but primarily derived from term
   originalCardId?: string;
@@ -258,7 +259,8 @@ const ImageModal: React.FC<{
   onSave: (url: string) => void;
   initialValue: string;
   onUploadImage?: (file: File) => Promise<string>;
-}> = ({ isOpen, onClose, onSave, initialValue, onUploadImage }) => {
+  autoClose?: boolean;
+}> = ({ isOpen, onClose, onSave, initialValue, onUploadImage, autoClose = false }) => {
   const [urlInput, setUrlInput] = useState(initialValue);
   const [dragActive, setDragActive] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -315,6 +317,29 @@ const ImageModal: React.FC<{
     setDragActive(false);
     if (!isUploading && e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleSave = () => {
+    onSave(urlInput);
+    onClose();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !isUploading) {
+      handleSave();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    if (autoClose && !isUploading) {
+      // Wait a bit for the paste to complete, then auto-close
+      setTimeout(() => {
+        const input = e.currentTarget;
+        if (input.value.trim()) {
+          handleSave();
+        }
+      }, 10);
     }
   };
 
@@ -407,15 +432,14 @@ const ImageModal: React.FC<{
           <input
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="Paste image link..."
             className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 focus:outline-none focus:border-accent transition-colors text-sm"
             disabled={isUploading}
           />
           <button
-            onClick={() => {
-              onSave(urlInput);
-              onClose();
-            }}
+            onClick={handleSave}
             disabled={isUploading}
             className={clsx(
               "px-5 py-3 bg-panel-2 border border-outline rounded-xl font-bold transition-all text-sm whitespace-nowrap",
@@ -427,6 +451,21 @@ const ImageModal: React.FC<{
             Save
           </button>
         </div>
+
+        {/* Remove Image Option */}
+        {initialValue && (
+          <div className="mt-4 flex justify-center">
+            <button
+              onClick={() => {
+                onSave("");
+                onClose();
+              }}
+              className="text-muted text-xs font-bold hover:text-red transition-colors flex items-center gap-1"
+            >
+              <Trash2 size={12} /> Remove Current Image
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -980,6 +1019,8 @@ const SetConfigurationModal: React.FC<{
   setDefSideFields: (f: CustomFieldDefinition[]) => void;
   showYear: boolean;
   setShowYear: (b: boolean) => void;
+  enableTermCards: boolean;
+  setEnableTermCards: (b: boolean) => void;
   settings: Settings;
   importAppend?: boolean;
   setImportAppend?: (b: boolean) => void;
@@ -989,6 +1030,8 @@ const SetConfigurationModal: React.FC<{
   setRawText?: (s: string) => void;
   onImportContinue?: (cards: Partial<Card>[]) => void;
   hideImportButton?: boolean;
+  builderRows?: BuilderRow[];
+  setBuilderRows?: (rows: BuilderRow[]) => void;
 }> = ({
   isOpen,
   onClose,
@@ -1002,6 +1045,8 @@ const SetConfigurationModal: React.FC<{
   setDefSideFields,
   showYear,
   setShowYear,
+  enableTermCards,
+  setEnableTermCards,
   settings,
   importAppend,
   setImportAppend,
@@ -1011,6 +1056,8 @@ const SetConfigurationModal: React.FC<{
   setRawText,
   onImportContinue,
   hideImportButton,
+  builderRows,
+  setBuilderRows,
 }) => {
     const [mode, setMode] = useState<"config" | "import">("config");
     const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
@@ -1270,33 +1317,71 @@ const SetConfigurationModal: React.FC<{
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-outline/50 flex items-center justify-between">
-            <label className="flex items-center gap-3 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showYear}
-                onChange={() => setShowYear(!showYear)}
-                className="hidden"
-              />
-              <div
-                className={clsx(
-                  "w-5 h-5 rounded border flex items-center justify-center transition-colors",
-                  showYear
-                    ? "bg-accent border-accent text-bg"
-                    : "bg-panel-2 border-outline",
-                )}
+          <div className="mt-8 pt-6 border-t border-outline/50 flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <CursorTooltip
+                content="Adds an extra custom field for putting the year in. Goes on the term side."
+                isEnabled={!settings.hideTooltips}
+                tooltipClassName="w-80 max-w-[90vw]"
               >
-                {showYear && <Check size={14} strokeWidth={4} />}
-              </div>
-              <div>
-                <div className="text-sm font-bold text-text">
-                  Enable Year Field
-                </div>
-                <div className="text-xs text-muted">
-                  Adds a dedicated year input
-                </div>
-              </div>
-            </label>
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showYear}
+                    onChange={() => setShowYear(!showYear)}
+                    className="hidden"
+                  />
+                  <div
+                    className={clsx(
+                      "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                      showYear
+                        ? "bg-accent border-accent text-bg"
+                        : "bg-panel-2 border-outline",
+                    )}
+                  >
+                    {showYear && <Check size={14} strokeWidth={4} />}
+                  </div>
+                  <div className="text-sm font-bold text-text">
+                    Enable Year Field
+                  </div>
+                </label>
+              </CursorTooltip>
+
+              <CursorTooltip
+                content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
+                isEnabled={!settings.hideTooltips}
+                tooltipClassName="w-80 max-w-[90vw]"
+              >
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={enableTermCards}
+                    onChange={() => {
+                      const newValue = !enableTermCards;
+                      setEnableTermCards(newValue);
+                      // Clear term images when disabling
+                      if (!newValue && builderRows && setBuilderRows) {
+                        setBuilderRows(builderRows.map(row => ({ ...row, termImage: "" })));
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <div
+                    className={clsx(
+                      "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                      enableTermCards
+                        ? "bg-accent border-accent text-bg"
+                        : "bg-panel-2 border-outline",
+                    )}
+                  >
+                    {enableTermCards && <Check size={14} strokeWidth={4} />}
+                  </div>
+                  <div className="text-sm font-bold text-text">
+                    Enable Term Images
+                  </div>
+                </label>
+              </CursorTooltip>
+            </div>
 
             <button
               onClick={onClose}
@@ -1321,10 +1406,11 @@ const BuilderRowItem: React.FC<{
   termSideFields: CustomFieldDefinition[];
   defSideFields: CustomFieldDefinition[];
   showYear: boolean;
+  enableTermCards: boolean;
   updateRow: (id: string, field: keyof BuilderRow, value: any) => void;
   removeRow: (id: string) => void;
   onAddNext: () => void;
-  onOpenImageModal: (id: string) => void;
+  onOpenImageModal: (id: string, field?: 'image' | 'termImage') => void;
   onDuplicate: (id: string) => void;
   onSwap: (id: string) => void;
   draggableProps?: DraggableProvided["draggableProps"];
@@ -1342,6 +1428,7 @@ const BuilderRowItem: React.FC<{
     termSideFields,
     defSideFields,
     showYear,
+    enableTermCards,
     updateRow,
     removeRow,
     onAddNext,
@@ -1503,28 +1590,6 @@ const BuilderRowItem: React.FC<{
           </div>
 
           <div className="flex items-center gap-1">
-            {/* Image button/thumbnail */}
-            {sanitizeImageUrl(row.image) ? (
-              <button
-                onClick={() => onOpenImageModal(row.id)}
-                className="w-[26px] h-[26px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
-                title="Change Image"
-              >
-                <img
-                  src={sanitizeImageUrl(row.image)}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              </button>
-            ) : (
-              <button
-                onClick={() => onOpenImageModal(row.id)}
-                className="p-1.5 rounded-lg transition-colors border border-transparent text-muted hover:text-text hover:bg-panel-2"
-                title="Add Image"
-              >
-                <ImageIcon size={14} />
-              </button>
-            )}
             <button
               onClick={() => onDuplicate(row.id)}
               className={clsx(
@@ -1635,6 +1700,33 @@ const BuilderRowItem: React.FC<{
                   {row.term ? (wysiwyg ? renderMarkdown(termData.body) : termData.body) : "Enter term..."}
                 </div>
               )}
+
+              {/* Term Image Button */}
+              {enableTermCards && (
+                <div className="mt-2 flex justify-start">
+                  {sanitizeImageUrl(row.termImage) ? (
+                    <button
+                      onClick={() => onOpenImageModal(row.id, 'termImage')}
+                      className="w-[32px] h-[32px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
+                      title="Change Term Image"
+                    >
+                      <img
+                        src={sanitizeImageUrl(row.termImage)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onOpenImageModal(row.id, 'termImage')}
+                      className="p-1.5 rounded-lg transition-colors border border-outline text-muted hover:text-text hover:bg-panel-2 text-xs flex items-center gap-1"
+                      title="Add Term Image"
+                    >
+                      <ImageIcon size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Definition Column */}
@@ -1685,6 +1777,31 @@ const BuilderRowItem: React.FC<{
                     : "Enter definition..."}
                 </div>
               )}
+
+              {/* Definition Image Button */}
+              <div className="mt-2 flex justify-start">
+                {sanitizeImageUrl(row.image) ? (
+                  <button
+                    onClick={() => onOpenImageModal(row.id, 'image')}
+                    className="w-[32px] h-[32px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
+                    title="Change Definition Image"
+                  >
+                    <img
+                      src={sanitizeImageUrl(row.image)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onOpenImageModal(row.id, 'image')}
+                    className="p-1.5 rounded-lg transition-colors border border-outline text-muted hover:text-text hover:bg-panel-2 text-xs flex items-center gap-1"
+                    title="Add Definition Image"
+                  >
+                    <ImageIcon size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1896,6 +2013,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     [],
   );
   const [showYear, setShowYear] = useState(false);
+  const [enableTermCards, setEnableTermCards] = useState(false);
 
   // UI State for Config Modal
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
@@ -1908,6 +2026,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [editingImageRowId, setEditingImageRowId] = useState<string | null>(
     null,
   );
+  const [editingImageField, setEditingImageField] = useState<'image' | 'termImage'>('image');
 
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
 
@@ -1936,6 +2055,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             def: "",
             year: "",
             image: "",
+            termImage: "",
             customFields: [],
             tags: [],
             star: false,
@@ -1946,6 +2066,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             def: "",
             year: "",
             image: "",
+            termImage: "",
             customFields: [],
             tags: [],
             star: false,
@@ -1956,6 +2077,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             def: "",
             year: "",
             image: "",
+            termImage: "",
             customFields: [],
             tags: [],
             star: false,
@@ -1969,6 +2091,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           def: "",
           year: "",
           image: "",
+          termImage: "",
           customFields: [],
           tags: [],
           star: false,
@@ -1979,6 +2102,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           def: "",
           year: "",
           image: "",
+          termImage: "",
           customFields: [],
           tags: [],
           star: false,
@@ -1989,6 +2113,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           def: "",
           year: "",
           image: "",
+          termImage: "",
           customFields: [],
           tags: [],
           star: false,
@@ -2434,6 +2559,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -2444,6 +2570,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -2454,6 +2581,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -2516,6 +2644,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: c.content || "",
         year: c.year || "",
         image: c.image || "",
+        termImage: c.termImage || "",
         customFields: c.customFields || [],
         tags: c.tags || [],
         star: c.star || false
@@ -2646,6 +2775,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: c.content || "",
         year: c.year || "",
         image: c.image || "",
+        termImage: c.termImage || "",
         customFields: c.customFields || [],
         tags: c.tags || [],
         star: c.star || false,
@@ -2685,6 +2815,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -2720,6 +2851,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: c.content || "",
         year: c.year || "",
         image: c.image || "",
+        termImage: c.termImage || "",
         customFields: c.customFields || [],
         tags: c.tags || [],
         originalCardId: c.id,
@@ -2763,6 +2895,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     if (rows.some((r) => r.year.trim())) setShowYear(true);
     else setShowYear(false);
+
+    setEnableTermCards(set.enableTermCards || false);
 
     setBuilderRows(rows);
     setView("builder");
@@ -2857,6 +2991,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             def: c.content || "",
             year: c.year || "",
             image: c.image || "",
+            termImage: c.termImage || "",
             customFields: c.customFields || [],
             tags: c.tags || [],
             star: c.star || false,
@@ -3041,6 +3176,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       definitionLabel,
       termSideFields,
       defSideFields,
+      enableTermCards,
       folderId: currentFolderId || undefined,
     };
 
@@ -3060,6 +3196,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -3070,6 +3207,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -3080,6 +3218,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -3159,6 +3298,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         def: "",
         year: "",
         image: "",
+        termImage: "",
         customFields: [],
         tags: [],
         star: false,
@@ -3203,6 +3343,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             def: "",
             year: "",
             image: "",
+            termImage: "",
             customFields: [],
             tags: [],
             star: false,
@@ -3213,8 +3354,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     });
   }, []);
 
-  const openImageModal = useCallback((rowId: string) => {
+  const openImageModal = useCallback((rowId: string, field: 'image' | 'termImage' = 'image') => {
     setEditingImageRowId(rowId);
+    setEditingImageField(field);
     setShowImageModal(true);
   }, []);
 
@@ -3231,7 +3373,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const handleSaveImage = (url: string) => {
     if (editingImageRowId) {
-      updateRow(editingImageRowId, "image", url);
+      updateRow(editingImageRowId, editingImageField, url);
     }
   };
 
@@ -3306,6 +3448,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setDefSideFields={setDefSideFields}
         showYear={showYear}
         setShowYear={setShowYear}
+        enableTermCards={enableTermCards}
+        setEnableTermCards={setEnableTermCards}
         importAppend={importAppend}
         setImportAppend={setImportAppend}
         importOverride={importOverride}
@@ -3314,6 +3458,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setRawText={setRawText}
         onImportContinue={handleRawTextContinue}
         hideImportButton={view === "raw-text"}
+        builderRows={builderRows}
+        setBuilderRows={setBuilderRows}
       />
 
       <AddSetModal
@@ -3340,10 +3486,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         onSave={handleSaveImage}
         initialValue={
           editingImageRowId
-            ? builderRows.find((r) => r.id === editingImageRowId)?.image || ""
+            ? builderRows.find((r) => r.id === editingImageRowId)?.[editingImageField] || ""
             : ""
         }
         onUploadImage={onUploadImage}
+        autoClose={settings.autoCloseImageWindow}
       />
 
       <WarningModal
@@ -4168,6 +4315,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       termSideFields={termSideFields}
                                       defSideFields={defSideFields}
                                       showYear={showYear}
+                                      enableTermCards={enableTermCards}
                                       updateRow={updateRow}
                                       removeRow={removeRow}
                                       onAddNext={addRow}
