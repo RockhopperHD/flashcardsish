@@ -1063,7 +1063,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Environment Setup</h3>
                     <p className="text-muted mb-4">
-                        For cloud sync to work locally, you'll need to set up Supabase and configure the environment variables.
+                        For cloud sync to work locally, you'll need to set up Google Cloud OAuth credentials and configure the environment variables.
                         See the <strong className="text-accent">README.md</strong> for detailed instructions.
                     </p>
 
@@ -1177,10 +1177,10 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                         <li className="flex items-end justify-between gap-2 overflow-hidden">
                             <div className="flex items-center gap-2 mb-0.5 shrink-0">
                                 <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">Supabase</strong>
+                                <strong className="text-text">Google Drive</strong>
                             </div>
                             <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Backend & Auth</span>
+                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Storage & Cloud Sync</span>
                         </li>
                         <li className="flex items-end justify-between gap-2 overflow-hidden">
                             <div className="flex items-center gap-2 mb-0.5 shrink-0">

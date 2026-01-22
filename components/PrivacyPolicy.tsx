@@ -78,7 +78,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 <p className="text-muted leading-relaxed">
                                     We use browser local storage and IndexedDB to store your data locally on your device
                                     for offline access and improved performance. This data remains on your device unless
-                                    you are signed in, in which case it syncs with our cloud storage. In simple terms: if you don't sign in, we store your data on your device; otherwise, we use what we have stored online.
+                                    you are signed in, in which case it syncs with your Google Drive. In simple terms: if you don't sign in, we store your data on your device; otherwise, we use what we have stored online.
                                 </p>
                             </div>
                         </div>
@@ -100,12 +100,15 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         <h3 className="text-lg font-bold text-accent mb-3">4. Third-Party Services</h3>
                         <div className="space-y-4">
                             <div>
-                                <h4 className="font-bold text-text mb-2">4.1 Supabase</h4>
+                                <h4 className="font-bold text-text mb-2">4.1 Google Drive Storage</h4>
                                 <p className="text-muted leading-relaxed">
-                                    We use Supabase for authentication and data storage. Supabase processes and stores your
-                                    data on secure servers. You can review Supabase's privacy policy at{' '}
-                                    <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                        supabase.com/privacy
+                                    We use your personal Google Drive for data storage when you sign in.
+                                    Flashcardsish creates a dedicated folder in your Drive where your flashcard sets and uploaded images are stored.
+                                    We only access files created by Flashcardsish and cannot access your other Drive files.
+                                    You retain full ownership and control of your data and can view or delete it directly from Google Drive.
+                                    Google's usage of your data is governed by the{' '}
+                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+                                        Google Privacy Policy
                                     </a>.
                                 </p>
                             </div>
