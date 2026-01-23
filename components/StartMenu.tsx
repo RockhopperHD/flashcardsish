@@ -1590,6 +1590,35 @@ const BuilderRowItem: React.FC<{
           </div>
 
           <div className="flex items-center gap-1">
+            {/* Image Button (Only when Term Images are OFF) */}
+            {!enableTermCards && (
+              <>
+                {sanitizeImageUrl(row.image) ? (
+                  <button
+                    onClick={() => onOpenImageModal(row.id, 'image')}
+                    className="w-[26px] h-[26px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
+                    title="Change Image"
+                  >
+                    <img
+                      src={sanitizeImageUrl(row.image)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onOpenImageModal(row.id, 'image')}
+                    className={clsx(
+                      "p-1.5 rounded-lg transition-colors text-muted hover:text-text hover:bg-panel-2 border border-transparent",
+                    )}
+                    title="Add Image"
+                  >
+                    <ImageIcon size={14} />
+                  </button>
+                )}
+              </>
+            )}
+
             <button
               onClick={() => onDuplicate(row.id)}
               className={clsx(
@@ -1778,30 +1807,32 @@ const BuilderRowItem: React.FC<{
                 </div>
               )}
 
-              {/* Definition Image Button */}
-              <div className="mt-2 flex justify-start">
-                {sanitizeImageUrl(row.image) ? (
-                  <button
-                    onClick={() => onOpenImageModal(row.id, 'image')}
-                    className="w-[32px] h-[32px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
-                    title="Change Definition Image"
-                  >
-                    <img
-                      src={sanitizeImageUrl(row.image)}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => onOpenImageModal(row.id, 'image')}
-                    className="p-1.5 rounded-lg transition-colors border border-outline text-muted hover:text-text hover:bg-panel-2 text-xs flex items-center gap-1"
-                    title="Add Definition Image"
-                  >
-                    <ImageIcon size={14} />
-                  </button>
-                )}
-              </div>
+              {/* Definition Image Button (Only if Term Images are ON) */}
+              {enableTermCards && (
+                <div className="mt-2 flex justify-start">
+                  {sanitizeImageUrl(row.image) ? (
+                    <button
+                      onClick={() => onOpenImageModal(row.id, 'image')}
+                      className="w-[32px] h-[32px] rounded overflow-hidden border border-accent/30 hover:border-accent transition-colors flex-shrink-0"
+                      title="Change Definition Image"
+                    >
+                      <img
+                        src={sanitizeImageUrl(row.image)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onOpenImageModal(row.id, 'image')}
+                      className="p-1.5 rounded-lg transition-colors border border-outline text-muted hover:text-text hover:bg-panel-2 text-xs flex items-center gap-1"
+                      title="Add Definition Image"
+                    >
+                      <ImageIcon size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
