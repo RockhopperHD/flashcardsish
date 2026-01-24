@@ -147,7 +147,7 @@ const UnsavedChangesModal: React.FC<{
         <div className="flex flex-col gap-3">
           <button
             onClick={onSave}
-            className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:scale-105 transition-transform"
+            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-transform"
           >
             Save to Library
           </button>
@@ -176,17 +176,7 @@ const DeleteFolderModal: React.FC<{
   onClose: () => void;
   onConfirm: (action: "move" | "delete") => void;
 }> = ({ isOpen, folderName, setCount, onClose, onConfirm }) => {
-  const [deleteClicks, setDeleteClicks] = useState(0);
-
   if (!isOpen) return null;
-
-  const handleDeleteAllClick = () => {
-    if (deleteClicks < 4) {
-      setDeleteClicks((prev) => prev + 1);
-    } else {
-      onConfirm("delete");
-    }
-  };
 
   return (
     <div
@@ -194,10 +184,10 @@ const DeleteFolderModal: React.FC<{
       onMouseDown={onClose}
     >
       <div
-        className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95"
+        className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-bold text-text mb-2">
+        <h3 className="text-xl font-bold text-text mb-2">
           Delete "{folderName}"?
         </h3>
         <p className="text-muted mb-6">
@@ -205,44 +195,24 @@ const DeleteFolderModal: React.FC<{
           would you like to do with them?
         </p>
 
-        <div className="space-y-3">
+        <div className="flex flex-col gap-3">
           <button
             onClick={() => onConfirm("move")}
-            className="w-full py-3 bg-panel-2 border border-outline text-text rounded-xl font-bold hover:border-accent transition-colors flex flex-col items-center justify-center gap-1"
+            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-transform"
           >
-            <span>Delete Folder Only</span>
-            <span className="text-[10px] text-muted font-normal uppercase tracking-wider">
-              Move sets to main Library
-            </span>
+            Delete Folder Only
           </button>
 
-          <div className="relative">
-            <button
-              onClick={handleDeleteAllClick}
-              className={clsx(
-                "w-full py-3 border rounded-xl font-bold transition-all flex flex-col items-center justify-center gap-1",
-                deleteClicks > 0
-                  ? "bg-red text-bg border-red"
-                  : "bg-red/5 text-red border-red/20 hover:bg-red/10",
-              )}
-            >
-              <span>Delete Folder & Sets</span>
-              <span
-                className={clsx(
-                  "text-[10px] font-normal uppercase tracking-wider",
-                  deleteClicks > 0 ? "text-bg/80" : "text-red/60",
-                )}
-              >
-                {deleteClicks === 0
-                  ? "Just get rid of everything"
-                  : `${5 - deleteClicks} clicks remaining`}
-              </span>
-            </button>
-          </div>
+          <button
+            onClick={() => onConfirm("delete")}
+            className="w-full py-3 bg-panel-2 border border-outline text-red rounded-xl font-bold hover:bg-red/10 transition-colors"
+          >
+            Delete Folder & Sets
+          </button>
 
           <button
             onClick={onClose}
-            className="w-full py-2 text-muted hover:text-text font-medium text-sm mt-2"
+            className="w-full py-3 text-muted hover:text-text font-medium"
           >
             Cancel
           </button>
@@ -686,21 +656,21 @@ const WarningModal: React.FC<{
           <h3 className="text-lg font-bold text-text">Warning</h3>
         </div>
         <p className="text-muted mb-6">{message}</p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg text-muted hover:text-text hover:bg-panel-2 transition-colors"
-          >
-            Cancel
-          </button>
+        <div className="flex flex-col gap-3">
           <button
             onClick={() => {
               onConfirm();
               onClose();
             }}
-            className="px-4 py-2 rounded-lg bg-yellow text-bg font-bold hover:bg-yellow/90 transition-colors"
+            className="w-full py-3 rounded-xl bg-yellow text-bg font-bold transition-transform"
           >
             Confirm
+          </button>
+          <button
+            onClick={onClose}
+            className="w-full py-3 text-muted hover:text-text font-medium"
+          >
+            Cancel
           </button>
         </div>
       </div>
@@ -731,10 +701,10 @@ const InvalidFileModal: React.FC<{
           This file doesn't look like a valid flashcard set. Please check the
           file format and try again.
         </p>
-        <div className="flex justify-end gap-3">
+        <div className="flex flex-col gap-3">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-panel-2 hover:bg-panel-3 text-text font-bold transition-colors"
+            className="w-full py-3 rounded-xl bg-panel-2 hover:bg-panel-3 text-text font-bold transition-colors"
           >
             Close
           </button>
@@ -771,7 +741,7 @@ const NoStarredModal: React.FC<{
         <div className="flex flex-col gap-3">
           <button
             onClick={onDisableAndPlay}
-            className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:scale-105 transition-transform"
+            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-transform"
           >
             Disable Filter & Play
           </button>
@@ -862,146 +832,148 @@ const FieldRowComponent: React.FC<{
           setIsDropdownOpen(false);
         }
       };
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside, true);
       return () =>
-        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("mousedown", handleClickOutside, true);
     }, []);
 
     const isFocused = activeFieldId === `${side}-${index}`;
 
     // Determine dynamic text for tooltip
-    const thisSideName =
-      side === "term" ? termLabel || "Terms" : definitionLabel || "Definition";
-    const otherSideName =
-      side === "term" ? definitionLabel || "Definition" : termLabel || "Terms";
-    let actionText = "";
-    if (field.type === "text")
-      actionText = "enter text corresponding to this field";
-    else if (field.type === "number")
-      actionText = "enter a number corresponding to this field";
-    else if (field.type === "ab")
-      actionText = "choose between two options you define";
-    else if (field.type === "tf")
-      actionText = "choose between True and False";
+    const sideName =
+      side === "term" ? termLabel || "Terms" : definitionLabel || "Definitions";
+
+    let suffix = "";
+    if (field.type === "text") suffix = "text, using the label you choose here";
+    else if (field.type === "number") suffix = "a number, using the label you choose here";
+    else if (field.type === "ab") suffix = "one of the two options you label here";
+    else if (field.type === "tf") suffix = "true or false";
+
+    const tooltipContent = (
+      <span>
+        When studying <b>{sideName}</b>, you'll answer a prompt for{" "}
+        <b>{field.name || "this field"}</b> with <b>{suffix}</b>.
+      </span>
+    );
 
     return (
-      <CursorTooltip
-        content={
-          <span>
-            In study mode, when you are presented with{" "}
-            <b>{otherSideName}</b> responding with <b>{thisSideName}</b>,
-            we'll ask you to also <b>{actionText}</b>.
-          </span>
-        }
-        isEnabled={!hideTooltips}
+      // CursorTooltip moved to specific icon
+      <div
+        key={index}
+        className="relative group/field-row"
+        onFocus={() => setActiveFieldId(`${side}-${index}`)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setActiveFieldId(null);
+          }
+        }}
       >
-        <div
-          key={index}
-          className="relative group/field-row"
-          onFocus={() => setActiveFieldId(`${side}-${index}`)}
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-              setActiveFieldId(null);
-            }
-          }}
-        >
-          <div className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3">
-            <div className="flex items-center gap-2">
-              <input
-                value={field.name}
-                onChange={(e) => update(index, { name: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addNext();
-                  }
-                }}
-                className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
-                placeholder="Field Name"
-                autoFocus={!field.name}
-                spellCheck={false}
-                data-ms-editor="true"
+        <div className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3">
+          <div className="flex items-center gap-2">
+            <CursorTooltip
+              content={tooltipContent}
+              isEnabled={!hideTooltips}
+            >
+              <HelpCircle
+                size={16}
+                className="text-muted hover:text-accent cursor-help flex-shrink-0 transition-colors"
               />
+            </CursorTooltip>
 
-              {/* Custom Dropdown */}
-              <div className="relative w-32 flex-shrink-0" ref={dropdownRef}>
-                <button
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
-                >
-                  <span className="capitalize truncate">
-                    {field.type === "ab" ? "A/B" : field.type}
-                  </span>
-                  <Settings2 size={12} className="opacity-50 flex-shrink-0" />
-                </button>
+            <input
+              value={field.name}
+              onChange={(e) => update(index, { name: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addNext();
+                }
+              }}
+              className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
+              placeholder="Field Name"
+              autoFocus={!field.name}
+              spellCheck={false}
+              data-ms-editor="true"
+            />
 
-                {isDropdownOpen && (
-                  <div className="absolute top-full right-0 mt-1 w-full bg-panel border border-outline rounded-xl shadow-xl z-[60] overflow-hidden animate-in zoom-in-95">
-                    {[
-                      { val: "text", label: "Text" },
-                      { val: "number", label: "Number" },
-                      { val: "ab", label: "A/B" },
-                      { val: "tf", label: "T/F" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.val}
-                        onClick={() => {
-                          const updates: any = { type: opt.val as CustomFieldType };
-                          if (opt.val === "tf") {
-                            updates.options = { a: "True", b: "False" };
-                          }
-                          update(index, updates);
-                          setIsDropdownOpen(false);
-                        }}
-                        className={clsx(
-                          "w-full text-left px-4 py-2 text-sm hover:bg-panel-2 transition-colors",
-                          field.type === opt.val
-                            ? "text-accent font-bold bg-accent/5"
-                            : "text-text",
-                        )}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
+            {/* Custom Dropdown */}
+            <div className="relative w-32 flex-shrink-0" ref={dropdownRef}>
               <button
-                onClick={() => remove(index)}
-                className="p-2 text-muted hover:text-red transition-colors"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
               >
-                <X size={16} />
+                <span className="capitalize truncate">
+                  {field.type === "ab" ? "A/B" : field.type}
+                </span>
+                <Settings2 size={12} className="opacity-50 flex-shrink-0" />
               </button>
+
+              {isDropdownOpen && (
+                <div className="absolute top-full right-0 mt-1 w-full bg-panel border border-outline rounded-xl shadow-xl z-[60] overflow-hidden animate-in zoom-in-95">
+                  {[
+                    { val: "text", label: "Text" },
+                    { val: "number", label: "Number" },
+                    { val: "ab", label: "A/B" },
+                    { val: "tf", label: "T/F" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.val}
+                      onClick={() => {
+                        const updates: any = { type: opt.val as CustomFieldType };
+                        if (opt.val === "tf") {
+                          updates.options = { a: "True", b: "False" };
+                        }
+                        update(index, updates);
+                        setIsDropdownOpen(false);
+                      }}
+                      className={clsx(
+                        "w-full text-left px-4 py-2 text-sm hover:bg-panel-2 transition-colors",
+                        field.type === opt.val
+                          ? "text-accent font-bold bg-accent/5"
+                          : "text-text",
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            {field.type === "ab" && (
-              <div className="flex gap-2">
-                <input
-                  value={field.options?.a || ""}
-                  onChange={(e) =>
-                    update(index, {
-                      options: { a: e.target.value, b: field.options?.b || "" },
-                    })
-                  }
-                  placeholder="Option A"
-                  className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
-                />
-                <input
-                  value={field.options?.b || ""}
-                  onChange={(e) =>
-                    update(index, {
-                      options: { a: field.options?.a || "", b: e.target.value },
-                    })
-                  }
-                  placeholder="Option B"
-                  className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
-                  onFocus={() => setActiveFieldId(`${side}-${index}`)} // Ensure focus triggers specific row
-                />
-              </div>
-            )}
+
+            <button
+              onClick={() => remove(index)}
+              className="p-2 text-muted hover:text-red transition-colors"
+            >
+              <X size={16} />
+            </button>
           </div>
+          {field.type === "ab" && (
+            <div className="flex gap-2">
+              <input
+                value={field.options?.a || ""}
+                onChange={(e) =>
+                  update(index, {
+                    options: { a: e.target.value, b: field.options?.b || "" },
+                  })
+                }
+                placeholder="Option A"
+                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+              />
+              <input
+                value={field.options?.b || ""}
+                onChange={(e) =>
+                  update(index, {
+                    options: { a: field.options?.a || "", b: e.target.value },
+                  })
+                }
+                placeholder="Option B"
+                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+                onFocus={() => setActiveFieldId(`${side}-${index}`)} // Ensure focus triggers specific row
+              />
+            </div>
+          )}
         </div>
-      </CursorTooltip>
+      </div>
     );
   };
 
@@ -1178,13 +1150,12 @@ const SetConfigurationModal: React.FC<{
               </button>
             )}
           </div>
-          <p className="text-muted mb-8 text-sm leading-relaxed max-w-2xl">
+          <p className="text-muted mb-8 text-sm leading-relaxed">
             You can tailor your flashcards set by renaming the main fields and
-            adding up to 4 custom fields per side. These custom fields allow you
-            to include additional information or specific answer types (text,
-            number, A/B choice) for a richer study experience.
+            adding up to 4 custom fields per side. <br /> <br />
+            If you're repeating the same type of data in every card, like what category something falls into, this feature allows you to make the entry process for every one of those consistent. Regardless of how many custom fields you specify, leaving them blank or on their neutral option means that card won't ask for or have data for that custom field.
+            <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false.
           </p>
-
           <div className="grid md:grid-cols-2 gap-8">
             {/* Term Side */}
             <div className="space-y-4">
@@ -1384,7 +1355,20 @@ const SetConfigurationModal: React.FC<{
             </div>
 
             <button
-              onClick={onClose}
+              onClick={() => {
+                // Filter out blank fields before closing
+                const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
+                const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
+
+                if (cleanTermFields.length !== termSideFields.length) {
+                  setTermSideFields(cleanTermFields);
+                }
+                if (cleanDefFields.length !== defSideFields.length) {
+                  setDefSideFields(cleanDefFields);
+                }
+
+                onClose();
+              }}
               className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:scale-105 transition-transform"
             >
               OK
