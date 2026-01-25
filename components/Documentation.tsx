@@ -667,17 +667,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                             </div>
                         </div>
 
-                        <div className="flex gap-4">
-                            <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">3</div>
-                            <div>
-                                <h4 className="font-bold text-lg mb-2">Track Your Progress</h4>
-                                <p className="text-muted mb-3">Each card has a mastery level that saves between sessions.</p>
-                                <div className="my-4">
-                                    <MasteryDemo />
-                                </div>
-                                <p className="text-muted">Cards progress from <span className="text-muted">New</span> → <span className="text-yellow">Learning</span> → <span className="text-green">Mastered</span>.</p>
-                            </div>
-                        </div>
+
                     </div>
 
 
@@ -727,6 +717,14 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                 <tr>
                                     <td className="px-4 py-3 font-mono text-muted">__underline__</td>
                                     <td className="px-4 py-3 text-right"><u>underline</u></td>
+                                </tr>
+                                <tr>
+                                    <td className="px-4 py-3 font-mono text-muted">- Bullet</td>
+                                    <td className="px-4 py-3 text-right">
+                                        <ul className="list-disc list-inside inline-block">
+                                            <li>Bullet</li>
+                                        </ul>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <td className="px-4 py-3 font-mono text-muted">(Tag) Text</td>
@@ -779,49 +777,22 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     </div>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Raw Text Mode</h3>
-                    <p className="text-muted mb-4">If you'd prefer to write your cards out on a document elsewhere, you can use this format:</p>
-                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted">
-                        <div>Term / Definition /// Year</div>
-                        <div className="text-accent">&&&</div>
-                        <div>Next Term / Next Definition</div>
-                    </div>
-                    <ul className="mt-4 space-y-2 text-muted text-sm">
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /> Use <code className="bg-panel-2 px-1 rounded">/</code> to separate term from definition</li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /> Use <code className="bg-panel-2 px-1 rounded">///</code> to add an optional year</li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /> Use <code className="bg-panel-2 px-1 rounded">&&&</code> on its own line to separate cards</li>
-                    </ul>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">JSON Schema (.flashcards files)</h3>
                     <p className="text-muted mb-4">
-                        When you export a set, it's saved as a JSON file with the <code className="bg-panel-2 px-1 rounded">.flashcards</code> extension.
-                        You can edit these files directly in any text editor. Here's the structure:
+                        You can import sets from other apps or write your own in a text editor.
+                        Just click "Import Raw Text" in the Set Builder.
                     </p>
-                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted overflow-x-auto">
-                        <pre>{`{
-  "id": "unique-id",
-  "name": "Set Name",
-  "cards": [
-    {
-      "id": "card-id",
-      "term": ["Term"],
-      "content": "Definition with **formatting**",
-      "year": "1776",
-      "mastery": 0,
-      "star": false,
-      "customFields": [
-        { "name": "Author", "value": "Name" }
-      ]
-    }
-  ],
-  "customFieldNames": ["Author"]
-}`}</pre>
+                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted">
+                        <div>Term / Definition</div>
+                        <div>Next Term / Next Definition</div>
+                        <div>{">"} This will be a bullet point on the previous card</div>
                     </div>
                     <ul className="mt-4 space-y-2 text-muted text-sm">
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /> <code className="bg-panel-2 px-1 rounded">term</code> is an array (for multiple accepted answers, though UI uses first)</li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /> <code className="bg-panel-2 px-1 rounded">mastery</code>: 0 = New, 1 = Learning, 2+ = Mastered</li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /> <code className="bg-panel-2 px-1 rounded">customFieldNames</code> at set level defines which fields exist</li>
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>When typing, separate term and definition with a symbol, character, or set of symbols (by default <code className="bg-panel-2 px-1 rounded">/</code>)</span></li>
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Do the same for separating cards {"("}like using line breaks, written as <code className="bg-panel-2 px-1 rounded">\n</code>, or another symbol/set of symbols such as <code className="bg-panel-2 px-1 rounded">;;;</code>{")"}</span></li>
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>When you're done, go to "Add" and create a new set from Raw Text, inputting the symbols you used. You'll use this as a baseline for editing your set further in the Visual Editor, or you can get started right away.</span></li>
                     </ul>
                 </div>
+                /* I wrote in these bullets myself, AI was really bad at explaining this feature. */
             )
         },
         {

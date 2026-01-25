@@ -1323,7 +1323,7 @@ const App: React.FC = () => {
                         setGameState(GameState.DOCUMENTATION);
                      }}
                      className="p-2 text-muted hover:text-text transition-colors"
-                     title="How-To Guide"
+                     title="How-To Brochure"
                   >
                      <BookOpen size={20} />
                   </button>

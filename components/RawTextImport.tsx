@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { generateId } from '../utils';
 import { Card } from '../types';
 import clsx from 'clsx';
-import { ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertCircle, Check } from 'lucide-react';
 import { CursorTooltip } from './CursorTooltip';
 
 interface RawTextImportProps {
@@ -43,6 +43,10 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
     // Derived enableYear based on selection
     const enableYear = yearSep !== 'disable' || (isCustomYearSep && customYearSep.trim().length > 0);
 
+    // Bullet Point Logic
+    const [bulletMarker, setBulletMarker] = useState('>');
+    const [useBulletMarker, setUseBulletMarker] = useState(false);
+
     // Parsing Logic
     const parsedCards = useMemo(() => {
         if (!rawText.trim()) return [];
@@ -64,7 +68,23 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
         const rawCards = rawText.split(resolvedCardSep);
 
         rawCards.forEach(rawCard => {
-            if (!rawCard.trim()) return;
+            const trimmedCard = rawCard.trim();
+            if (!trimmedCard) return;
+
+            // Bullet Point Logic: Append to previous card if marker matches
+            if (useBulletMarker && bulletMarker && trimmedCard.startsWith(bulletMarker)) {
+                if (result.length > 0) {
+                    const prevCard = result[result.length - 1];
+                    const bulletContent = trimmedCard.slice(bulletMarker.length).trim();
+
+                    if (prevCard.content) {
+                        prevCard.content += `\n- ${bulletContent}`;
+                    } else {
+                        prevCard.content = `- ${bulletContent}`;
+                    }
+                    return;
+                }
+            }
 
             let term = '';
             let def = '';
@@ -99,29 +119,32 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
         });
 
         return result;
-    }, [rawText, termDefSep, customTermDef, isCustomTermDef, cardSep, customCardSep, isCustomCardSep, yearSep, customYearSep, isCustomYearSep, enableYear]);
+    }, [rawText, termDefSep, customTermDef, isCustomTermDef, cardSep, customCardSep, isCustomCardSep, yearSep, customYearSep, isCustomYearSep, enableYear, bulletMarker, useBulletMarker]);
 
 
     // Preview Logic
     const [previewIndex, setPreviewIndex] = useState(0);
-    const [isFading, setIsFading] = useState(false);
 
     useEffect(() => {
-        if (parsedCards.length === 0) return;
-
         // Reset if index out of bounds
-        if (previewIndex >= parsedCards.length) setPreviewIndex(0);
-
-        const interval = setInterval(() => {
-            setIsFading(true);
-            setTimeout(() => {
-                setPreviewIndex(prev => (prev + 1) % Math.min(parsedCards.length, 10)); // Cycle through first 10
-                setIsFading(false);
-            }, 500); // 500ms fade out
-        }, 5000 + 500); // 5s show + 500ms fade
-
-        return () => clearInterval(interval);
+        if (parsedCards.length > 0 && previewIndex >= parsedCards.length) {
+            setPreviewIndex(0);
+        }
     }, [parsedCards.length, previewIndex]);
+
+    const handlePrevCard = () => {
+        setPreviewIndex(prev => {
+            if (prev === 0) return Math.min(parsedCards.length, 10) - 1;
+            return prev - 1;
+        });
+    };
+
+    const handleNextCard = () => {
+        setPreviewIndex(prev => {
+            if (prev >= Math.min(parsedCards.length, 10) - 1) return 0;
+            return prev + 1;
+        });
+    };
 
     const previewCard = parsedCards.length > 0 ? parsedCards[previewIndex] : null;
 
@@ -295,6 +318,46 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                         )}
                     </div>
 
+                    {/* Bullet Point Settings */}
+                    <div className="bg-panel-2 p-4 rounded-xl border border-outline flex items-center gap-4 shrink-0">
+                        <label className="flex items-center gap-3 cursor-pointer select-none group">
+                            <div className={clsx(
+                                "w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm",
+                                useBulletMarker ? "bg-accent border-accent text-bg" : "border-outline text-transparent group-hover:border-text bg-panel"
+                            )}>
+                                <Check size={14} strokeWidth={3} />
+                            </div>
+                            <input
+                                type="checkbox"
+                                className="hidden"
+                                checked={useBulletMarker}
+                                onChange={(e) => setUseBulletMarker(e.target.checked)}
+                            />
+                            <span className="text-sm font-bold text-muted group-hover:text-text transition-colors">Try to find bullets with</span>
+                        </label>
+
+                        <input
+                            type="text"
+                            placeholder=">"
+                            className={clsx(
+                                "w-14 text-center bg-panel border rounded-lg px-2 py-1.5 text-sm font-mono focus:border-accent outline-none transition-colors",
+                                useBulletMarker ? "border-accent text-text" : "border-outline text-muted"
+                            )}
+                            value={bulletMarker}
+                            onChange={(e) => {
+                                setBulletMarker(e.target.value);
+                                if (!useBulletMarker && e.target.value) setUseBulletMarker(true);
+                            }}
+                            maxLength={5}
+                        />
+
+                        <span className="text-sm font-bold text-muted">as a marker</span>
+
+                        <div className="ml-auto text-xs text-muted/60 italic hidden sm:block">
+                            Appends lines to previous card as bullets
+                        </div>
+                    </div>
+
                     {/* Preview Section - Reduced Height */}
                     <div className="flex-1 min-h-[180px] bg-panel-2 border border-outline rounded-2xl p-6 flex flex-col relative overflow-hidden group mb-2">
                         <div className="absolute top-4 right-4 text-xs font-bold text-muted uppercase tracking-wider z-10">
@@ -302,12 +365,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                         </div>
 
                         {parsedCards.length > 0 ? (
-                            <div
-                                className={clsx(
-                                    "flex-1 flex flex-col justify-center items-center text-center transition-opacity duration-500",
-                                    isFading ? "opacity-0" : "opacity-100"
-                                )}
-                            >
+                            <div className="flex-1 flex flex-col justify-center items-center text-center">
                                 <div className="max-w-md w-full p-5 bg-panel border border-outline rounded-xl shadow-sm">
                                     {/* Card Front (Term) */}
                                     <div className="text-base font-bold text-text mb-3 pb-3 border-b border-outline/50">
@@ -316,9 +374,22 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
 
                                     {/* Card Back (Def + Year) */}
                                     <div className="text-sm text-text/80">
-                                        <span className="line-clamp-2">
-                                            {previewCard?.content || <span className="text-muted italic">Empty Definition</span>}
-                                        </span>
+                                        <div className="text-left w-full">
+                                            {previewCard?.content ? (
+                                                previewCard.content.split('\n').map((line, i) => (
+                                                    line.trim().startsWith('- ') ? (
+                                                        <div key={i} className="flex gap-2 pl-2">
+                                                            <span className="text-accent">•</span>
+                                                            <span>{line.trim().substring(2)}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div key={i}>{line}</div>
+                                                    )
+                                                ))
+                                            ) : (
+                                                <span className="text-muted italic block text-center">Empty Definition</span>
+                                            )}
+                                        </div>
                                         {enableYear && previewCard?.year && (
                                             <div className="mt-2 inline-block px-2 py-0.5 rounded bg-accent/10 text-accent text-xs font-bold">
                                                 {previewCard.year}
@@ -326,8 +397,24 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                                         )}
                                     </div>
                                 </div>
-                                <div className="mt-3 text-xs text-muted">
-                                    Showing card {previewIndex + 1} of {Math.min(parsedCards.length, 10)}
+                                <div className="mt-4 flex items-center justify-center gap-4">
+                                    <button
+                                        onClick={handlePrevCard}
+                                        className="p-2 rounded-lg bg-panel border border-outline text-muted hover:text-text hover:border-accent transition-colors"
+                                        title="Previous Card"
+                                    >
+                                        <ArrowLeft size={16} />
+                                    </button>
+                                    <div className="text-xs text-muted font-mono">
+                                        {previewIndex + 1} / {Math.min(parsedCards.length, 10)}
+                                    </div>
+                                    <button
+                                        onClick={handleNextCard}
+                                        className="p-2 rounded-lg bg-panel border border-outline text-muted hover:text-text hover:border-accent transition-colors"
+                                        title="Next Card"
+                                    >
+                                        <ArrowRight size={16} />
+                                    </button>
                                 </div>
                             </div>
                         ) : (
