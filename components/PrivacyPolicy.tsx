@@ -17,19 +17,25 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         <Shield size={24} className="text-accent" />
                         <div>
                             <h2 className="text-xl font-bold text-text">Privacy Policy</h2>
-                            <div className="text-sm text-muted">Last updated: January 22, 2026</div>
+                            <div className="text-sm text-muted">Last updated: February 4, 2026</div>
                         </div>
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
+                    <div className="mb-6 p-4 bg-accent/10 border border-accent/20 rounded-xl">
+                        <p className="text-accent font-medium text-sm">
+                            CONSENT AND AGREEMENT: By accessing or using the Service, you signify your irrevocable acceptance of this Privacy Policy. You acknowledge that your data may be processed in accordance with this policy as well as our Terms of Service. If you do not agree to these terms, you must immediately cease all use of the Service.
+                        </p>
+                    </div>
 
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">1. Introduction</h3>
                         <p className="text-muted leading-relaxed">
-                            Welcome to Flashcardsish! This Privacy Policy explains how the program Flashcardsish ("we") collects, uses, discloses, and safeguards
-                            your information when you use this app. Please read this policy carefully. If you
-                            do not agree with the terms of this privacy policy, please do not use the application, and please don't sign in.
+                            This Privacy Policy governs the collection, processing, and retention of data by Flashcardsish ("the Service").
+                            Your interaction with the Service constitutes a binding agreement to the practices described herein.
+                            If you do not consent to these data practices, you must decline the Google OAuth request and refrain
+                            from using the Service.
                         </p>
                         <p className="text-muted leading-relaxed mt-3">
                             Flashcardsish is maintained and developed by one person (regardless, Flashcardsish as an entity is referred to as "we" in this page). This Privacy Policy applies to the app Flashcardsish hosted at{' '}
@@ -102,14 +108,16 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                             <div>
                                 <h4 className="font-bold text-text mb-2">4.1 Google Drive Storage</h4>
                                 <p className="text-muted leading-relaxed">
-                                    We use your personal Google Drive for data storage when you sign in.
-                                    Flashcardsish creates a dedicated folder in your Drive where your flashcard sets and uploaded images are stored.
-                                    We only access files created by Flashcardsish and cannot access your other Drive files.
-                                    You retain full ownership and control of your data and can view or delete it directly from Google Drive.
-                                    Google's usage of your data is governed by the{' '}
+                                    We currently utilize your personal Google Drive for data storage. Flashcardsish creates
+                                    a scoped directory within your Drive to store flashcard resources.
+                                    <strong className="text-text"> RESERVATION OF ARCHITECTURAL RIGHTS:</strong> We reserve the right
+                                    to migrate user data to proprietary servers, centralized databases, or alternative
+                                    cloud providers at any time to improve Service functionality. By using the Service,
+                                    you consent to such future data migrations.
+                                    Your data remains subject to Google's own{' '}
                                     <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                        Google Privacy Policy
-                                    </a>.
+                                        Privacy Policy
+                                    </a> while residing on their infrastructure.
                                 </p>
                             </div>
                             <div>
@@ -206,11 +214,12 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">11. Development Status and Data Deletion</h3>
+                        <h3 className="text-lg font-bold text-accent mb-3">11. Experimental Status and Liability</h3>
                         <div className="p-4 bg-yellow/10 rounded-xl border border-yellow/30 mb-3">
                             <p className="text-muted leading-relaxed">
-                                <strong className="text-yellow">⚠️ Important:</strong> Flashcardsish is an actively developed, personal project
-                                with no uptime guarantees or service level agreements.
+                                <strong className="text-yellow">⚠️ NO WARRANTY OF CONTINUITY:</strong> Flashcardsish is an
+                                experimental development project. We provide no guarantees regarding software stability,
+                                data persistence, or uptime.
                             </p>
                         </div>
                         <div className="space-y-3 text-muted leading-relaxed">
@@ -218,15 +227,17 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 Your data may be deleted under the following circumstances:
                             </p>
                             <ul className="list-disc pl-5 space-y-1">
-                                <li>Service shutdown or discontinuation</li>
-                                <li>Database migrations, restructuring, or technical necessity</li>
-                                <li>Hosting provider changes or limitations</li>
-                                <li>Development-related database resets during active development phases</li>
-                                <li>Security incidents requiring data purge</li>
-                                <li>Extended account inactivity</li>
-                                <li>Failure or destruction of one of the services we use</li>
-                                <li>Any other reason we deem appropriate, for any reason, at any time; we reserve the right to do so and you voluntarily agree to give us this right by using Flashcardsish</li>
+                                <li>Infrastructure migrations or technological obsolescence</li>
+                                <li>Service suspension or decommissioning</li>
+                                <li>Failure of upstream third-party dependencies</li>
+                                <li>Security remediation or data integrity enforcement</li>
+                                <li>As determined by our absolute discretion to ensure Service sustainability</li>
                             </ul>
+                            <p>
+                                <strong className="text-text">LIMITATION OF LIABILITY:</strong> Under no circumstances shall
+                                Flashcardsish or its developers be liable for the loss of user-generated content, metadata,
+                                or study statistics. Users are solely responsible for data redundancy via the "Export" feature.
+                            </p>
                             <p>
                                 We will make reasonable efforts to notify users before planned deletions when feasible,
                                 but this cannot be guaranteed. <strong className="text-text">You are strongly encouraged to regularly

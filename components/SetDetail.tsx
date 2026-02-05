@@ -194,7 +194,12 @@ export const SetDetail: React.FC<SetDetailProps> = ({
 
             {/* Set Header */}
             <div className="mb-6">
-                <h1 className="text-4xl font-bold text-text tracking-tight mb-3">{set.name}</h1>
+                <h1
+                    className="text-4xl text-text tracking-tight mb-3"
+                    style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                >
+                    {set.name}
+                </h1>
                 <div className="flex items-center gap-6 text-muted">
                     <span className="font-mono">{set.cards.length} cards</span>
                     {masteredCount > 0 && (

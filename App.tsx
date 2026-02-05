@@ -12,16 +12,128 @@ import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File } from 'lucide-react';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData } from './storage';
+import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS } from './storage';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
+import { SignInCard } from './components/SignInCard';
 import { CursorTooltip } from './components/CursorTooltip';
+import { CorruptionNotification } from './components/CorruptionNotification';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const STATS_KEY = 'flashcard-stats-v1';
+
+const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
+   const [localVal, setLocalVal] = useState(value.toString());
+   const [error, setError] = useState<string | null>(null);
+   const [rect, setRect] = useState<DOMRect | null>(null);
+   const inputRef = useRef<HTMLInputElement>(null);
+
+   useEffect(() => {
+      setLocalVal(value.toString());
+   }, [value]);
+
+   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setLocalVal(val);
+      if (val === '') {
+         setError("Cannot be empty");
+         return;
+      }
+      const num = parseInt(val);
+      if (isNaN(num) || num < 1 || num > 6) {
+         setError("Must be between 1 and 6");
+         if (inputRef.current) setRect(inputRef.current.getBoundingClientRect());
+      } else {
+         setError(null);
+         onChange(num);
+      }
+   };
+
+   return (
+      <div className="relative" onMouseEnter={(e) => setRect(e.currentTarget.getBoundingClientRect())}>
+         <input
+            ref={inputRef}
+            type="text"
+            value={localVal}
+            onChange={handleChange}
+            className={clsx(
+               "w-12 py-1 px-2 text-center bg-panel border rounded-lg text-sm font-bold outline-none ring-offset-bg focus:ring-2 transition-all",
+               error ? "border-red text-red focus:ring-red/50" : "border-outline text-text focus:ring-accent"
+            )}
+         />
+         {error && rect && (
+            <div
+               className="fixed z-[100] px-3 py-2 rounded-lg text-xs font-bold shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-max max-w-[200px] text-center bg-red text-white border border-red-700 shadow-red/20"
+               style={{
+                  top: rect.top - 10,
+                  left: rect.left + (rect.width / 2),
+                  transform: 'translate(-50%, -100%)'
+               }}
+            >
+               {error}
+               <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-red border-r border-b border-red-700"></div>
+            </div>
+         )}
+      </div>
+   );
+};
+
+// Tooltip Wrapper Component for custom sections
+const TooltipWrapper: React.FC<{
+   id: string;
+   tooltip: string;
+   hideWhenSetting?: boolean;
+   settings: Settings;
+   children: React.ReactElement;
+}> = ({ id, tooltip, hideWhenSetting = true, settings, children }) => {
+   return (
+      <CursorTooltip
+         content={tooltip}
+         isEnabled={hideWhenSetting ? !settings.hideTooltips : true}
+         tooltipClassName="w-80 max-w-[90vw]"
+      >
+         {children}
+      </CursorTooltip>
+   );
+};
+
+// SettingRow Component with tooltip support
+const SettingRow: React.FC<{
+   id: string;
+   label: string;
+   settingKey: keyof Settings;
+   alwaysShowTooltip?: boolean;
+   settings: Settings;
+   tooltips: Record<string, string>;
+   onUpdate: (s: Settings) => void;
+}> = ({ id, label, settingKey, alwaysShowTooltip, settings, tooltips, onUpdate }) => {
+   const toggle = () => {
+      onUpdate({ ...settings, [settingKey]: !settings[settingKey] });
+   };
+
+   return (
+      <CursorTooltip
+         content={tooltips[id]}
+         isEnabled={alwaysShowTooltip || !settings.hideTooltips}
+         tooltipClassName="w-80 max-w-[90vw]"
+      >
+         <label
+            onClick={toggle}
+            className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
+         >
+            <span className="font-medium text-text">{label}</span>
+            <div
+               className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings[settingKey] ? "bg-accent" : "bg-outline")}
+            >
+               <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings[settingKey] ? "translate-x-6" : "translate-x-0")} />
+            </div>
+         </label>
+      </CursorTooltip>
+   );
+};
 
 // Settings Modal Component - Three Tab Sidebar Layout
 const SettingsModal: React.FC<{
@@ -31,6 +143,7 @@ const SettingsModal: React.FC<{
    onUpdate: (s: Settings) => void;
    onDeleteData: () => void;
    onExportData: () => void;
+   onResetSettings: () => void;
    librarySets: CardSet[];
    // User props for "You" tab
    user: GoogleDriveUser | null;
@@ -38,8 +151,9 @@ const SettingsModal: React.FC<{
    onLogin: () => void;
    onLogout: () => void;
    initialTab?: 'set' | 'global' | 'you';
-}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set' }) => {
+}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set' }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+   const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder'>(initialTab);
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
@@ -80,114 +194,7 @@ const SettingsModal: React.FC<{
       autoCloseImageWindow: "When enabled, pasting any text in the image URL space instantly closes the window and attempts to use that image. If it fails, it will upload a broken image, but you can always re-attempt the upload.",
    };
 
-   const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
-      const [localVal, setLocalVal] = useState(value.toString());
-      const [error, setError] = useState<string | null>(null);
-      const [rect, setRect] = useState<DOMRect | null>(null);
-      const inputRef = useRef<HTMLInputElement>(null);
 
-      useEffect(() => {
-         setLocalVal(value.toString());
-      }, [value]);
-
-      const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-         const val = e.target.value;
-         setLocalVal(val);
-
-         // Allow empty string while typing
-         if (val === '') {
-            setError("Cannot be empty");
-            return;
-         }
-
-         const num = parseInt(val);
-         if (isNaN(num) || num < 1 || num > 6) {
-            setError("Must be between 1 and 6");
-            // Update rect immediately to ensure tooltip shows in right place
-            if (inputRef.current) setRect(inputRef.current.getBoundingClientRect());
-         } else {
-            setError(null);
-            onChange(num);
-         }
-      };
-
-      const handleMouseEnter = (e: React.MouseEvent) => {
-         setRect(e.currentTarget.getBoundingClientRect());
-      };
-
-      return (
-         <div className="relative" onMouseEnter={handleMouseEnter}>
-            <input
-               ref={inputRef}
-               type="text"
-               value={localVal}
-               onChange={handleChange}
-               className={clsx(
-                  "w-12 py-1 px-2 text-center bg-panel border rounded-lg text-sm font-bold outline-none ring-offset-bg focus:ring-2 transition-all",
-                  error ? "border-red text-red focus:ring-red/50" : "border-outline text-text focus:ring-accent"
-               )}
-            />
-            {error && rect && (
-               <div
-                  className="fixed z-[100] px-3 py-2 rounded-lg text-xs font-bold shadow-xl animate-in fade-in zoom-in-95 pointer-events-none w-max max-w-[200px] text-center bg-red text-white border border-red-700 shadow-red/20"
-                  style={{
-                     top: rect.top - 10,
-                     left: rect.left + (rect.width / 2),
-                     transform: 'translate(-50%, -100%)'
-                  }}
-               >
-                  {error}
-                  <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bottom-[-5px] bg-red border-r border-b border-red-700"></div>
-               </div>
-            )}
-         </div>
-      );
-   };
-
-   // SettingRow Component with tooltip support
-   const SettingRow: React.FC<{
-      id: string;
-      label: string;
-      settingKey: keyof Settings;
-      alwaysShowTooltip?: boolean;
-   }> = ({ id, label, settingKey, alwaysShowTooltip }) => {
-      return (
-         <CursorTooltip
-            content={tooltips[id]}
-            isEnabled={alwaysShowTooltip || !settings.hideTooltips}
-            tooltipClassName="w-80 max-w-[90vw]"
-         >
-            <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
-               <span className="font-medium text-text">{label}</span>
-               <div
-                  onClick={(e) => { e.stopPropagation(); toggle(settingKey); }}
-                  className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings[settingKey] ? "bg-accent" : "bg-outline")}
-               >
-                  <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings[settingKey] ? "translate-x-6" : "translate-x-0")} />
-               </div>
-            </label>
-         </CursorTooltip>
-      );
-   };
-
-   // Tooltip Wrapper Component for custom sections
-   const TooltipWrapper: React.FC<{
-      id: string;
-      tooltip: string;
-      hideWhenSetting?: boolean;
-      children: React.ReactElement;
-   }> = ({ id, tooltip, hideWhenSetting = true, children }) => {
-      // Ensure children is a single ReactElement as required by CursorTooltip
-      return (
-         <CursorTooltip
-            content={tooltip}
-            isEnabled={hideWhenSetting ? !settings.hideTooltips : true}
-            tooltipClassName="w-80 max-w-[90vw]"
-         >
-            {children}
-         </CursorTooltip>
-      );
-   };
 
    return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
@@ -197,7 +204,12 @@ const SettingsModal: React.FC<{
          >
             {/* Header */}
             <div className="flex justify-between items-center p-6 border-b border-outline shrink-0">
-               <h2 className="text-3xl font-extrabold text-text">Settings</h2>
+               <h2
+                  className="text-3xl text-text"
+                  style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+               >
+                  Settings
+               </h2>
                <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
                   <X size={24} />
                </button>
@@ -338,6 +350,9 @@ const SettingsModal: React.FC<{
                               id="forgiveSpellingErrors"
                               label="Forgive Minor Spelling Errors"
                               settingKey="forgiveSpellingErrors"
+                              settings={settings}
+                              tooltips={tooltips}
+                              onUpdate={onUpdate}
                            />
 
                            {settings.forgiveSpellingErrors && (
@@ -346,12 +361,12 @@ const SettingsModal: React.FC<{
                                  <div className="pl-6 border-l-2 border-outline/30 space-y-3 ml-2">
                                     {/* Ignore Diacritics */}
                                     <div className="flex items-center justify-between">
-                                       <TooltipWrapper id="ignoreDiacritics" tooltip={tooltips.ignoreDiacritics}>
+                                       <TooltipWrapper id="ignoreDiacritics" tooltip={tooltips.ignoreDiacritics} settings={settings}>
                                           <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Ignore diacritics (é, ñ)</label>
                                        </TooltipWrapper>
                                        <div
-                                          onClick={() => toggle('ignoreDiacritics')}
-                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer shrink-0", settings.ignoreDiacritics ? "bg-accent" : "bg-outline")}
+                                          onClick={(e) => { e.stopPropagation(); toggle('ignoreDiacritics'); }}
+                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-default shrink-0", settings.ignoreDiacritics ? "bg-accent" : "bg-outline")}
                                        >
                                           <div className={clsx("bg-bg w-3 h-3 rounded-full shadow-sm transition-transform", settings.ignoreDiacritics ? "translate-x-4" : "translate-x-0")} />
                                        </div>
@@ -359,12 +374,12 @@ const SettingsModal: React.FC<{
 
                                     {/* Ignore Capitalization */}
                                     <div className="flex items-center justify-between">
-                                       <TooltipWrapper id="ignoreCapitalization" tooltip={tooltips.ignoreCapitalization}>
+                                       <TooltipWrapper id="ignoreCapitalization" tooltip={tooltips.ignoreCapitalization} settings={settings}>
                                           <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Ignore capitalization</label>
                                        </TooltipWrapper>
                                        <div
-                                          onClick={() => toggle('ignoreCapitalization')}
-                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer shrink-0", settings.ignoreCapitalization ? "bg-accent" : "bg-outline")}
+                                          onClick={(e) => { e.stopPropagation(); toggle('ignoreCapitalization'); }}
+                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-default shrink-0", settings.ignoreCapitalization ? "bg-accent" : "bg-outline")}
                                        >
                                           <div className={clsx("bg-bg w-3 h-3 rounded-full shadow-sm transition-transform", settings.ignoreCapitalization ? "translate-x-4" : "translate-x-0")} />
                                        </div>
@@ -372,12 +387,12 @@ const SettingsModal: React.FC<{
 
                                     {/* Forgive "the" */}
                                     <div className="flex items-center justify-between">
-                                       <TooltipWrapper id="forgiveThe" tooltip={tooltips.forgiveThe}>
+                                       <TooltipWrapper id="forgiveThe" tooltip={tooltips.forgiveThe} settings={settings}>
                                           <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Forgive "the"</label>
                                        </TooltipWrapper>
                                        <div
-                                          onClick={() => toggle('forgiveThe')}
-                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-pointer shrink-0", settings.forgiveThe ? "bg-accent" : "bg-outline")}
+                                          onClick={(e) => { e.stopPropagation(); toggle('forgiveThe'); }}
+                                          className={clsx("w-8 h-4 rounded-full p-0.5 transition-colors cursor-default shrink-0", settings.forgiveThe ? "bg-accent" : "bg-outline")}
                                        >
                                           <div className={clsx("bg-bg w-3 h-3 rounded-full shadow-sm transition-transform", settings.forgiveThe ? "translate-x-4" : "translate-x-0")} />
                                        </div>
@@ -385,7 +400,7 @@ const SettingsModal: React.FC<{
 
                                     {/* Wiggle Room */}
                                     <div className="flex items-center justify-between">
-                                       <TooltipWrapper id="wiggleRoom" tooltip={tooltips.wiggleRoom}>
+                                       <TooltipWrapper id="wiggleRoom" tooltip={tooltips.wiggleRoom} settings={settings}>
                                           <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Wiggle room (letters)</label>
                                        </TooltipWrapper>
                                        <WiggleInput
@@ -398,18 +413,18 @@ const SettingsModal: React.FC<{
                            )}
                         </div>
 
-                        <SettingRow id="retypeOnMistake" label="Retype Mistakes" settingKey="retypeOnMistake" />
-                        <SettingRow id="starredOnly" label="Study Starred Only" settingKey="starredOnly" />
+                        <SettingRow id="retypeOnMistake" label="Retype Mistakes" settingKey="retypeOnMistake" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+                        <SettingRow id="starredOnly" label="Study Starred Only" settingKey="starredOnly" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
                         {/* Answer With Toggle */}
-                        <TooltipWrapper id="answerWithDefinition" tooltip={tooltips.answerWithDefinition}>
+                        <TooltipWrapper id="answerWithDefinition" tooltip={tooltips.answerWithDefinition} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                               <span className="font-medium text-text block mb-3">Answer With</span>
                               <div className="grid grid-cols-2 gap-2">
                                  <button
                                     onClick={() => onUpdate({ ...settings, answerWithDefinition: false })}
                                     className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
                                        !settings.answerWithDefinition
                                           ? "bg-accent text-bg border-accent"
                                           : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
@@ -420,7 +435,7 @@ const SettingsModal: React.FC<{
                                  <button
                                     onClick={() => onUpdate({ ...settings, answerWithDefinition: true })}
                                     className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
                                        settings.answerWithDefinition
                                           ? "bg-accent text-bg border-accent"
                                           : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
@@ -432,15 +447,15 @@ const SettingsModal: React.FC<{
                            </div>
                         </TooltipWrapper>
 
-                        {/* Learn Game Mode */}
-                        <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode}>
+                        {/* Learn Mode Style */}
+                        <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
-                              <span className="font-medium text-text block mb-3">Learn Game Mode</span>
+                              <span className="font-medium text-text block mb-3">Learn Mode Style</span>
                               <div className="grid grid-cols-2 gap-2">
                                  <button
                                     onClick={() => onUpdate({ ...settings, mode: 'standard' })}
                                     className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
                                        settings.mode === 'standard'
                                           ? "bg-accent text-bg border-accent"
                                           : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
@@ -451,7 +466,7 @@ const SettingsModal: React.FC<{
                                  <button
                                     onClick={() => onUpdate({ ...settings, mode: 'multiple_choice' })}
                                     className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border",
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
                                        settings.mode === 'multiple_choice'
                                           ? "bg-accent text-bg border-accent"
                                           : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
@@ -464,7 +479,7 @@ const SettingsModal: React.FC<{
                         </TooltipWrapper>
 
                         {/* Batch Length */}
-                        <TooltipWrapper id="batchLength" tooltip={tooltips.batchLength}>
+                        <TooltipWrapper id="batchLength" tooltip={tooltips.batchLength} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                               <div className="flex items-center justify-between">
                                  <span className="font-medium text-text">Batch Length</span>
@@ -486,28 +501,31 @@ const SettingsModal: React.FC<{
                         </TooltipWrapper>
 
                         {/* Shuffle Cards */}
-                        <SettingRow id="shuffleCards" label="Shuffle Cards" settingKey="shuffleCards" />
+                        <SettingRow id="shuffleCards" label="Shuffle Cards" settingKey="shuffleCards" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
                         {/* Brutal Mode */}
-                        <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" />
+                        <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
                      </div>
                   )}
 
                   {activeTab === 'builder' && (
                      <div className="space-y-4">
-                        <TooltipWrapper id="importAppend" tooltip={tooltips.importAppend}>
-                           <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
+                        <TooltipWrapper id="importAppend" tooltip={tooltips.importAppend} settings={settings}>
+                           <label
+                              onClick={() => toggle('importAppend')}
+                              className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
+                           >
                               <span className="font-medium text-text">Append Import</span>
                               <div
                                  onClick={(e) => { e.stopPropagation(); toggle('importAppend'); }}
-                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.importAppend ? "bg-accent" : "bg-outline")}
+                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors cursor-default", settings.importAppend ? "bg-accent" : "bg-outline")}
                               >
                                  <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.importAppend ? "translate-x-6" : "translate-x-0")} />
                               </div>
                            </label>
                         </TooltipWrapper>
 
-                        <TooltipWrapper id="importOverride" tooltip={tooltips.importOverride}>
+                        <TooltipWrapper id="importOverride" tooltip={tooltips.importOverride} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                               <span className="font-medium text-text block mb-3">Duplicate Strategy</span>
                               <div className="grid grid-cols-3 gap-2">
@@ -520,7 +538,7 @@ const SettingsModal: React.FC<{
                                        key={opt.value}
                                        onClick={() => onUpdate({ ...settings, importOverride: opt.value as any })}
                                        className={clsx(
-                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all border",
+                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all border cursor-default",
                                           settings.importOverride === opt.value
                                              ? "bg-accent text-bg border-accent"
                                              : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
@@ -533,12 +551,15 @@ const SettingsModal: React.FC<{
                            </div>
                         </TooltipWrapper>
 
-                        <TooltipWrapper id="autoCloseImageWindow" tooltip={tooltips.autoCloseImageWindow}>
-                           <label className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all">
+                        <TooltipWrapper id="autoCloseImageWindow" tooltip={tooltips.autoCloseImageWindow} settings={settings}>
+                           <label
+                              onClick={() => toggle('autoCloseImageWindow')}
+                              className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
+                           >
                               <span className="font-medium text-text">Automatically Close Image Window</span>
                               <div
                                  onClick={(e) => { e.stopPropagation(); toggle('autoCloseImageWindow'); }}
-                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.autoCloseImageWindow ? "bg-accent" : "bg-outline")}
+                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors cursor-default", settings.autoCloseImageWindow ? "bg-accent" : "bg-outline")}
                               >
                                  <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.autoCloseImageWindow ? "translate-x-6" : "translate-x-0")} />
                               </div>
@@ -550,10 +571,10 @@ const SettingsModal: React.FC<{
                   {activeTab === 'global' && (
                      <div className="space-y-4">
                         {/* Hide Helper Tooltips - Always shows its own tooltip */}
-                        <SettingRow id="hideTooltips" label="Hide Helper Tooltips" settingKey="hideTooltips" alwaysShowTooltip />
+                        <SettingRow id="hideTooltips" label="Hide Helper Tooltips" settingKey="hideTooltips" alwaysShowTooltip settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
                         {/* Dark Mode */}
-                        <SettingRow id="darkMode" label="Dark Mode" settingKey="darkMode" />
+                        <SettingRow id="darkMode" label="Dark Mode" settingKey="darkMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
                         {/* Export Data Box */}
                         <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
@@ -629,24 +650,47 @@ const SettingsModal: React.FC<{
                                     Sign Out
                                  </button>
                               </div>
+
+                              {/* Reset Settings Section */}
+                              <div className="p-4 bg-yellow/5 rounded-xl border border-yellow/20 hover:border-yellow/40 transition-all">
+                                 <span className="font-medium text-yellow block mb-3 flex items-center gap-2">
+                                    <RotateCcw size={18} /> Reset Settings
+                                 </span>
+                                 {!showResetConfirm ? (
+                                    <button
+                                       onClick={() => setShowResetConfirm(true)}
+                                       className="w-full flex items-center justify-center gap-2 py-2 text-yellow border border-yellow/30 rounded-lg font-bold hover:bg-yellow/20 transition-colors text-sm"
+                                    >
+                                       Reset All Settings to Default
+                                    </button>
+                                 ) : (
+                                    <div className="space-y-3">
+                                       <p className="text-sm text-muted">
+                                          This will reset all your settings to their default values. Your flashcard sets will not be affected.
+                                       </p>
+                                       <div className="flex gap-2">
+                                          <button
+                                             onClick={() => setShowResetConfirm(false)}
+                                             className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
+                                          >
+                                             Cancel
+                                          </button>
+                                          <button
+                                             onClick={() => {
+                                                onResetSettings();
+                                                setShowResetConfirm(false);
+                                             }}
+                                             className="flex-1 py-2 bg-yellow text-bg rounded-lg font-bold hover:bg-yellow/90 transition-colors text-sm"
+                                          >
+                                             Yes, Reset Settings
+                                          </button>
+                                       </div>
+                                    </div>
+                                 )}
+                              </div>
                            </>
                         ) : (
-                           <div className="text-center py-8">
-                              <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                                 <Cloud size={40} className="text-accent" />
-                              </div>
-                              <h2 className="text-2xl font-bold text-text mb-2">Sync Your Progress</h2>
-                              <p className="text-muted mb-8 max-w-[80%] mx-auto">
-                                 Sign in to save your stats, badges, and Sets to the cloud and access them from any device.
-                              </p>
-
-                              <button
-                                 onClick={onLogin}
-                                 className="w-full flex items-center justify-center gap-2 py-3 bg-text text-bg rounded-xl font-bold hover:opacity-90 transition-opacity shadow-lg mb-4"
-                              >
-                                 <LogIn size={18} /> Log in with Google
-                              </button>
-                           </div>
+                           <SignInCard onLogin={onLogin} />
                         )}
                      </div>
                   )}
@@ -717,6 +761,9 @@ const App: React.FC = () => {
 
    // Stats
    const [lifetimeCorrect, setLifetimeCorrect] = useState(0);
+
+   // Corruption Reports (from V2 storage)
+   const [corruptionReports, setCorruptionReports] = useState<CorruptionReport[]>([]);
 
    // --- AUTH & CLOUD SYNC ---
 
@@ -868,6 +915,11 @@ const App: React.FC = () => {
                   }
                   if (data.folders && data.folders.length > 0) setFolders(data.folders);
                   if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
+
+                  // Handle any corruption reports
+                  if (data.corruptions && data.corruptions.length > 0) {
+                     setCorruptionReports(data.corruptions);
+                  }
                }
             }
          } catch (error) {
@@ -890,6 +942,11 @@ const App: React.FC = () => {
                }
                if (data.folders && data.folders.length > 0) setFolders(data.folders);
                if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
+
+               // Handle any corruption reports
+               if (data.corruptions && data.corruptions.length > 0) {
+                  setCorruptionReports(data.corruptions);
+               }
             }
          }
       });
@@ -982,14 +1039,24 @@ const App: React.FC = () => {
    }, [lifetimeCorrect]);
 
    useEffect(() => {
-      if (settings.darkMode) {
-         document.body.classList.remove('light-mode');
-      } else {
+      console.log('App: settings.darkMode is now:', settings.darkMode);
+      const isLight = !settings.darkMode;
+
+      // Use documentElement (html) instead of body for more reliable theme switching
+      if (isLight) {
+         document.documentElement.classList.add('light-mode');
          document.body.classList.add('light-mode');
+      } else {
+         document.documentElement.classList.remove('light-mode');
+         document.body.classList.remove('light-mode');
       }
+
+      console.log('App: light-mode class on html:', document.documentElement.classList.contains('light-mode'));
+      console.log('App: light-mode class on body:', document.body.classList.contains('light-mode'));
    }, [settings.darkMode]);
 
    const updateSettings = (newSettings: Settings) => {
+      console.log('DEBUG: updateSettings called with darkMode:', newSettings.darkMode);
       setSettings(newSettings);
       // Saved via effect
    };
@@ -1265,6 +1332,11 @@ const App: React.FC = () => {
       alert("Saved starred cards as a new set in Library!");
    };
 
+   const handleResetSettings = async () => {
+      setSettings({ ...DEFAULT_SETTINGS });
+      await resetSettingsToDefault();
+   };
+
    return (
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
@@ -1276,6 +1348,7 @@ const App: React.FC = () => {
             onUpdate={updateSettings}
             onDeleteData={handleDeleteData}
             onExportData={handleExportData}
+            onResetSettings={handleResetSettings}
             librarySets={librarySets}
             user={user}
             lifetimeCorrect={lifetimeCorrect}
@@ -1309,6 +1382,12 @@ const App: React.FC = () => {
          <TermsOfServiceModal
             isOpen={isTermsOpen}
             onClose={() => setIsTermsOpen(false)}
+         />
+
+         {/* Corruption Notification */}
+         <CorruptionNotification
+            reports={corruptionReports}
+            onDismiss={() => setCorruptionReports([])}
          />
 
          {/* Top Bar */}
@@ -1349,7 +1428,15 @@ const App: React.FC = () => {
                         </span>
                      )
                   ) : (
-                     <div className="font-bold text-lg tracking-tight text-text opacity-80">Flashcardsish</div>
+                     <div
+                        className="text-lg tracking-tight text-text opacity-80"
+                        style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                     >
+                        Flashcardsish
+                        <CursorTooltip content="Alpha">
+                           <sup style={{ fontSize: '0.6em', marginLeft: '2px', cursor: 'pointer' }}>α</sup>
+                        </CursorTooltip>
+                     </div>
                   )}
                </div>
 
@@ -1483,7 +1570,10 @@ const App: React.FC = () => {
             {gameState === GameState.WIN && (
                <div className="fixed inset-0 z-20 flex flex-col items-center justify-center bg-bg/95 backdrop-blur-xl animate-in fade-in duration-500">
                   <div className="text-center mb-10">
-                     <h2 className="text-5xl font-bold text-accent mb-4 drop-shadow-[0_0_35px_rgba(208,164,94,0.4)]">
+                     <h2
+                        className="text-5xl text-accent mb-4 drop-shadow-[0_0_35px_rgba(208,164,94,0.4)]"
+                        style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                     >
                         Session Complete
                      </h2>
                      <p className="text-xl text-muted">Excellent work.</p>

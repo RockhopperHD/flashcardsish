@@ -644,66 +644,20 @@ export const downloadFile = (filename: string, content: string, type: 'text' | '
 
 // --- MARKDOWN RENDERING ---
 
-export const renderInline = (text: string, keyPrefix: string, isHighlighted: boolean = false): React.ReactNode[] => {
-  // 1. Code: `text`
-  // 1. Highlight: <h=c>text</h>
-  // 2. Code: `text`
-  // 3. BoldItalic: ***text***
-  // 4. Bold: **text**
-  // 5. Italic: *text* or _text_
-  // 6. Underline: __text__ or <u>text</u>
+// Old renderInline replaced below
+// export const renderInline = ...
+// 1. Code: `text`
+// 1. Highlight: <h=c>text</h>
+// 2. Code: `text`
+// 3. BoldItalic: ***text***
+// 4. Bold: **text**
+// 5. Italic: *text* or _text_
+// 6. Underline: __text__ or <u>text</u>
 
-  const parts = text.split(/(<h=[^>]+>.*?<\/h>)|(`[^`]+`)|(\*\*\*[^*]+\*\*\*)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(__[^_]+__)|(<u>[^<]+<\/u>)/g).filter(p => p !== undefined && p !== '');
+// 
 
-  return parts.map((part, idx) => {
-    const key = `${keyPrefix}-${idx}`;
 
-    // Highlight
-    if (part.startsWith('<h=')) {
-      const match = part.match(/<h=([^>]+)>(.*?)<\/h>/);
-      if (match) {
-        const colorCode = match[1].toLowerCase();
-        const content = match[2];
 
-        let bgClass = "bg-yellow/20 text-yellow";
-        if (colorCode === 'r') bgClass = "bg-red/20 text-red";
-        if (colorCode === 'b') bgClass = "bg-blue/20 text-blue";
-        if (colorCode === 'g') bgClass = "bg-green/20 text-green";
-        if (colorCode === 'p') bgClass = "bg-purple/20 text-purple";
-        if (colorCode === 'y') bgClass = "bg-yellow/20 text-yellow";
-
-        // Recursively render content inside highlight, passing isHighlighted=true
-        return React.createElement('span', { key, className: `${bgClass} px-1 rounded font-medium` }, renderInline(content, `${key}-inner`, true));
-      }
-    }
-
-    // Code
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return React.createElement('code', { key, className: "bg-panel-2 border border-outline px-1.5 py-0.5 rounded text-[0.9em] font-mono text-accent" }, part.slice(1, -1));
-    }
-    // Bold & Italic
-    if (part.startsWith('***') && part.endsWith('***')) {
-      return React.createElement('strong', { key, className: "font-bold text-accent italic" }, part.slice(3, -3));
-    }
-    // Bold
-    if (part.startsWith('**') && part.endsWith('**')) {
-      // If highlighted, use text-current (inherit color from highlight). Otherwise use text-accent.
-      const className = `font-extrabold ${isHighlighted ? 'text-current' : 'text-accent'}`;
-      return React.createElement('strong', { key, className }, part.slice(2, -2));
-    }
-    // Italic
-    if (part.startsWith('*') && part.endsWith('*')) {
-      return React.createElement('em', { key, className: "italic text-muted/90" }, part.slice(1, -1));
-    }
-    // Underline
-    if ((part.startsWith('__') && part.endsWith('__')) || (part.startsWith('<u>') && part.endsWith('</u>'))) {
-      const content = part.startsWith('__') ? part.slice(2, -2) : part.slice(3, -4);
-      return React.createElement('u', { key, className: "underline decoration-accent underline-offset-4" }, content);
-    }
-
-    return React.createElement('span', { key }, part);
-  });
-};
 
 // Helper to extract category (Tag) from content
 export const extractCategory = (content: string): { category: string | null; body: string } => {
@@ -773,4 +727,292 @@ export const renderMarkdown = (content: string): React.ReactNode => {
   children.push(React.createElement('div', { key: "body" }, renderedBlocks));
 
   return React.createElement(React.Fragment, {}, children);
+};
+// Helper logic to apply markdown format intelligently
+export const applyMarkdownFormat = (
+  text: string,
+  start: number,
+  end: number,
+  type: string,
+  value?: string
+): string => {
+  if (start === end) return text; // No selection
+
+  let s = start;
+  let e = end;
+  let before = text.substring(0, s);
+  let after = text.substring(e);
+  let selection = text.substring(s, e);
+
+  // Tags definition
+  const tags: Record<string, { start: string | RegExp; end: string }> = {
+    bold: { start: '**', end: '**' },
+    italic: { start: '*', end: '*' }, // Assuming * for italic
+    underline: { start: '__', end: '__' },
+    code: { start: '`', end: '`' },
+    highlight: { start: /<h=[a-z]>/, end: '</h>' },
+  };
+
+  const tagDef = tags[type];
+  if (!tagDef) return text;
+
+  // Helper Check: Is strictly surrounded?
+  // We expand selection to encompass surrounding tags if they exist immediately
+  const expandSurrounding = () => {
+    // Check regex start tag for Highlight
+    if (tagDef.start instanceof RegExp) {
+      // Look back in 'before' for the tag pattern
+      // Because JS Regex is left-to-right, we want to match AT THE END of 'before'.
+      // We can simplistic check for specific highlight structure: <h=X>
+      const match = before.match(/<h=[a-z]>$/);
+      if (match && after.startsWith(tagDef.end)) {
+        s -= match[0].length;
+        e += tagDef.end.length;
+        before = text.substring(0, s);
+        after = text.substring(e);
+        selection = text.substring(s, e);
+        return true;
+      }
+    } else {
+      // String tag
+      if (before.endsWith(tagDef.start) && after.startsWith(tagDef.end)) {
+        s -= tagDef.start.length;
+        e += tagDef.end.length;
+        before = text.substring(0, s);
+        after = text.substring(e);
+        selection = text.substring(s, e);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // 1. Attempt to expand selection to include existing tags of SAME type
+  const isSurrounded = expandSurrounding();
+
+  // 2. Identify if selection NOW technically wraps the content (for unwrapping logic)
+  // For Regex start tag, we need to check matches again on the expanded selection
+  let isWrapped = false;
+  let currentStartTagLen = 0;
+  let currentEndTagLen = tagDef.end.length;
+
+  if (tagDef.start instanceof RegExp) {
+    const match = selection.match(new RegExp('^' + tagDef.start.source));
+    if (match && selection.endsWith(tagDef.end)) {
+      isWrapped = true;
+      currentStartTagLen = match[0].length;
+    }
+  } else {
+    if (selection.startsWith(tagDef.start) && selection.endsWith(tagDef.end)) {
+      isWrapped = true;
+      currentStartTagLen = tagDef.start.length;
+    }
+  }
+
+  // 3. Strip Inner Tags?
+  // User requested "Highlight over highlight" -> Should overwrite?
+  // If I select "World" inside "Hello World" (red)...
+  // The renderer now supports nesting.
+  // So if I wrap "World" in Green, I get <h=r>Hello <h=g>World</h></h>.
+  // Result: Hello is Red. World is Green (inner wins). This is correct behavior.
+  // So we should NOT strip existing inner tags if we are wrapping.
+
+  // BUT: If Toggling OFF, we unwrapped. Should we also strip inner?
+  // If unbolding "**A **B** C**", and I select all -> A B C. Inner B bold remains?
+  // Probably yes.
+
+  // So: Only strip if we are unwrapping AND the inner tags match the outer type?
+  // No, standard behavior: Unbolding a block shouldn't behave recursively usually.
+  // But for simplicity, let's STOP stripping inner tags.
+  // If user wants to remove inner highlight, they select inner highlight and click again.
+
+  let cleanInner = selection;
+  if (isWrapped) {
+    // Unwrap first
+    cleanInner = selection.slice(currentStartTagLen, -currentEndTagLen);
+  }
+
+  // Removed stripType logic to allow nesting
+
+  // 4. Decide Action: Wrap or Return Clean (Unwrap) or Rewrap (New Highlight Color)
+  let result = cleanInner;
+
+  // Toggle Logic
+  if (isWrapped) {
+    // It WAS wrapped.
+    if (type === 'highlight' && value) {
+      // Check original color. If we are applying specific color, wrapping logic applies.
+      // If we clicked "Red" on a "Red" highlight, maybe unhighlight?
+      // User said "overwrite highlight", implies changing color or confirming it.
+      // Let's confusingly, assuming clicking color ALWAYS applies that color.
+      // So we RE-WRAP with new value.
+      const newStartTag = `<h=${value}>`;
+      return `${before}${newStartTag}${cleanInner}${tagDef.end}${after}`;
+    }
+    // For Bold/Italic etc, toggling means REMOVE format.
+    // So we just return the unwrapped, cleaned text.
+    return `${before}${cleanInner}${after}`;
+  } else {
+    // It was NOT wrapped (or we expanded and found it wasn't validly wrapped?)
+    // Wrap it!
+    let startTag = typeof tagDef.start === 'string' ? tagDef.start : '';
+    if (type === 'highlight' && value) startTag = `<h=${value}>`;
+
+    return `${before}${startTag}${cleanInner}${tagDef.end}${after}`;
+  }
+};
+
+// Helper logic to render content with potentially nested tags
+export const renderInline = (text: string, keyPrefix: string = 'root', isHighlighted: boolean = false): React.ReactNode[] => {
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    // Scan for next token
+    // Note: Regex order matters (longest match first usually desirable for *** vs **)
+    const tokenRegex = /(<h=[rbgpy]>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)/;
+    const match = remaining.match(tokenRegex);
+
+    if (!match) {
+      nodes.push(React.createElement('span', { key: `${keyPrefix}-${cursor}` }, remaining));
+      break;
+    }
+
+    const idx = match.index!;
+    const token = match[0];
+
+    // Push text before token
+    if (idx > 0) {
+      nodes.push(React.createElement('span', { key: `${keyPrefix}-${cursor}-pre` }, remaining.substring(0, idx)));
+    }
+
+    // Advance logic reference point
+    const currentRest = remaining.substring(idx);
+
+    let handled = false;
+    let consumedLength = 0;
+
+    // 1. Highlight <h=x>... (Supports Nesting)
+    if (token.startsWith('<h=')) {
+      let depth = 0;
+      let endIdx = -1;
+      const tagSearch = /<h=[rbgpy]>|<\/h>/g;
+      tagSearch.lastIndex = 0;
+
+      // We iterate through tags starting from current pos
+      let tagMatch;
+      while ((tagMatch = tagSearch.exec(currentRest)) !== null) {
+        if (tagMatch[0].startsWith('<h=')) {
+          depth++;
+        } else {
+          depth--;
+        }
+
+        if (depth === 0) {
+          endIdx = tagMatch.index + tagMatch[0].length;
+          break;
+        }
+      }
+
+      if (endIdx !== -1) {
+        const block = currentRest.substring(0, endIdx);
+        const content = block.substring(token.length, block.length - 4); // remove <h=x> and </h>
+        const colorCode = token.charAt(3);
+
+        let bgClass = "bg-yellow/20 text-yellow";
+        if (colorCode === 'r') bgClass = "bg-red/20 text-red";
+        if (colorCode === 'b') bgClass = "bg-blue/20 text-blue";
+        if (colorCode === 'g') bgClass = "bg-green/20 text-green";
+        if (colorCode === 'p') bgClass = "bg-purple/20 text-purple";
+        if (colorCode === 'y') bgClass = "bg-yellow/20 text-yellow";
+
+        nodes.push(React.createElement('span', {
+          key: `${keyPrefix}-${cursor}-hl`,
+          className: `${bgClass} px-1 rounded font-medium`
+        }, renderInline(content, `${keyPrefix}-${cursor}-hl`, true)));
+
+        consumedLength = endIdx;
+        handled = true;
+      }
+    }
+    // 2. Code `...` (No Nesting)
+    else if (token === '`') {
+      const end = currentRest.indexOf('`', 1);
+      if (end !== -1) {
+        const content = currentRest.substring(1, end);
+        nodes.push(React.createElement('code', {
+          key: `${keyPrefix}-${cursor}-code`,
+          className: "bg-panel-2 border border-outline px-1.5 py-0.5 rounded text-[0.9em] font-mono text-accent"
+        }, content));
+        consumedLength = end + 1;
+        handled = true;
+      }
+    }
+    // 3. Formatting (Recursive)
+    else if (token === '***') {
+      const end = currentRest.indexOf('***', 3);
+      if (end !== -1) {
+        nodes.push(React.createElement('strong', { key: `${keyPrefix}-${cursor}-bi`, className: "font-bold text-accent italic" },
+          renderInline(currentRest.substring(3, end), `${keyPrefix}-${cursor}-bi`, isHighlighted)
+        ));
+        consumedLength = end + 3;
+        handled = true;
+      }
+    }
+    else if (token === '**') {
+      const end = currentRest.indexOf('**', 2);
+      if (end !== -1) {
+        const className = `font-extrabold ${isHighlighted ? 'text-current' : 'text-accent'}`;
+        nodes.push(React.createElement('strong', { key: `${keyPrefix}-${cursor}-b`, className },
+          renderInline(currentRest.substring(2, end), `${keyPrefix}-${cursor}-b`, isHighlighted)
+        ));
+        consumedLength = end + 2;
+        handled = true;
+      }
+    }
+    else if (token === '*') {
+      const end = currentRest.indexOf('*', 1);
+      // Ensure no space after start * and no space before end * ideally, but simplifying
+      if (end !== -1) {
+        nodes.push(React.createElement('em', { key: `${keyPrefix}-${cursor}-i`, className: "italic text-muted/90" },
+          renderInline(currentRest.substring(1, end), `${keyPrefix}-${cursor}-i`, isHighlighted)
+        ));
+        consumedLength = end + 1;
+        handled = true;
+      }
+    }
+    else if (token === '__') {
+      const end = currentRest.indexOf('__', 2);
+      if (end !== -1) {
+        nodes.push(React.createElement('u', { key: `${keyPrefix}-${cursor}-u`, className: "underline decoration-accent underline-offset-4" },
+          renderInline(currentRest.substring(2, end), `${keyPrefix}-${cursor}-u`, isHighlighted)
+        ));
+        consumedLength = end + 2;
+        handled = true;
+      }
+    }
+    else if (token === '<u>') {
+      const end = currentRest.indexOf('</u>', 3);
+      if (end !== -1) {
+        nodes.push(React.createElement('u', { key: `${keyPrefix}-${cursor}-uhtml`, className: "underline decoration-accent underline-offset-4" },
+          renderInline(currentRest.substring(3, end), `${keyPrefix}-${cursor}-uhtml`, isHighlighted)
+        ));
+        consumedLength = end + 4;
+        handled = true;
+      }
+    }
+
+    if (handled) {
+      remaining = remaining.substring(idx + consumedLength);
+      cursor += idx + consumedLength;
+    } else {
+      // Just text, consume specific token as literal or bad grammar
+      nodes.push(React.createElement('span', { key: `${keyPrefix}-${cursor}-raw` }, token));
+      remaining = remaining.substring(idx + token.length);
+      cursor += idx + token.length;
+    }
+  }
+
+  return nodes;
 };

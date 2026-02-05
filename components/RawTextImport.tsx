@@ -4,6 +4,7 @@ import { Card } from '../types';
 import clsx from 'clsx';
 import { ArrowLeft, ArrowRight, AlertCircle, Check } from 'lucide-react';
 import { CursorTooltip } from './CursorTooltip';
+import ReactMarkdown from 'react-markdown';
 
 interface RawTextImportProps {
     onClose: () => void; // Modal close logic ("Leave without saving" or just back)
@@ -71,7 +72,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
             const trimmedCard = rawCard.trim();
             if (!trimmedCard) return;
 
-            // Bullet Point Logic: Append to previous card if marker matches
+            // Bullet Point Logic (Chunk Mode): Append to previous card if marker matches start of chunk
             if (useBulletMarker && bulletMarker && trimmedCard.startsWith(bulletMarker)) {
                 if (result.length > 0) {
                     const prevCard = result[result.length - 1];
@@ -103,6 +104,17 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                 } else {
                     def = rest;
                 }
+            }
+
+            // Bullet Point Logic (Inline Mode): Check inside definition for lines starting with marker
+            if (useBulletMarker && bulletMarker && def) {
+                def = def.split('\n').map(line => {
+                    const trimmedLine = line.trim();
+                    if (trimmedLine.startsWith(bulletMarker)) {
+                        return '- ' + trimmedLine.slice(bulletMarker.length).trim();
+                    }
+                    return line;
+                }).join('\n');
             }
 
             if (term || def) {
@@ -246,7 +258,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
     return (
         <div className={clsx(
             "max-w-6xl mx-auto w-full flex flex-col animate-in fade-in duration-500",
-            isModal ? "h-full" : "h-[65vh] min-h-[500px]"
+            isModal ? "h-full" : "min-h-[500px]"
         )}>
             {/* Header (Modal Mode only or always?) */}
             {/* If Modal, maybe different header? */}
@@ -258,25 +270,25 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
             </p>
 
             {/* Main Content Grid */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 min-h-0 overflow-hidden pb-6">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 pb-6">
 
                 {/* Left Column: Text Input (Span 4) - Narrower */}
-                <div className="lg:col-span-4 h-full flex flex-col min-h-0">
-                    <div className="relative flex-1 min-h-0 flex flex-col">
+                <div className="lg:col-span-4 flex flex-col min-h-[400px]">
+                    <div className="relative flex-1 flex flex-col">
                         <textarea
                             value={rawText}
                             onChange={(e) => setRawText(e.target.value)}
                             placeholder="Paste text here..."
-                            className="w-full flex-1 p-4 bg-panel-2 border border-outline rounded-2xl resize-none focus:border-accent outline-none text-sm font-mono leading-relaxed custom-scrollbar"
+                            className="w-full flex-1 p-4 bg-panel-2 border border-outline rounded-2xl resize-none focus:border-accent outline-none text-sm font-mono leading-relaxed custom-scrollbar h-full min-h-[400px]"
                         />
                     </div>
                 </div>
 
                 {/* Right Column: Settings & Preview (Span 8) - Wider */}
-                <div className="lg:col-span-8 flex flex-col h-full gap-6 min-h-0 overflow-y-auto custom-scrollbar pr-2">
+                <div className="lg:col-span-8 flex flex-col gap-6 pr-2">
 
                     {/* Separators Configuration - Fixed Height Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[240px] shrink-0">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
                         {renderRadioGroup(
                             "Between Term & Definition",
                             COMMON_TERM_DEF,
@@ -319,49 +331,49 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                     </div>
 
                     {/* Bullet Point Settings */}
-                    <div className="bg-panel-2 p-4 rounded-xl border border-outline flex items-center gap-4 shrink-0">
-                        <label className="flex items-center gap-3 cursor-pointer select-none group">
-                            <div className={clsx(
-                                "w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm",
-                                useBulletMarker ? "bg-accent border-accent text-bg" : "border-outline text-transparent group-hover:border-text bg-panel"
-                            )}>
-                                <Check size={14} strokeWidth={3} />
-                            </div>
+                    <CursorTooltip content="Appends lines to previous card as bullets">
+                        <div className="bg-panel-2 p-4 rounded-xl border border-outline flex items-center gap-4 shrink-0 justify-start">
+                            <label className="flex items-center gap-3 cursor-pointer select-none group">
+                                <div className={clsx(
+                                    "w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm",
+                                    useBulletMarker ? "bg-accent border-accent text-bg" : "border-outline text-transparent group-hover:border-text bg-panel"
+                                )}>
+                                    <Check size={14} strokeWidth={3} />
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    className="hidden"
+                                    checked={useBulletMarker}
+                                    onChange={(e) => setUseBulletMarker(e.target.checked)}
+                                />
+                                <span className="text-sm font-bold text-muted group-hover:text-text transition-colors">Try to find bullets with</span>
+                            </label>
+
                             <input
-                                type="checkbox"
-                                className="hidden"
-                                checked={useBulletMarker}
-                                onChange={(e) => setUseBulletMarker(e.target.checked)}
+                                type="text"
+                                placeholder=">"
+                                className={clsx(
+                                    "w-14 text-center bg-panel border rounded-lg px-2 py-1.5 text-sm font-mono focus:border-accent outline-none transition-colors",
+                                    useBulletMarker ? "border-accent text-text" : "border-outline text-muted"
+                                )}
+                                value={bulletMarker}
+                                onChange={(e) => {
+                                    setBulletMarker(e.target.value);
+                                    if (!useBulletMarker && e.target.value) setUseBulletMarker(true);
+                                }}
+                                maxLength={5}
                             />
-                            <span className="text-sm font-bold text-muted group-hover:text-text transition-colors">Try to find bullets with</span>
-                        </label>
 
-                        <input
-                            type="text"
-                            placeholder=">"
-                            className={clsx(
-                                "w-14 text-center bg-panel border rounded-lg px-2 py-1.5 text-sm font-mono focus:border-accent outline-none transition-colors",
-                                useBulletMarker ? "border-accent text-text" : "border-outline text-muted"
-                            )}
-                            value={bulletMarker}
-                            onChange={(e) => {
-                                setBulletMarker(e.target.value);
-                                if (!useBulletMarker && e.target.value) setUseBulletMarker(true);
-                            }}
-                            maxLength={5}
-                        />
-
-                        <span className="text-sm font-bold text-muted">as a marker</span>
-
-                        <div className="ml-auto text-xs text-muted/60 italic hidden sm:block">
-                            Appends lines to previous card as bullets
+                            <span className="text-sm font-bold text-muted">as a marker</span>
                         </div>
-                    </div>
+                    </CursorTooltip>
 
                     {/* Preview Section - Reduced Height */}
-                    <div className="flex-1 min-h-[180px] bg-panel-2 border border-outline rounded-2xl p-6 flex flex-col relative overflow-hidden group mb-2">
-                        <div className="absolute top-4 right-4 text-xs font-bold text-muted uppercase tracking-wider z-10">
-                            Result Preview
+                    <div className="flex-1 min-h-[180px] bg-panel-2 border border-outline rounded-2xl p-4 flex flex-col relative overflow-hidden group mb-2">
+                        <div className="w-full flex justify-end pb-2">
+                            <div className="text-xs font-bold text-muted uppercase tracking-wider">
+                                Result Preview
+                            </div>
                         </div>
 
                         {parsedCards.length > 0 ? (
@@ -373,19 +385,20 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                                     </div>
 
                                     {/* Card Back (Def + Year) */}
-                                    <div className="text-sm text-text/80">
-                                        <div className="text-left w-full">
+                                    <div className="text-sm text-text/80 whitespace-pre-wrap">
+                                        <div className="text-left w-full markdown-preview">
                                             {previewCard?.content ? (
-                                                previewCard.content.split('\n').map((line, i) => (
-                                                    line.trim().startsWith('- ') ? (
-                                                        <div key={i} className="flex gap-2 pl-2">
-                                                            <span className="text-accent">•</span>
-                                                            <span>{line.trim().substring(2)}</span>
-                                                        </div>
-                                                    ) : (
-                                                        <div key={i}>{line}</div>
-                                                    )
-                                                ))
+                                                <ReactMarkdown
+                                                    components={{
+                                                        ul: ({ children }) => <ul className="list-disc list-inside">{children}</ul>,
+                                                        li: ({ children }) => <li className="pl-1 text-text/80">{children}</li>,
+                                                        p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                                                        strong: ({ children }) => <span className="font-bold text-accent">{children}</span>,
+                                                        em: ({ children }) => <span className="italic text-text/70">{children}</span>,
+                                                    }}
+                                                >
+                                                    {previewCard.content}
+                                                </ReactMarkdown>
                                             ) : (
                                                 <span className="text-muted italic block text-center">Empty Definition</span>
                                             )}

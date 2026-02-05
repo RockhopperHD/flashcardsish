@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { GoogleDriveUser } from '../src/googleDriveClient';
 import { ProfileCard } from './ProfileCard';
-import { X, LogIn, Cloud } from 'lucide-react';
+import { SignInCard } from './SignInCard';
+import { X } from 'lucide-react';
 
 import { CardSet } from '../types';
 
@@ -68,22 +69,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                         </div>
                     </div>
                 ) : (
-                    <div className="text-center py-8">
-                        <div className="w-20 h-20 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <Cloud size={40} className="text-accent" />
-                        </div>
-                        <h2 className="text-2xl font-bold text-text mb-2">Sync Your Progress</h2>
-                        <p className="text-muted mb-8 max-w-[80%] mx-auto">
-                            Sign in to save your stats, badges, and Sets to the cloud and access them from any device.
-                        </p>
-
-                        <button
-                            onClick={onLogin}
-                            className="w-full flex items-center justify-center gap-2 py-3 bg-text text-bg rounded-xl font-bold hover:opacity-90 transition-opacity shadow-lg mb-4"
-                        >
-                            <LogIn size={18} /> Log in with Google
-                        </button>
-                    </div>
+                    <SignInCard onLogin={onLogin} />
                 )}
             </div>
         </div>

@@ -1,102 +1,115 @@
 import { get, set } from 'idb-keyval';
-import { CardSet, Folder, Settings } from './types';
+import { CardSet, Folder, Settings, SetMetadata } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
+import * as storageV2 from './storageV2';
 
 /**
- * LOCAL-FIRST STORAGE WITH GOOGLE DRIVE SYNC
+ * STORAGE BRIDGE LAYER
  * 
- * This storage layer implements a local-first approach where:
- * 1. All data is stored locally in IndexedDB/localStorage for fast access
- * 2. When signed in, data syncs to a "Flashcardsish" folder in Google Drive
- * 3. The folder ID is stored in localStorage for persistence
- * 4. A single flashcardsish_data.json file stores all user data in Drive
+ * This module provides backward-compatible functions while migrating to the 
+ * new distributed storage system (V2). It:
  * 
- * The folder selection happens on first use via Google Drive Picker API.
+ * 1. Checks for legacy data and triggers migration
+ * 2. Routes save/load operations to the appropriate V2 functions
+ * 3. Maintains local caching for offline/fast access
+ * 
+ * The V2 system stores:
+ * - config.json (settings + last used sets)
+ * - structure.json (folders + set references)
+ * - sets/[id].flashcards (individual set files)
+ * - sessions/[id].json (in-progress session data)
  */
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const BADGES_KEY = 'flashcard-badges-v1';
+const STATS_KEY = 'flashcard-stats-v1';
 const DRIVE_FOLDER_ID_KEY = 'flashcardsish-drive-folder-id';
+const MIGRATION_DONE_KEY = 'flashcardsish-v2-migrated';
 
-// Helper to check if user is logged in
+// Re-export V2 types and functions that are needed externally
+export type { CorruptionReport } from './storageV2';
+export {
+    DEFAULT_SETTINGS,
+    resetSettingsToDefault,
+    updateLastUsedSets
+} from './storageV2';
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
 const getUser = async (): Promise<GoogleDriveUser | null> => {
     return await googleDrive.getSession();
 };
 
-// Helper to get the Drive folder ID
-const getDriveFolderId = (): string | null => {
-    return localStorage.getItem(DRIVE_FOLDER_ID_KEY);
-};
+// ============================================================================
+// MIGRATION CHECK
+// ============================================================================
 
-// Helper to set the Drive folder ID
-const setDriveFolderId = (folderId: string) => {
-    localStorage.setItem(DRIVE_FOLDER_ID_KEY, folderId);
-};
-
-// --- GOOGLE DRIVE SYNC HELPERS ---
-
-interface DriveData {
-    library_sets?: CardSet[];
-    folders?: Folder[];
-    settings?: Settings;
-    badges?: any[];
-    updated_at?: string;
-}
+let migrationCheckDone = false;
+let migrationInProgress = false;
 
 /**
- * Save all data to Google Drive
+ * Check if migration to V2 is needed and perform it
  */
-const syncToGoogleDrive = async (data: DriveData) => {
-    const user = await getUser();
-    if (!user) return;
+export const checkAndMigrate = async (): Promise<{
+    migrated: boolean;
+    error?: string
+}> => {
+    if (migrationCheckDone) return { migrated: false };
+    if (migrationInProgress) return { migrated: false };
+
+    migrationInProgress = true;
 
     try {
-        let folderId = getDriveFolderId();
+        // Already migrated?
+        if (localStorage.getItem(MIGRATION_DONE_KEY) === 'true') {
+            migrationCheckDone = true;
+            migrationInProgress = false;
+            return { migrated: false };
+        }
 
-        // Get or create the app folder
-        folderId = await googleDrive.getOrCreateAppFolder(folderId || undefined);
-        setDriveFolderId(folderId);
+        const needsMig = await storageV2.needsMigration();
+        if (needsMig) {
+            console.log('[Storage] Starting migration to V2...');
+            const result = await storageV2.migrateFromV1();
 
-        // Write the data file
-        await googleDrive.writeDataFile(folderId, {
-            ...data,
-            updated_at: new Date().toISOString(),
-        });
+            if (result.success) {
+                localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+                console.log('[Storage] ✅ Migration to V2 complete');
+                migrationCheckDone = true;
+                migrationInProgress = false;
+                return { migrated: true };
+            } else {
+                console.error('[Storage] ❌ Migration failed:', result.error);
+                migrationInProgress = false;
+                return { migrated: false, error: result.error };
+            }
+        }
+
+        // Even if no migration needed, mark as done for future loads
+        localStorage.setItem(MIGRATION_DONE_KEY, 'true');
+        migrationCheckDone = true;
+        migrationInProgress = false;
+        return { migrated: false };
     } catch (error) {
-        console.error('Failed to sync to Google Drive:', error);
+        console.error('[Storage] Migration check failed:', error);
+        migrationInProgress = false;
+        return { migrated: false, error: (error as Error).message };
     }
 };
 
+// ============================================================================
+// LIBRARY (SETS)
+// ============================================================================
+
 /**
- * Load all data from Google Drive
+ * Save all library sets
+ * In V2, this saves each set as a separate .flashcards file
  */
-const loadFromGoogleDrive = async (): Promise<DriveData | null> => {
-    const user = await getUser();
-    if (!user) return null;
-
-    try {
-        let folderId = getDriveFolderId();
-
-        // Get or create the app folder
-        folderId = await googleDrive.getOrCreateAppFolder(folderId || undefined);
-        setDriveFolderId(folderId);
-
-        // Read the data file
-        const data = await googleDrive.readDataFile(folderId);
-        return data;
-    } catch (error) {
-        console.error('Failed to load from Google Drive:', error);
-        return null;
-    }
-};
-
-// --- LIBRARY ---
-
 export const saveLibrary = async (sets: CardSet[]) => {
-    const user = await getUser();
-
     // Always save locally first for speed
     try {
         await set(LIBRARY_KEY, sets);
@@ -104,161 +117,436 @@ export const saveLibrary = async (sets: CardSet[]) => {
         console.error('Failed to save library to IndexedDB:', error);
     }
 
-    // Sync to Google Drive if signed in
-    if (user) {
-        await syncToGoogleDrive({ library_sets: sets });
+    const user = await getUser();
+    if (!user) return;
+
+    // Save each set individually to V2
+    try {
+        // Get current structure to track root sets
+        const { structure } = await storageV2.readStructure();
+
+        // Track which sets exist
+        const existingSetIds = new Set<string>();
+        structure.rootSets.forEach(id => existingSetIds.add(id));
+        structure.folders.forEach(f => f.setIds.forEach(id => existingSetIds.add(id)));
+
+        for (const cardSet of sets) {
+            await storageV2.writeFlashcardSet(cardSet);
+
+            // Add to root if not in any folder
+            let inFolder = false;
+            for (const folder of structure.folders) {
+                if (folder.setIds.includes(cardSet.id)) {
+                    inFolder = true;
+                    break;
+                }
+            }
+            if (!inFolder && !structure.rootSets.includes(cardSet.id)) {
+                structure.rootSets.push(cardSet.id);
+            }
+        }
+
+        // Remove deleted sets from structure
+        const currentIds = new Set(sets.map(s => s.id));
+        structure.rootSets = structure.rootSets.filter(id => currentIds.has(id));
+        structure.folders = structure.folders.map(f => ({
+            ...f,
+            setIds: f.setIds.filter(id => currentIds.has(id))
+        }));
+
+        await storageV2.writeStructure(structure);
+    } catch (error) {
+        console.error('[Storage] Failed to save library to V2:', error);
     }
 };
 
+/**
+ * Load library sets
+ * In V2, loads from structure + individual .flashcards files
+ */
 export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
     const user = await getUser();
 
-    if (user) {
-        // Try to load from Google Drive first
-        const driveData = await loadFromGoogleDrive();
-        if (driveData?.library_sets && driveData.library_sets.length > 0) {
-            // Save to local cache
-            try {
-                await set(LIBRARY_KEY, driveData.library_sets);
-            } catch (error) {
-                console.error('Failed to cache library to IndexedDB:', error);
-            }
-            return driveData.library_sets;
+    // Try local cache first
+    try {
+        const cached = await get<CardSet[]>(LIBRARY_KEY);
+        if (cached && cached.length > 0 && !user) {
+            return cached;
         }
+    } catch (error) {
+        console.error('Failed to load from IndexedDB:', error);
     }
 
-    // Fall back to local storage
-    try {
-        return await get<CardSet[]>(LIBRARY_KEY);
-    } catch (error) {
-        console.error('Failed to load library from IndexedDB:', error);
+    if (!user) {
+        // Fall back to localStorage for offline users
+        try {
+            const local = localStorage.getItem(LIBRARY_KEY);
+            if (local) {
+                return JSON.parse(local);
+            }
+        } catch (e) { }
         return undefined;
+    }
+
+    // Load from V2
+    try {
+        const { structure } = await storageV2.readStructure();
+
+        // Collect all set IDs
+        const allSetIds: string[] = [...structure.rootSets];
+        structure.folders.forEach(folder => {
+            folder.setIds.forEach(id => {
+                if (!allSetIds.includes(id)) {
+                    allSetIds.push(id);
+                }
+            });
+        });
+
+        // Load each set
+        const sets: CardSet[] = [];
+        for (const setId of allSetIds) {
+            const { set: cardSet } = await storageV2.readFlashcardSet(setId);
+            if (cardSet) {
+                // Set folderId from structure
+                for (const folder of structure.folders) {
+                    if (folder.setIds.includes(setId)) {
+                        cardSet.folderId = folder.id;
+                        break;
+                    }
+                }
+                sets.push(cardSet);
+            }
+        }
+
+        // Cache locally
+        await set(LIBRARY_KEY, sets);
+
+        return sets;
+    } catch (error) {
+        console.error('[Storage] Failed to load library from V2:', error);
+
+        // Fall back to local cache
+        try {
+            return await get<CardSet[]>(LIBRARY_KEY);
+        } catch (e) {
+            return undefined;
+        }
     }
 };
 
-// --- FOLDERS & SETTINGS ---
+/**
+ * Load a single set by ID (lazy loading)
+ */
+export const loadSet = async (setId: string): Promise<CardSet | null> => {
+    const { set: cardSet, wasCorrupted, recoveredCards, totalCards } =
+        await storageV2.readFlashcardSet(setId);
+
+    if (wasCorrupted) {
+        console.warn(`[Storage] Set ${setId} was corrupted, recovered ${recoveredCards}/${totalCards} cards`);
+    }
+
+    return cardSet;
+};
+
+/**
+ * Save a single set (for lazy loading architecture)
+ */
+export const saveSet = async (cardSet: CardSet): Promise<void> => {
+    await storageV2.writeFlashcardSet(cardSet);
+
+    // Also update local cache
+    try {
+        const cached = await get<CardSet[]>(LIBRARY_KEY) || [];
+        const idx = cached.findIndex(s => s.id === cardSet.id);
+        if (idx >= 0) {
+            cached[idx] = cardSet;
+        } else {
+            cached.push(cardSet);
+        }
+        await set(LIBRARY_KEY, cached);
+    } catch (e) {
+        console.error('[Storage] Failed to update local cache:', e);
+    }
+};
+
+/**
+ * Delete a single set
+ */
+export const deleteSet = async (setId: string): Promise<void> => {
+    await storageV2.deleteFlashcardSet(setId);
+
+    // Update local cache
+    try {
+        const cached = await get<CardSet[]>(LIBRARY_KEY) || [];
+        await set(LIBRARY_KEY, cached.filter(s => s.id !== setId));
+    } catch (e) {
+        console.error('[Storage] Failed to update local cache:', e);
+    }
+};
+
+// ============================================================================
+// FOLDERS
+// ============================================================================
 
 export const saveFolders = async (folders: Folder[]) => {
-    const user = await getUser();
-
     // Save locally
     localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
 
-    // Sync to Drive if signed in
-    if (user) {
-        await syncToGoogleDrive({ folders });
+    const user = await getUser();
+    if (!user) return;
+
+    // Save to V2 structure
+    await storageV2.updateFolders(folders);
+};
+
+export const loadFolders = async (): Promise<Folder[]> => {
+    const user = await getUser();
+
+    // Try local first
+    const local = localStorage.getItem(FOLDERS_KEY);
+    if (local) {
+        try {
+            return JSON.parse(local);
+        } catch (e) { }
+    }
+
+    if (!user) return [];
+
+    // Load from V2
+    try {
+        const { structure } = await storageV2.readStructure();
+
+        // Cache locally
+        localStorage.setItem(FOLDERS_KEY, JSON.stringify(structure.folders));
+
+        return structure.folders;
+    } catch (error) {
+        console.error('[Storage] Failed to load folders from V2:', error);
+        return [];
     }
 };
 
-export const saveSettings = async (settings: Settings) => {
-    const user = await getUser();
+// ============================================================================
+// SETTINGS
+// ============================================================================
 
+export const saveSettings = async (settings: Settings) => {
     // Save locally
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 
-    // Sync to Drive if signed in
-    if (user) {
-        await syncToGoogleDrive({ settings });
+    const user = await getUser();
+    if (!user) return;
+
+    // Save to V2
+    await storageV2.updateSettings(settings);
+};
+
+export const loadSettings = async (): Promise<Settings> => {
+    const user = await getUser();
+
+    // Try local first
+    const local = localStorage.getItem(SETTINGS_KEY);
+    if (local) {
+        try {
+            const parsed = JSON.parse(local);
+            // Merge with defaults for any new keys
+            return { ...storageV2.DEFAULT_SETTINGS, ...parsed };
+        } catch (e) { }
+    }
+
+    if (!user) return { ...storageV2.DEFAULT_SETTINGS };
+
+    // Load from V2
+    try {
+        const { config } = await storageV2.readConfig();
+
+        // Cache locally
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(config.settings));
+
+        return config.settings;
+    } catch (error) {
+        console.error('[Storage] Failed to load settings from V2:', error);
+        return { ...storageV2.DEFAULT_SETTINGS };
     }
 };
 
-export const saveBadges = async (badges: any[]) => {
-    const user = await getUser();
+// ============================================================================
+// BADGES
+// ============================================================================
 
+export const saveBadges = async (badges: any[]) => {
     // Save locally
     localStorage.setItem(BADGES_KEY, JSON.stringify(badges));
 
-    // Sync to Drive if signed in
-    if (user) {
-        await syncToGoogleDrive({ badges });
+    const user = await getUser();
+    if (!user) return;
+
+    // Save to V2
+    await storageV2.updateBadges(badges);
+};
+
+export const loadBadges = async (): Promise<any[]> => {
+    const user = await getUser();
+
+    // Try local first
+    const local = localStorage.getItem(BADGES_KEY);
+    if (local) {
+        try {
+            return JSON.parse(local);
+        } catch (e) { }
+    }
+
+    if (!user) return [];
+
+    // Load from V2
+    try {
+        const { structure } = await storageV2.readStructure();
+
+        // Cache locally
+        localStorage.setItem(BADGES_KEY, JSON.stringify(structure.badges));
+
+        return structure.badges;
+    } catch (error) {
+        console.error('[Storage] Failed to load badges from V2:', error);
+        return [];
     }
 };
 
-// Load everything at once when logging in
-export const loadAllUserData = async (): Promise<DriveData | null> => {
+// ============================================================================
+// STATS
+// ============================================================================
+
+export const saveStats = async (stats: { lifetimeCorrect: number }) => {
+    // Save locally
+    localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+
+    const user = await getUser();
+    if (!user) return;
+
+    // Save to V2
+    await storageV2.updateStats(stats);
+};
+
+export const loadStats = async (): Promise<{ lifetimeCorrect: number }> => {
+    const user = await getUser();
+
+    // Try local first
+    const local = localStorage.getItem(STATS_KEY);
+    if (local) {
+        try {
+            return JSON.parse(local);
+        } catch (e) { }
+    }
+
+    if (!user) return { lifetimeCorrect: 0 };
+
+    // Load from V2
+    try {
+        const { structure } = await storageV2.readStructure();
+
+        // Cache locally
+        localStorage.setItem(STATS_KEY, JSON.stringify(structure.stats));
+
+        return structure.stats;
+    } catch (error) {
+        console.error('[Storage] Failed to load stats from V2:', error);
+        return { lifetimeCorrect: 0 };
+    }
+};
+
+// ============================================================================
+// CONSOLIDATED LOAD
+// ============================================================================
+
+interface AllUserData {
+    library_sets?: CardSet[];
+    folders?: Folder[];
+    settings?: Settings;
+    badges?: any[];
+    stats?: { lifetimeCorrect: number };
+    corruptions?: storageV2.CorruptionReport[];
+}
+
+/**
+ * Load all user data at once (for login)
+ * Uses V2 boot loader with lazy loading for sets
+ */
+export const loadAllUserData = async (): Promise<AllUserData | null> => {
     const user = await getUser();
     if (!user) return null;
 
-    const data = await loadFromGoogleDrive();
+    // Check for migration first
+    await checkAndMigrate();
 
-    // Cache to local storage
-    if (data) {
-        if (data.library_sets) {
+    try {
+        const bootData = await storageV2.loadBootData();
+
+        // Cache locally
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(bootData.settings));
+        localStorage.setItem(FOLDERS_KEY, JSON.stringify(bootData.folders));
+        localStorage.setItem(BADGES_KEY, JSON.stringify(bootData.badges));
+        localStorage.setItem(STATS_KEY, JSON.stringify(bootData.stats));
+
+        // For preloaded sets, also cache
+        if (bootData.preloadedSets.length > 0) {
             try {
-                await set(LIBRARY_KEY, data.library_sets);
-            } catch (e) {
-                console.error('Failed to cache library:', e);
-            }
+                await set(LIBRARY_KEY, bootData.preloadedSets);
+            } catch (e) { }
         }
-        if (data.folders) localStorage.setItem(FOLDERS_KEY, JSON.stringify(data.folders));
-        if (data.settings) localStorage.setItem(SETTINGS_KEY, JSON.stringify(data.settings));
-        if (data.badges) localStorage.setItem(BADGES_KEY, JSON.stringify(data.badges));
-    }
 
-    return data;
+        return {
+            library_sets: bootData.preloadedSets,
+            folders: bootData.folders,
+            settings: bootData.settings,
+            badges: bootData.badges,
+            stats: bootData.stats,
+            corruptions: bootData.corruptions
+        };
+    } catch (error) {
+        console.error('[Storage] Failed to load all user data:', error);
+        return null;
+    }
 };
 
-// --- DELETE ALL USER DATA (GDPR Compliance) ---
+// ============================================================================
+// DELETE ALL DATA (GDPR)
+// ============================================================================
 
 export const deleteAllUserData = async (): Promise<{ success: boolean; error?: string }> => {
+    // Use V2 delete
+    const result = await storageV2.deleteAllDataV2();
+
+    // Also clear legacy keys
+    localStorage.removeItem(LIBRARY_KEY);
+    localStorage.removeItem(FOLDERS_KEY);
+    localStorage.removeItem(SETTINGS_KEY);
+    localStorage.removeItem(BADGES_KEY);
+    localStorage.removeItem(STATS_KEY);
+    localStorage.removeItem(DRIVE_FOLDER_ID_KEY);
+    localStorage.removeItem(MIGRATION_DONE_KEY);
+
+    // Clear IndexedDB
     try {
-        const user = await getUser();
-
-        // Delete cloud data if logged in
-        if (user) {
-            try {
-                const folderId = getDriveFolderId();
-                if (folderId) {
-                    // Delete the data file from Drive
-                    await googleDrive.writeDataFile(folderId, {
-                        library_sets: [],
-                        folders: [],
-                        settings: {},
-                        badges: [],
-                    });
-                }
-            } catch (error) {
-                console.error('Failed to delete cloud data:', error);
-                return { success: false, error: 'Failed to delete cloud data: ' + (error as Error).message };
-            }
-        }
-
-        // Clear IndexedDB
-        try {
-            const { del } = await import('idb-keyval');
-            await del(LIBRARY_KEY);
-        } catch (e) {
-            console.error('Failed to clear IndexedDB:', e);
-        }
-
-        // Clear all localStorage keys related to the app
-        localStorage.removeItem(LIBRARY_KEY);
-        localStorage.removeItem(FOLDERS_KEY);
-        localStorage.removeItem(SETTINGS_KEY);
-        localStorage.removeItem(BADGES_KEY);
-        localStorage.removeItem('flashcard-stats-v1');
-        localStorage.removeItem(DRIVE_FOLDER_ID_KEY);
-
-        return { success: true };
-    } catch (error) {
-        console.error('Error deleting user data:', error);
-        return { success: false, error: 'An unexpected error occurred' };
+        const { del } = await import('idb-keyval');
+        await del(LIBRARY_KEY);
+    } catch (e) {
+        console.error('Failed to clear IndexedDB:', e);
     }
+
+    return result;
 };
 
-// --- GOOGLE DRIVE FOLDER INITIALIZATION ---
+// ============================================================================
+// DRIVE FOLDER INITIALIZATION
+// ============================================================================
 
-/**
- * Initialize or select the Google Drive folder for the app
- * This should be called on first run or if folder is not set
- */
 export const initializeDriveFolder = async (): Promise<string> => {
     const user = await getUser();
     if (!user) throw new Error('Not signed in');
 
-    let folderId = getDriveFolderId();
+    let folderId = localStorage.getItem(DRIVE_FOLDER_ID_KEY);
     folderId = await googleDrive.getOrCreateAppFolder(folderId || undefined);
-    setDriveFolderId(folderId);
+    localStorage.setItem(DRIVE_FOLDER_ID_KEY, folderId);
 
     return folderId;
 };

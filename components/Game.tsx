@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
-import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl } from '../utils';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat } from '../utils';
 import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock } from 'lucide-react';
 import clsx from 'clsx';
+import { FloatingToolbar } from './FloatingToolbar';
+import { RichInput, RichInputRef } from './RichInput';
 
 interface GameProps {
    set: CardSet;
@@ -149,6 +151,15 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [feedback, setFeedback] = useState<FeedbackState>({ type: 'idle' });
    const [isEditOpen, setIsEditOpen] = useState(false);
    const [isShaking, setIsShaking] = useState(false);
+
+   // Toolbar State
+   const [toolbarVisible, setToolbarVisible] = useState(false);
+   const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+   const activeToolbarRef = useRef<{
+      field: "term" | "def";
+   } | null>(null);
+   const modalTermRef = useRef<RichInputRef>(null);
+   const modalDefRef = useRef<RichInputRef>(null);
 
    // Mixup Modal
    const [isMixupModalOpen, setIsMixupModalOpen] = useState(false);
@@ -610,6 +621,77 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       }
    };
 
+   const handleMouseUp = (
+      e: React.MouseEvent,
+      field: "term" | "def",
+   ) => {
+      // For ContentEditable, we use Window Selection
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+
+         // Ensure the selection is actually inside OUR input
+         activeToolbarRef.current = { field };
+
+         // Calculate position based on selection range
+         const range = selection.getRangeAt(0);
+         const rect = range.getBoundingClientRect();
+
+         setToolbarPos({
+            top: rect.top - 20,
+            left: rect.left + (rect.width / 2),
+         });
+         setToolbarVisible(true);
+      } else {
+         activeToolbarRef.current = null;
+         setToolbarVisible(false);
+      }
+   };
+
+   // Handle Scroll (Dismiss)
+   useEffect(() => {
+      const handleScroll = () => {
+         if (toolbarVisible) {
+            activeToolbarRef.current = null;
+            setToolbarVisible(false);
+         }
+      };
+      window.addEventListener('scroll', handleScroll, true);
+      return () => window.removeEventListener('scroll', handleScroll, true);
+   }, [toolbarVisible]);
+
+   const updateTermFromValue = (val: string) => {
+      if (!currentCard) return;
+      let text = val;
+      let tags: string[] = [];
+      const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+      const match = text.match(tagRegex);
+      if (match) {
+         const fullTagString = match[0];
+         tags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
+         text = text.replace(tagRegex, '');
+      }
+      handleUpdateCard(currentCard.id, {
+         term: text.split('/').map(t => t.trim()),
+         tags: tags
+      });
+   };
+
+   const applyFormat = (type: string, value?: string) => {
+      if (!activeToolbarRef.current || !currentCard) return;
+
+      const { field } = activeToolbarRef.current;
+      const ref = field === 'term' ? modalTermRef.current : modalDefRef.current;
+
+      if (ref) {
+         ref.applyFormat(type, value);
+      }
+
+      activeToolbarRef.current = null;
+      setToolbarVisible(false);
+   };
+
+
+
    const handleOptionClick = (option: string) => {
       if (!currentCard) return;
 
@@ -880,7 +962,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                <div className="inline-block px-4 py-1.5 rounded-full bg-accent/10 text-accent font-bold text-sm tracking-wider uppercase mb-4">
                   Batch Complete
                </div>
-               <h2 className="text-4xl font-extrabold text-text mb-4">{message}</h2>
+               <h2
+                  className="text-4xl text-text mb-4"
+                  style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+               >
+                  {message}
+               </h2>
                <p className="text-muted">Take a breath. Here is how you are doing.</p>
             </div>
 
@@ -989,7 +1076,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             </button>
 
             <div className="text-center mb-12">
-               <h1 className="text-4xl font-bold text-text mb-3">Learn Mode</h1>
+               <h1
+                  className="text-4xl text-text mb-3"
+                  style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+               >
+                  Learn Mode
+               </h1>
                <p className="text-muted text-lg">Choose how you want to study</p>
             </div>
 
@@ -1646,7 +1738,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          {/* Edit Modal (Redesigned) */}
          {
             isEditOpen && (
-               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsEditOpen(false)}>
+               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in">
                   <div className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-5xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
 
                      {/* Header */}
@@ -1674,24 +1766,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            {/* Main Term Input */}
                            <div>
                               <label className="block text-xs font-bold text-muted uppercase mb-2">{set.termLabel || "Term"}</label>
-                              <input
+                              <RichInput
+                                 ref={modalTermRef}
                                  value={(currentCard.tags && currentCard.tags.length > 0 ? currentCard.tags.map(t => `(${t})`).join(' ') + ' ' : '') + currentCard.term.join(' / ')}
-                                 onChange={(e) => {
-                                    const val = e.target.value;
-                                    let text = val;
-                                    let tags: string[] = [];
-                                    const tagRegex = /^(\s*\([^)]+\)\s*)+/;
-                                    const match = text.match(tagRegex);
-                                    if (match) {
-                                       const fullTagString = match[0];
-                                       tags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
-                                       text = text.replace(tagRegex, '');
-                                    }
-                                    handleUpdateCard(currentCard.id, {
-                                       term: text.split('/').map(t => t.trim()),
-                                       tags: tags
-                                    });
-                                 }}
+                                 onChange={(val) => updateTermFromValue(val)}
+                                 onBlur={() => setToolbarVisible(false)}
+                                 onMouseUp={(e) => handleMouseUp(e, 'term')}
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Enter term..."
@@ -1731,9 +1811,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            {/* Main Definition Input */}
                            <div>
                               <label className="block text-xs font-bold text-muted uppercase mb-2">{set.definitionLabel || "Definition"}</label>
-                              <input
+                              <RichInput
+                                 ref={modalDefRef}
                                  value={currentCard.content}
-                                 onChange={(e) => handleUpdateCard(currentCard.id, { content: e.target.value })}
+                                 onChange={(val) => handleUpdateCard(currentCard.id, { content: val })}
+                                 onBlur={() => setToolbarVisible(false)}
+                                 onMouseUp={(e) => handleMouseUp(e, 'def')}
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Enter definition..."
@@ -1772,6 +1855,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         Save Changes
                      </button>
                   </div>
+                  <FloatingToolbar visible={toolbarVisible} position={toolbarPos} onFormat={applyFormat} />
                </div>
             )
          }

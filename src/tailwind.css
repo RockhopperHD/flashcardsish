@@ -46,3 +46,5 @@
         opacity: 0;
     }
 }
+
+[contentEditable]:empty:before { content: attr(data-placeholder); color: var(--color-muted); opacity: 0.5; pointer-events: none; display: block; }

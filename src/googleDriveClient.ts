@@ -428,6 +428,216 @@ class GoogleDriveClient {
             body: atob(base64Data),
         });
     }
+
+    // =========================================================================
+    // DISTRIBUTED STORAGE OPERATIONS (V2)
+    // =========================================================================
+
+    /**
+     * Get or create a subfolder within a parent folder
+     */
+    async getOrCreateSubfolder(parentFolderId: string, folderName: string): Promise<string> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        // Search for existing subfolder
+        const response = await window.gapi.client.drive.files.list({
+            q: `name='${folderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            spaces: 'drive',
+            fields: 'files(id, name)',
+        });
+
+        if (response.result.files && response.result.files.length > 0) {
+            return response.result.files[0].id!;
+        }
+
+        // Create new subfolder
+        const folderMetadata = {
+            name: folderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [parentFolderId],
+        };
+
+        const folder = await window.gapi.client.drive.files.create({
+            resource: folderMetadata,
+            fields: 'id',
+        });
+
+        console.log(`[GoogleDrive] ✅ Created subfolder '${folderName}':`, folder.result.id);
+        return folder.result.id!;
+    }
+
+    /**
+     * Read a file's content from a folder by filename
+     * Returns null if file doesn't exist
+     */
+    async readFile(folderId: string, filename: string): Promise<string | null> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        // Search for the file
+        const response = await window.gapi.client.drive.files.list({
+            q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+            spaces: 'drive',
+            fields: 'files(id)',
+        });
+
+        if (!response.result.files || response.result.files.length === 0) {
+            return null;
+        }
+
+        const fileId = response.result.files[0].id!;
+        const fileResponse = await window.gapi.client.drive.files.get({
+            fileId: fileId,
+            alt: 'media',
+        });
+
+        return fileResponse.body;
+    }
+
+    /**
+     * Write content to a file in a folder (creates or updates)
+     */
+    async writeFile(folderId: string, filename: string, content: string): Promise<string> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        const blob = new Blob([content], { type: 'application/json' });
+
+        // Search for existing file
+        const response = await window.gapi.client.drive.files.list({
+            q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+            spaces: 'drive',
+            fields: 'files(id)',
+        });
+
+        if (response.result.files && response.result.files.length > 0) {
+            // Update existing file
+            const fileId = response.result.files[0].id!;
+            await this.uploadFileContent(fileId, blob);
+            return fileId;
+        } else {
+            // Create new file
+            const metadata = {
+                name: filename,
+                mimeType: 'application/json',
+                parents: [folderId],
+            };
+            const file = await this.createFile(metadata, blob);
+            return file.id!;
+        }
+    }
+
+    /**
+     * Delete a file from a folder by filename
+     */
+    async deleteFile(folderId: string, filename: string): Promise<void> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        // Search for the file
+        const response = await window.gapi.client.drive.files.list({
+            q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+            spaces: 'drive',
+            fields: 'files(id)',
+        });
+
+        if (response.result.files && response.result.files.length > 0) {
+            const fileId = response.result.files[0].id!;
+            await window.gapi.client.drive.files.delete({ fileId });
+            console.log(`[GoogleDrive] ✅ Deleted file: ${filename}`);
+        }
+    }
+
+    /**
+     * List files in a folder, optionally filtering by extension
+     */
+    async listFilesInFolder(folderId: string, extension?: string): Promise<Array<{ id: string; name: string }>> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        let query = `'${folderId}' in parents and trashed=false`;
+        if (extension) {
+            query += ` and name contains '${extension}'`;
+        }
+
+        const response = await window.gapi.client.drive.files.list({
+            q: query,
+            spaces: 'drive',
+            fields: 'files(id, name)',
+            pageSize: 1000,
+        });
+
+        return (response.result.files || []).map(f => ({
+            id: f.id!,
+            name: f.name!,
+        }));
+    }
+
+    /**
+     * Rename a file
+     */
+    async renameFile(folderId: string, oldFilename: string, newFilename: string): Promise<void> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        // Search for the file
+        const response = await window.gapi.client.drive.files.list({
+            q: `name='${oldFilename}' and '${folderId}' in parents and trashed=false`,
+            spaces: 'drive',
+            fields: 'files(id)',
+        });
+
+        if (response.result.files && response.result.files.length > 0) {
+            const fileId = response.result.files[0].id!;
+            await window.gapi.client.drive.files.update({
+                fileId,
+                resource: { name: newFilename },
+            });
+            console.log(`[GoogleDrive] ✅ Renamed file: ${oldFilename} -> ${newFilename}`);
+        }
+    }
+
+    /**
+     * Delete all contents of a folder (but not the folder itself)
+     */
+    async deleteFolderContents(folderId: string): Promise<void> {
+        await this.init();
+
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
+
+        const files = await this.listFilesInFolder(folderId);
+
+        for (const file of files) {
+            try {
+                await window.gapi.client.drive.files.delete({ fileId: file.id });
+            } catch (error) {
+                console.error(`[GoogleDrive] Failed to delete ${file.name}:`, error);
+            }
+        }
+
+        console.log(`[GoogleDrive] ✅ Deleted ${files.length} files from folder`);
+    }
 }
 
 export const googleDrive = new GoogleDriveClient();

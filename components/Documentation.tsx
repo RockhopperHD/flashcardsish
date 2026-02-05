@@ -1091,7 +1091,12 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                 <div className="space-y-6 text-text">
                     <div className="bg-panel-2 border border-outline rounded-xl p-8 text-center">
                         <p className="text-muted font-medium mb-2 uppercase tracking-wide text-xs">Flashcardsish was built by</p>
-                        <h2 className="text-3xl font-extrabold mb-4 text-text">Owen Whelan</h2>
+                        <h2
+                            className="text-3xl mb-4 text-text"
+                            style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                        >
+                            Owen Whelan
+                        </h2>
 
                         <div className="text-left text-muted max-w-lg mx-auto mb-8 leading-relaxed">
                             I work with education, language, technology and a few other things. I made Flashcardsish as an accessible alternative to other apps, with features I thought were lacking.
@@ -1240,7 +1245,12 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                             <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
                                 <span className="text-accent">{activeDoc?.icon}</span>
                             </div>
-                            <h1 className="text-3xl font-extrabold text-text">{activeDoc?.title}</h1>
+                            <h1
+                                className="text-3xl text-text"
+                                style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                            >
+                                {activeDoc?.title}
+                            </h1>
                         </div>
                     </div>
 

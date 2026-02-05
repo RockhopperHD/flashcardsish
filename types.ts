@@ -79,6 +79,26 @@ export interface Badge {
   earnedAt: number;
 }
 
+/**
+ * Lightweight metadata for a set - used for lazy loading
+ * Contains enough info to display in the library without loading full card data
+ */
+export interface SetMetadata {
+  id: string;
+  name: string;
+  cardCount: number;
+  lastPlayed: number;
+  elapsedTime: number;
+  topStreak: number;
+  isSessionActive?: boolean;
+  folderId?: string;
+}
+
+/**
+ * Loading state for lazy-loaded sets
+ */
+export type SetLoadingState = 'unloaded' | 'loading' | 'loaded' | 'error';
+
 export enum GameState {
   MENU = 'MENU',
   SET_DETAIL = 'SET_DETAIL',

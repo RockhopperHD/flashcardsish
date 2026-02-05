@@ -17,31 +17,37 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <FileText size={24} className="text-accent" />
                         <div>
                             <h2 className="text-xl font-bold text-text">Terms of Service</h2>
-                            <div className="text-sm text-muted">Last updated: January 22, 2026</div>
+                            <div className="text-sm text-muted">Last updated: February 4, 2026</div>
                         </div>
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
+                    <div className="mb-6 p-4 bg-accent/10 border border-accent/20 rounded-xl">
+                        <p className="text-accent font-medium text-sm">
+                            AGREEMENT TO TERMS: By accessing, browsing, or using the Service, you acknowledge that you have read, understood, and agree to be bound by these Terms of Service. If you do not agree to these Terms, you may not use the Service.
+                        </p>
+                    </div>
 
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">1. Acceptance of Terms</h3>
                         <p className="text-muted leading-relaxed">
-                            By accessing or using Flashcardsish ("the Service"), you agree to be bound by these Terms of Service
-                            ("Terms"). If you do not agree to these Terms, please do not use the Service. We reserve the right
-                            to modify these Terms at any time, and such modifications will be effective immediately upon posting.
-                            Your continued use of the Service after any changes constitutes acceptance of the modified Terms.
+                            These Terms of Service constitute a legally binding agreement between you and Flashcardsish.
+                            By accessing or using the Service, you signify that you have read, understood, and agree to be bound
+                            by these Terms. We reserve the unilateral right to amend these Terms at any time. Your continued
+                            engagement with the Service following such modifications constitutes your express consent to the
+                            updated Terms.
                         </p>
                     </section>
 
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">2. Description of Service</h3>
                         <p className="text-muted leading-relaxed">
-                            Flashcardsish is a free, open-source flashcard application that allows users to create, organize,
-                            and study flashcard sets. The Service includes features for tracking your study progress and statistics
-                            (such as lifetime correct answers and study time). The Service may include optional cloud synchronization features when
-                            users sign in with their Google account. Flashcardsish is a personal, hobby project developed and
-                            maintained by a single individual.
+                            Flashcardsish is an experimental, open-source flashcard platform. The Service is provided
+                            for educational and organizational purposes. We offer cloud synchronization via Google OAuth
+                            as a convenience feature. Please be advised that Flashcardsish is a project in active
+                            development; features may be added, deprecated, or removed without notice to verify utility
+                            or architectural integrity.
                         </p>
                     </section>
 
@@ -49,9 +55,9 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <h3 className="text-lg font-bold text-accent mb-3">3. Service Availability and Discontinuation</h3>
                         <div className="p-4 bg-yellow/10 rounded-xl border border-yellow/30 mb-3">
                             <p className="text-muted leading-relaxed">
-                                <strong className="text-yellow">⚠️ No Uptime Guarantee:</strong> The Service is provided on an "as available" basis.
-                                We make no guarantees regarding uptime, availability, or service level agreements (SLA).
-                                The Service may be modified, suspended, or permanently discontinued at any time, with or without notice.
+                                <strong className="text-yellow">⚠️ NO WARRANTY OF CONTINUITY:</strong> The Service is provided on an "AS IS" and "AS AVAILABLE" basis.
+                                We provide no guarantees, express or implied, regarding system uptime, data availability, or performance metrics.
+                                The Service may be suspended, restricted, or terminated at any time without liability.
                             </p>
                         </div>
                         <div className="space-y-3 text-muted leading-relaxed">
@@ -131,15 +137,17 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                                 <li>Security incidents requiring data purge</li>
                                 <li>Extended account inactivity</li>
                                 <li>Failure or destruction of one of the services we use</li>
-                                <li>Any other reason we deem appropriate, for any reason, at any time; we reserve the right to do so and you voluntarily agree to give us this right by using Flashcardsish</li>
                             </ul>
                             <p>
-                                <strong className="text-text">6.3</strong> We will make reasonable efforts to notify users before
-                                planned data deletion when feasible, but given the project's development nature, this cannot be guaranteed.
+                                <strong className="text-text">6.3 ABSOLUTE DISCRETION:</strong> We reserve the right to purge,
+                                redact, or delete any data at our sole and absolute discretion, for any reason or no reason,
+                                including but not limited to technical migrations, cost optimization, or suspicion of misuse.
+                                YOU VOLUNTARILY ASSUME ALL RISK OF DATA LOSS BY USING THE SERVICE.
                             </p>
                             <p>
-                                <strong className="text-text">6.4</strong> You are strongly encouraged to regularly export your data
-                                using the "Export All My Data" feature or download .flashcards files as backups.
+                                <strong className="text-text">6.4</strong> You are strictly advised to maintain independent
+                                backups of your data using the "Export All My Data" utility. We shall have no liability
+                                for data loss, regardless of the cause.
                             </p>
                         </div>
                     </section>
@@ -147,10 +155,13 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">7. Third-Party Services</h3>
                         <div className="space-y-3 text-muted leading-relaxed">
+
                             <p>
                                 <strong className="text-text">7.1</strong> The Service relies on third-party services including
-                                Google (for authentication and data storage via Google Drive). These services operate under their
-                                own terms of service and privacy policies.
+                                Google (for authentication and data storage via Google Drive). Currently, Flashcardsish does not store your content on its own servers;
+                                instead, data is stored locally on your device or in your personal Google Drive account. However, we explicitly reserve the right
+                                to modify this storage architecture at any time. We may, at our sole discretion and without prior specific notice (other than updates to these Terms),
+                                begin storing user data on our own servers or other third-party cloud solutions.
                             </p>
                             <p>
                                 <strong className="text-text">7.2</strong> We are not responsible for:
@@ -204,12 +215,12 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">10. Disclaimer of Warranties</h3>
                         <div className="p-4 bg-panel-2 rounded-xl border border-outline">
-                            <p className="text-muted leading-relaxed">
+                            <p className="text-muted leading-relaxed uppercase selection:bg-accent/30">
                                 THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS
                                 OR IMPLIED, INCLUDING BUT NOT LIMITED TO IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
                                 PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED,
                                 ERROR-FREE, SECURE, OR FREE OF VIRUSES OR OTHER HARMFUL COMPONENTS. WE MAKE NO GUARANTEES REGARDING
-                                DATA INTEGRITY, BACKUP, OR LONG-TERM STORAGE.
+                                DATA INTEGRITY, BACKUP, OR PERSISTENCE.
                             </p>
                         </div>
                     </section>
@@ -217,14 +228,13 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     <section>
                         <h3 className="text-lg font-bold text-accent mb-3">11. Limitation of Liability</h3>
                         <div className="p-4 bg-panel-2 rounded-xl border border-outline">
-                            <p className="text-muted leading-relaxed">
+                            <p className="text-muted leading-relaxed uppercase selection:bg-accent/30">
                                 TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT SHALL THE DEVELOPERS OF FLASHCARDSISH BE LIABLE
                                 FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS,
                                 DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM (A) YOUR ACCESS TO OR USE OF OR
                                 INABILITY TO ACCESS OR USE THE SERVICE; (B) ANY CONDUCT OR CONTENT OF ANY THIRD PARTY ON THE SERVICE;
                                 (C) UNAUTHORIZED ACCESS, USE, OR ALTERATION OF YOUR CONTENT; (D) ANY DATA LOSS OR CORRUPTION;
-                                (E) SERVICE MODIFICATIONS, SUSPENSIONS, OR DISCONTINUATION; (F) THIRD-PARTY SERVICE FAILURES; OR
-                                (G) ANY EVENTS BEYOND OUR REASONABLE CONTROL.
+                                (E) SERVICE MODIFICATIONS, SUSPENSIONS, OR DISCONTINUATION; OR (F) INFRASTRUCTURE FAILURES.
                             </p>
                         </div>
                     </section>

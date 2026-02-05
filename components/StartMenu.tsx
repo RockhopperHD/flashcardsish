@@ -33,6 +33,7 @@ import {
   GripVertical,
   Minus,
 } from "lucide-react";
+import { FloatingToolbar } from "./FloatingToolbar";
 import {
   DragDropContext,
   Droppable,
@@ -60,6 +61,7 @@ import {
   isValidImageFile,
   sanitizeImageUrl,
 } from "../utils";
+import { RichInput, RichInputRef } from "./RichInput";
 import clsx from "clsx";
 import { AddSetModal } from "./AddSetModal";
 import { RawTextImport } from "./RawTextImport";
@@ -1379,6 +1381,8 @@ const SetConfigurationModal: React.FC<{
     );
   };
 
+
+
 // Builder Row Component
 const BuilderRowItem: React.FC<{
   row: BuilderRow;
@@ -1434,111 +1438,101 @@ const BuilderRowItem: React.FC<{
     const termTextareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Highlight Toolbar State
-    const [highlightToolbar, setHighlightToolbar] = useState<{
-      x: number;
-      y: number;
+    const [toolbarVisible, setToolbarVisible] = useState(false);
+    const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+    const activeToolbarRef = useRef<{
       field: "term" | "def";
-    } | null>(null);
-    const [selectionRange, setSelectionRange] = useState<{
-      start: number;
-      end: number;
+      // We don't save range indices anymore for contentEditable, we rely on Window Selection
     } | null>(null);
 
+    const termInputRef = useRef<RichInputRef>(null);
+    const defInputRef = useRef<RichInputRef>(null);
     const handleMouseUp = (
-      e: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
+      e: React.MouseEvent,
       field: "term" | "def",
     ) => {
-      const target = e.target as HTMLInputElement | HTMLTextAreaElement;
-      if (target.selectionStart !== target.selectionEnd) {
-        setSelectionRange({
-          start: target.selectionStart || 0,
-          end: target.selectionEnd || 0,
+      // For ContentEditable, we use Window Selection
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+
+        // Ensure the selection is actually inside OUR input
+        // Just verify event target context
+        activeToolbarRef.current = { field };
+
+        // Calculate position based on selection range
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+
+        setToolbarPos({
+          top: rect.top - 20, // Relative to viewport, fixed toolbar uses fixed pos
+          left: rect.left + (rect.width / 2),
         });
-        setHighlightToolbar({ x: e.clientX, y: e.clientY - 50, field });
+        setToolbarVisible(true);
       } else {
-        setHighlightToolbar(null);
-        setSelectionRange(null);
+        activeToolbarRef.current = null;
+        setToolbarVisible(false);
       }
     };
 
-    const applyHighlight = (color: string) => {
-      if (!highlightToolbar || !selectionRange) return;
-      const field = highlightToolbar.field;
-      const text = field === "term" ? row.term : row.def;
-      const before = text.substring(0, selectionRange.start);
-      const selected = text.substring(selectionRange.start, selectionRange.end);
-      const after = text.substring(selectionRange.end);
 
-      const newText = `${before}<h=${color}>${selected}</h>${after}`;
-      updateRow(row.id, field, newText);
-      setHighlightToolbar(null);
-      setSelectionRange(null);
+    // Handle Scroll (Dismiss)
+    useEffect(() => {
+      const handleScroll = () => {
+        if (toolbarVisible) {
+          activeToolbarRef.current = null;
+          setToolbarVisible(false);
+        }
+      };
+      window.addEventListener('scroll', handleScroll, true);
+      return () => window.removeEventListener('scroll', handleScroll, true);
+    }, [toolbarVisible]);
+
+    const applyFormat = (type: string, value?: string) => {
+      if (!activeToolbarRef.current) return;
+
+      const { field } = activeToolbarRef.current;
+      const ref = field === 'term' ? termInputRef.current : defInputRef.current;
+
+      if (ref) {
+        ref.applyFormat(type, value);
+      }
+
+      activeToolbarRef.current = null;
+      setToolbarVisible(false);
     };
 
     // Auto-focus textarea when entering edit mode
     useEffect(() => {
-      if (isEditingDef && textareaRef.current) {
-        textareaRef.current.focus();
-        textareaRef.current.style.height = "auto";
-        textareaRef.current.style.height =
-          textareaRef.current.scrollHeight + "px";
+      if (isEditingDef && defInputRef.current) {
+        defInputRef.current.focus();
       }
     }, [isEditingDef]);
 
     // Auto-focus term input when entering edit mode
     useEffect(() => {
-      if (isEditingTerm && termTextareaRef.current) {
-        termTextareaRef.current.focus();
-        termTextareaRef.current.style.height = "auto";
-        termTextareaRef.current.style.height =
-          termTextareaRef.current.scrollHeight + "px";
+      if (isEditingTerm && termInputRef.current) {
+        termInputRef.current.focus();
       }
     }, [isEditingTerm]);
 
     // Handle Term Keydown (Tab to Def)
-    const handleTermKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleTermKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement>) => {
       if (e.key === "Tab" && !e.shiftKey) {
         e.preventDefault();
         setIsEditingDef(true);
       }
       if (e.key === "Enter" && !e.shiftKey) {
-        // Optional: Allow enter to jump to def? Or just newline?
-        // Usually Enter in textarea means newline. Users love multi-line terms/defs.
-        // We'll keep default behavior (newline).
+        // keep default (newline)
       }
     };
 
     // Handle Definition Keydown (Bullets & Tab)
-    const handleDefKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleDefKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement>) => {
       if (e.key === "Enter") {
-        const val = textareaRef.current?.value || "";
-        const selectionStart = textareaRef.current?.selectionStart || 0;
-        const lastNewLine = val.lastIndexOf("\n", selectionStart - 1);
-        const currentLine = val.substring(lastNewLine + 1, selectionStart);
-
-        if (currentLine.trim().startsWith("-")) {
-          e.preventDefault();
-          // Insert newline and dash
-          const insertion = "\n- ";
-          const newVal =
-            val.substring(0, selectionStart) +
-            insertion +
-            val.substring(textareaRef.current?.selectionEnd || selectionStart);
-          updateRow(row.id, "def", newVal);
-
-          // Move cursor
-          requestAnimationFrame(() => {
-            if (textareaRef.current) {
-              textareaRef.current.selectionStart =
-                selectionStart + insertion.length;
-              textareaRef.current.selectionEnd =
-                selectionStart + insertion.length;
-              textareaRef.current.style.height = "auto";
-              textareaRef.current.style.height =
-                textareaRef.current.scrollHeight + "px";
-            }
-          });
-        }
+        // Auto-list handling for RichInput? 
+        // For now, let's keep it simple. RichInput splits text by divs/p logic.
+        // Implementing auto-bullet in RichInput is complex without cursor control via ref exposed methods.
+        // We'll skip auto-bullet logic for this iteration to prioritize highlighting stability.
       }
 
       if (e.key === "Tab" && !e.shiftKey) {
@@ -1681,21 +1675,18 @@ const BuilderRowItem: React.FC<{
 
               {isEditingTerm ? (
                 <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
-                  <textarea
-                    ref={termTextareaRef}
+                  <RichInput
+                    ref={termInputRef}
                     value={row.term}
-                    onChange={(e) => updateRow(row.id, "term", e.target.value)}
-                    onMouseUp={(e) => handleMouseUp(e, "term")}
-                    onBlur={() => setIsEditingTerm(false)}
-                    onKeyDown={handleTermKeyDown}
-                    placeholder="Enter term..."
-                    rows={1}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed font-medium text-text h-full"
-                    onInput={(e) => {
-                      const target = e.target as HTMLTextAreaElement;
-                      target.style.height = "auto";
-                      target.style.height = target.scrollHeight + "px";
+                    onChange={(val) => updateRow(row.id, "term", val)}
+                    onBlur={() => {
+                      setToolbarVisible(false);
+                      setIsEditingTerm(false);
                     }}
+                    onMouseUp={(e) => handleMouseUp(e, "term")}
+                    onKeyDown={handleTermKeyDown}
+                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-bold text-text h-full"
+                    placeholder="Enter term..."
                   />
                 </div>
               ) : (
@@ -1756,21 +1747,18 @@ const BuilderRowItem: React.FC<{
               </div>
               {isEditingDef ? (
                 <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
-                  <textarea
-                    ref={textareaRef}
+                  <RichInput
+                    ref={defInputRef}
                     value={row.def}
-                    onChange={(e) => updateRow(row.id, "def", e.target.value)}
-                    onMouseUp={(e) => handleMouseUp(e, "def")}
-                    onBlur={() => setIsEditingDef(false)}
-                    onKeyDown={handleDefKeyDown}
-                    placeholder="Enter definition..."
-                    rows={1}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base resize-none min-h-[40px] overflow-hidden block custom-scrollbar leading-relaxed font-medium text-text h-full"
-                    onInput={(e) => {
-                      const target = e.target as HTMLTextAreaElement;
-                      target.style.height = "auto";
-                      target.style.height = target.scrollHeight + "px";
+                    onChange={(val) => updateRow(row.id, "def", val)}
+                    onBlur={() => {
+                      setToolbarVisible(false);
+                      setIsEditingDef(false);
                     }}
+                    onMouseUp={(e) => handleMouseUp(e, "def")}
+                    onKeyDown={handleDefKeyDown}
+                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-medium text-text h-full"
+                    placeholder="Enter definition..."
                   />
                 </div>
               ) : (
@@ -1870,6 +1858,11 @@ const BuilderRowItem: React.FC<{
               </div>
             )}
         </div>
+        <FloatingToolbar
+          visible={toolbarVisible}
+          position={toolbarPos}
+          onFormat={applyFormat}
+        />
       </div>
     );
   },
@@ -3582,7 +3575,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               {currentDate}
             </div>
             <div className="flex items-center justify-between">
-              <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
+              <h1
+                className="text-4xl text-text tracking-tight mb-2"
+                style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+              >
                 {greeting}
               </h1>
             </div>
@@ -3592,7 +3588,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           </>
         ) : (
           <>
-            <h1 className="text-4xl font-bold text-text tracking-tight mb-2">
+            <h1
+              className="text-4xl text-text tracking-tight mb-2"
+              style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+            >
               List Builder
             </h1>
             <p className="text-accent font-bold text-2xl animate-in slide-in-from-left-2 fade-in duration-500">
