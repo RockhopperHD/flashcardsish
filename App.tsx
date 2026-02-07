@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CardSet, GameState, Settings, Folder } from './types';
+import { CardSet, GameState, Settings, Folder, Tag } from './types';
 import { fmtTime, generateId, sanitizeSet } from './utils';
 import { StartMenu } from './components/StartMenu';
 import { Game } from './components/Game';
@@ -10,15 +10,17 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon } from 'lucide-react';
+import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS } from './storage';
+import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
 import { CursorTooltip } from './components/CursorTooltip';
 import { CorruptionNotification } from './components/CorruptionNotification';
+import { AiSetupModal } from './components/AiSetupModal';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
@@ -150,12 +152,23 @@ const SettingsModal: React.FC<{
    lifetimeCorrect: number;
    onLogin: () => void;
    onLogout: () => void;
-   initialTab?: 'set' | 'global' | 'you';
-}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set' }) => {
+   initialTab?: 'set' | 'global' | 'you' | 'tags';
+   tags: Tag[];
+   onUpdateTags: (tags: Tag[]) => void;
+}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
-   const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder'>(initialTab);
+   const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+   // AI State
+   const [apiKeyInput, setApiKeyInput] = useState('');
+   const [isApiKeyLocked, setIsApiKeyLocked] = useState(!!getSessionApiKey());
+   const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+   const [isTestingApiKey, setIsTestingApiKey] = useState(false);
+   const [isAiSetupOpen, setIsAiSetupOpen] = useState(false);
+
+   const TAG_COLORS: string[] = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'slate', 'gray', 'zinc', 'neutral', 'stone'];
 
    // Reset activeTab when initialTab changes (e.g., opening from different triggers)
    React.useEffect(() => {
@@ -180,7 +193,9 @@ const SettingsModal: React.FC<{
       retypeOnMistake: "When you get an answer wrong, you'll need to retype the correct answer before moving on.",
       starredOnly: "Only study cards you've starred. Great for focusing on tricky terms.",
       answerWithDefinition: `Change what you're expected to enter and what you're prompted with. Right now, you will be presented with the ${settings.answerWithDefinition ? 'Term' : 'Definition'} and have to think about, choose, or type the ${settings.answerWithDefinition ? 'Definition' : 'Term'}.`,
-      learnMode: "Choose how you want to answer: type your answer (Standard) or pick from options (Multiple Choice).",
+      learnMode: "Choose how you want to answer: type your answer (Standard), pick from options (Multiple Choice), or use AI-powered multiple choice (Random Choice - requires AI).",
+      aiEnabled: "Enable or disable AI-powered features across Flashcardsish. When disabled, all AI features will be hidden and unavailable.",
+      aiApiKey: "Enter your Google Generative AI API key to enable AI features. Your key is stored only for this session and will be cleared when you close or refresh this tab.",
       hideTooltips: "Turns on or off Helper Tooltips, like this one. This tooltip appears regardless of if this setting is on or not.",
       darkMode: "Toggle between dark and light themes for the app.",
       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
@@ -197,7 +212,7 @@ const SettingsModal: React.FC<{
 
 
    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
          <div
             className="bg-panel border border-outline rounded-2xl shadow-2xl animate-in zoom-in-95 w-full max-w-lg md:max-w-5xl lg:max-w-6xl h-[700px] md:h-[850px] max-h-[90vh] flex flex-col"
             onMouseDown={(e) => e.stopPropagation()}
@@ -216,7 +231,7 @@ const SettingsModal: React.FC<{
             </div>
 
             {/* Content with Sidebar */}
-            <div className="flex flex-1 min-h-0">
+            <div className="flex flex-col md:flex-row flex-1 min-h-0">
                {/* Sidebar Navigation */}
                <div className="w-48 shrink-0 border-r border-outline p-4 hidden md:flex md:flex-col">
                   <h3 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 px-2">
@@ -256,8 +271,20 @@ const SettingsModal: React.FC<{
                               : "text-muted hover:text-text hover:bg-panel-2"
                         )}
                      >
-                        <SettingsIcon size={18} className={activeTab === 'global' ? "text-accent" : "text-muted"} />
+                        <Globe size={18} className={activeTab === 'global' ? "text-accent" : "text-muted"} />
                         <span className="font-medium">Global Settings</span>
+                     </button>
+                     <button
+                        onClick={() => setActiveTab('tags')}
+                        className={clsx(
+                           "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all text-sm",
+                           activeTab === 'tags'
+                              ? "bg-accent/10 text-accent border border-accent/20"
+                              : "text-muted hover:text-text hover:bg-panel-2"
+                        )}
+                     >
+                        <TagIcon size={18} className={activeTab === 'tags' ? "text-accent" : "text-muted"} />
+                        <span className="font-medium">Tags</span>
                      </button>
                   </nav>
 
@@ -292,7 +319,7 @@ const SettingsModal: React.FC<{
 
                {/* Mobile Tab Selector */}
                <div className="md:hidden p-4 border-b border-outline w-full shrink-0">
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-5 gap-2">
                      <button
                         onClick={() => setActiveTab('set')}
                         className={clsx(
@@ -325,6 +352,17 @@ const SettingsModal: React.FC<{
                         )}
                      >
                         Global
+                     </button>
+                     <button
+                        onClick={() => setActiveTab('tags')}
+                        className={clsx(
+                           "py-2 px-4 rounded-lg text-sm font-bold transition-all",
+                           activeTab === 'tags'
+                              ? "bg-accent text-bg"
+                              : "bg-panel-2 text-muted hover:text-text"
+                        )}
+                     >
+                        Tags
                      </button>
                      <button
                         onClick={() => setActiveTab('you')}
@@ -451,7 +489,7 @@ const SettingsModal: React.FC<{
                         <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                               <span className="font-medium text-text block mb-3">Learn Mode Style</span>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className={clsx("grid gap-2", settings.aiEnabled && isApiKeyLocked ? "grid-cols-3" : "grid-cols-2")}>
                                  <button
                                     onClick={() => onUpdate({ ...settings, mode: 'standard' })}
                                     className={clsx(
@@ -474,6 +512,19 @@ const SettingsModal: React.FC<{
                                  >
                                     <LayoutGrid size={16} /> Multiple Choice
                                  </button>
+                                 {settings.aiEnabled && isApiKeyLocked && (
+                                    <button
+                                       onClick={() => onUpdate({ ...settings, mode: 'ai_random_choice' })}
+                                       className={clsx(
+                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
+                                          settings.mode === 'ai_random_choice'
+                                             ? "bg-accent text-bg border-accent"
+                                             : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                       )}
+                                    >
+                                       <Sparkles size={16} /> Random Choice
+                                    </button>
+                                 )}
                               </div>
                            </div>
                         </TooltipWrapper>
@@ -568,6 +619,167 @@ const SettingsModal: React.FC<{
                      </div>
                   )}
 
+                  {activeTab === 'tags' && (
+                     <div className="space-y-4">
+                        {/* Add New Tag */}
+                        <div className="p-4 bg-panel-2 rounded-xl border border-outline/50 space-y-4">
+                           <h4 className="text-xs font-bold text-muted uppercase tracking-widest">Create New Tag</h4>
+                           <div className="flex gap-2">
+                              <input
+                                 id="new-tag-name"
+                                 placeholder="Tag Name"
+                                 className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                                 onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                       const input = e.currentTarget;
+                                       const name = input.value.trim();
+                                       if (name) {
+                                          const newTag: Tag = {
+                                             id: generateId(),
+                                             name,
+                                             color: 'blue' // Default
+                                          };
+                                          if (tags.length < 99) {
+                                             onUpdateTags([...tags, newTag]);
+                                             input.value = '';
+                                          } else {
+                                             alert("You can only have 99 tags.");
+                                          }
+                                       }
+                                    }
+                                 }}
+                              />
+                              <button
+                                 onClick={() => {
+                                    const input = document.getElementById('new-tag-name') as HTMLInputElement;
+                                    const name = input.value.trim();
+                                    if (name) {
+                                       const newTag: Tag = {
+                                          id: generateId(),
+                                          name,
+                                          color: 'blue' // Default
+                                       };
+                                       if (tags.length < 99) {
+                                          onUpdateTags([...tags, newTag]);
+                                          input.value = '';
+                                       } else {
+                                          alert("You can only have 99 tags.");
+                                       }
+                                    }
+                                 }}
+                                 className="px-4 py-2 bg-accent text-bg rounded-lg font-bold text-sm hover:bg-accent/90 transition-colors"
+                              >
+                                 Add
+                              </button>
+                           </div>
+                        </div>
+
+                        {/* List of Tags */}
+                        <div className="space-y-2">
+                           {tags.map(tag => {
+                              // Color map for preset colors (Tailwind 500 shades)
+                              const COLOR_MAP: Record<string, string> = {
+                                 red: '#ef4444',
+                                 orange: '#f97316',
+                                 amber: '#f59e0b',
+                                 yellow: '#eab308',
+                                 lime: '#84cc16',
+                                 green: '#22c55e',
+                                 emerald: '#10b981',
+                                 teal: '#14b8a6',
+                                 cyan: '#06b6d4',
+                                 sky: '#0ea5e9',
+                                 blue: '#3b82f6',
+                                 indigo: '#6366f1',
+                                 violet: '#8b5cf6',
+                                 purple: '#a855f7',
+                                 fuchsia: '#d946ef',
+                                 pink: '#ec4899',
+                                 rose: '#f43f5e',
+                                 slate: '#64748b',
+                                 gray: '#6b7280',
+                                 zinc: '#71717a',
+                                 neutral: '#737373',
+                                 stone: '#78716c',
+                              };
+                              const getTagColor = (color: string) => color.startsWith('#') ? color : (COLOR_MAP[color] || '#3b82f6');
+
+                              return (
+                                 <div key={tag.id} className="flex items-center gap-3 p-3 bg-panel-2 rounded-xl border border-outline group">
+                                    {/* Color Picker */}
+                                    <div className="relative group/color">
+                                       <div
+                                          className="w-6 h-6 rounded-full cursor-pointer border border-outline"
+                                          style={{ backgroundColor: getTagColor(tag.color) }}
+                                       />
+                                       {/* Color Popover */}
+                                       {/* Color Popover */}
+                                       <div className="absolute top-full left-0 pt-4 z-20 hidden group-hover/color:block w-56">
+                                          <div className="p-3 bg-panel border border-outline rounded-xl shadow-xl">
+                                             <div className="grid grid-cols-6 gap-2 mb-3">
+                                                {TAG_COLORS.map(c => (
+                                                   <button
+                                                      key={c}
+                                                      onClick={() => onUpdateTags(tags.map(t => t.id === tag.id ? { ...t, color: c } : t))}
+                                                      className={`w-6 h-6 rounded-full hover:scale-110 transition-transform ${tag.color === c ? 'ring-2 ring-white ring-offset-2 ring-offset-panel' : ''}`}
+                                                      style={{ backgroundColor: COLOR_MAP[c] }}
+                                                      title={c}
+                                                   />
+                                                ))}
+                                             </div>
+                                             {/* Custom Color */}
+                                             <div className="pt-2 border-t border-outline flex items-center gap-2">
+                                                <label className="text-xs font-bold text-muted uppercase shrink-0">Custom</label>
+                                                <div className="relative flex-1 h-8">
+                                                   <input
+                                                      type="color"
+                                                      value={tag.color.startsWith('#') ? tag.color : '#3b82f6'}
+                                                      onChange={(e) => onUpdateTags(tags.map(t => t.id === tag.id ? { ...t, color: e.target.value } : t))}
+                                                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                   />
+                                                   <div
+                                                      className="w-full h-full rounded-lg border border-outline flex items-center justify-center text-[10px] font-mono"
+                                                      style={{
+                                                         backgroundColor: tag.color.startsWith('#') ? tag.color : '#1a1a1a',
+                                                         color: tag.color.startsWith('#') ? '#fff' : '#666'
+                                                      }}
+                                                   >
+                                                      {tag.color.startsWith('#') ? tag.color : 'Pick...'}
+                                                   </div>
+                                                </div>
+                                             </div>
+                                          </div>
+                                       </div>
+                                    </div>
+
+                                    <input
+                                       value={tag.name}
+                                       onChange={(e) => onUpdateTags(tags.map(t => t.id === tag.id ? { ...t, name: e.target.value } : t))}
+                                       className="flex-1 bg-transparent border-none focus:outline-none font-medium text-text"
+                                    />
+
+                                    <button
+                                       onClick={() => {
+                                          if (confirm(`Delete tag "${tag.name}"?`)) {
+                                             onUpdateTags(tags.filter(t => t.id !== tag.id));
+                                          }
+                                       }}
+                                       className="text-muted hover:text-red p-2 rounded-lg hover:bg-red/10 transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                       <Trash2 size={16} />
+                                    </button>
+                                 </div>
+                              );
+                           })}
+                           {tags.length === 0 && (
+                              <div className="text-center py-8 text-muted italic">
+                                 No tags created yet.
+                              </div>
+                           )}
+                        </div>
+                     </div>
+                  )}
+
                   {activeTab === 'global' && (
                      <div className="space-y-4">
                         {/* Hide Helper Tooltips - Always shows its own tooltip */}
@@ -575,6 +787,134 @@ const SettingsModal: React.FC<{
 
                         {/* Dark Mode */}
                         <SettingRow id="darkMode" label="Dark Mode" settingKey="darkMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+
+                        {/* AI Enabled Features */}
+                        <div className="p-4 bg-purple/5 rounded-xl border border-purple/20 hover:border-purple/40 transition-all">
+                           <span className="font-medium text-purple block mb-3 flex items-center gap-2">
+                              <Sparkles size={18} /> AI Enabled Features
+                           </span>
+
+                           {/* AI Master Killswitch */}
+                           <TooltipWrapper id="aiEnabled" tooltip={tooltips.aiEnabled} settings={settings}>
+                              <label
+                                 onClick={() => {
+                                    const newValue = !settings.aiEnabled;
+                                    onUpdate({ ...settings, aiEnabled: newValue });
+                                    if (!newValue) {
+                                       // Clear API key if disabling AI
+                                       clearSessionApiKey();
+                                       setIsApiKeyLocked(false);
+                                       setApiKeyInput('');
+                                       setApiKeyTestResult(null);
+                                       // Reset mode if it was AI mode
+                                       if (settings.mode === 'ai_random_choice') {
+                                          onUpdate({ ...settings, aiEnabled: newValue, mode: 'standard' });
+                                       }
+                                    }
+                                 }}
+                                 className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all mb-3"
+                              >
+                                 <span className="font-medium text-text">Enable AI Features</span>
+                                 <div
+                                    className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.aiEnabled ? "bg-accent" : "bg-outline")}
+                                 >
+                                    <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.aiEnabled ? "translate-x-6" : "translate-x-0")} />
+                                 </div>
+                              </label>
+                           </TooltipWrapper>
+
+                           {settings.aiEnabled && (
+                              <>
+                                 {/* API Key Input */}
+                                 <TooltipWrapper id="aiApiKey" tooltip={tooltips.aiApiKey} settings={settings}>
+                                    <div className="space-y-2">
+                                       <label className="block text-xs font-bold text-muted uppercase">Google AI API Key</label>
+                                       <div className="flex gap-2">
+                                          <input
+                                             type="password"
+                                             value={apiKeyInput}
+                                             onChange={(e) => setApiKeyInput(e.target.value)}
+                                             disabled={isApiKeyLocked}
+                                             placeholder="Enter your API key..."
+                                             className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                          />
+                                          <button
+                                             onClick={async () => {
+                                                if (isApiKeyLocked) {
+                                                   // Unlock
+                                                   clearSessionApiKey();
+                                                   setIsApiKeyLocked(false);
+                                                   setApiKeyInput('');
+                                                   setApiKeyTestResult(null);
+                                                   // Reset mode if it was AI mode
+                                                   if (settings.mode === 'ai_random_choice') {
+                                                      onUpdate({ ...settings, mode: 'standard' });
+                                                   }
+                                                } else {
+                                                   // Test and lock
+                                                   if (!apiKeyInput.trim()) {
+                                                      alert('Please enter an API key');
+                                                      return;
+                                                   }
+
+                                                   setIsTestingApiKey(true);
+                                                   setApiKeyTestResult(null);
+
+                                                   try {
+                                                      const result = await testApiKey(apiKeyInput);
+                                                      setApiKeyTestResult(result);
+
+                                                      if (result.success) {
+                                                         setSessionApiKey(apiKeyInput);
+                                                         setIsApiKeyLocked(true);
+                                                         setApiKeyInput('••••••••••••');
+                                                      }
+                                                   } catch (e) {
+                                                      setApiKeyTestResult({ success: false, error: 'Unknown error occurred' });
+                                                   } finally {
+                                                      setIsTestingApiKey(false);
+                                                   }
+                                                }
+                                             }}
+                                             disabled={isTestingApiKey}
+                                             className={clsx(
+                                                "px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors min-w-[100px] justify-center",
+                                                isApiKeyLocked
+                                                   ? "bg-red/10 text-red border border-red/30 hover:bg-red/20"
+                                                   : "bg-accent text-bg hover:bg-accent/90",
+                                                isTestingApiKey && "opacity-70 cursor-wait"
+                                             )}
+                                          >
+                                             {isTestingApiKey ? (
+                                                <Loader2 className="animate-spin" size={16} />
+                                             ) : isApiKeyLocked ? (
+                                                <>
+                                                   <Lock size={16} /> Unlock
+                                                </>
+                                             ) : (
+                                                <>
+                                                   <Lock size={16} /> Submit
+                                                </>
+                                             )}
+                                          </button>
+                                       </div>
+                                       {apiKeyTestResult && !apiKeyTestResult.success && (
+                                          <p className="text-xs text-red mt-1">{apiKeyTestResult.error}</p>
+                                       )}
+                                       {isApiKeyLocked && (
+                                          <p className="text-xs text-green mt-1 flex items-center gap-1">
+                                             <span className="w-2 h-2 bg-green rounded-full" />
+                                             API Key Active
+                                          </p>
+                                       )}
+                                       <p className="text-xs text-muted mt-2">
+                                          Your API key is stored only in this session and will be cleared when you refresh or close this tab. <button onClick={() => setIsAiSetupOpen(true)} className="text-accent hover:underline font-bold">How do I set this up?</button>
+                                       </p>
+                                    </div>
+                                 </TooltipWrapper>
+                              </>
+                           )}
+                        </div>
 
                         {/* Export Data Box */}
                         <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
@@ -696,6 +1036,9 @@ const SettingsModal: React.FC<{
                   )}
                </div>
             </div>
+
+            {/* AI Setup Modal - Stacked on top */}
+            <AiSetupModal isOpen={isAiSetupOpen} onClose={() => setIsAiSetupOpen(false)} />
          </div>
       </div >
    );
@@ -710,6 +1053,7 @@ const App: React.FC = () => {
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
    const [folders, setFolders] = useState<Folder[]>([]);
+   const [tags, setTags] = useState<Tag[]>([]);
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
 
    const activeSession = librarySets.find(s => s.id === activeSetId) || null;
@@ -736,7 +1080,7 @@ const App: React.FC = () => {
 
    // Modals
    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-   const [settingsInitialTab, setSettingsInitialTab] = useState<'set' | 'global' | 'you'>('set');
+   const [settingsInitialTab, setSettingsInitialTab] = useState<'set' | 'global' | 'you' | 'tags'>('set');
    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
@@ -748,6 +1092,15 @@ const App: React.FC = () => {
 
    // Edit Request (from SetDetail to StartMenu)
    const [editRequestSetId, setEditRequestSetId] = useState<string | null>(null);
+
+   // New states for filtering/display
+   const [showYear, setShowYear] = useState(true);
+   const [enableTermCards, setEnableTermCards] = useState(false);
+   const [appliedTags, setAppliedTags] = useState<string[]>([]);
+
+   // Import options
+   const [importAppend, setImportAppend] = useState(false);
+   const [importOverride, setImportOverride] = useState<'keep' | 'duplicate' | 'override'>('keep');
 
    // Timer State
    const [timerStart, setTimerStart] = useState<number>(0);
@@ -914,6 +1267,7 @@ const App: React.FC = () => {
                      setLibrarySets(sanitizedSets);
                   }
                   if (data.folders && data.folders.length > 0) setFolders(data.folders);
+                  if (data.tags && data.tags.length > 0) setTags(data.tags);
                   if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
 
                   // Handle any corruption reports
@@ -941,6 +1295,7 @@ const App: React.FC = () => {
                   setLibrarySets(sanitizedSets);
                }
                if (data.folders && data.folders.length > 0) setFolders(data.folders);
+               if (data.tags && data.tags.length > 0) setTags(data.tags);
                if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
 
                // Handle any corruption reports
@@ -962,74 +1317,117 @@ const App: React.FC = () => {
    // Load Initial Data (Local Only - Cloud handled by Auth Effect)
    useEffect(() => {
       const loadData = async () => {
-         // Only load local if we aren't waiting for cloud auth? 
-         // Actually, standard pattern: Load local first for speed, then overwrite with cloud if auth.
+         try {
+            console.log("[App] Starting initial data load...");
 
-         const idbSets = await loadLibrary(); // This now intelligently checks auth internally too
+            // 1. Load Sets
+            const idbSets = await loadLibrary();
+            let setsToUse = idbSets;
 
-         let setsToUse = idbSets;
-
-         // Rescue Strategy for LocalStorage
-         if (!setsToUse || setsToUse.length === 0) {
-            const localLibrary = localStorage.getItem(LIBRARY_KEY);
-            if (localLibrary) {
-               try {
-                  const parsed = JSON.parse(localLibrary);
-                  if (Array.isArray(parsed) && parsed.length > 0) {
-                     setsToUse = parsed;
-                     // Only save back if we are sure?
-                     // await saveLibrary(parsed); 
-                  }
-               } catch (e) { console.error("Error parsing local library:", e); }
+            // Rescue Strategy for LocalStorage
+            if (!setsToUse || setsToUse.length === 0) {
+               const localLibrary = localStorage.getItem(LIBRARY_KEY);
+               if (localLibrary) {
+                  try {
+                     const parsed = JSON.parse(localLibrary);
+                     if (Array.isArray(parsed) && parsed.length > 0) {
+                        setsToUse = parsed;
+                     }
+                  } catch (e) { console.error("[App] Error parsing local library:", e); }
+               }
             }
-         }
 
-         if (setsToUse) {
-            // Sanitize all sets on load to remove any zombie custom field data
-            const sanitizedSets = setsToUse.map(s => sanitizeSet(s));
-            setLibrarySets(sanitizedSets);
-         }
-         setIsLibraryLoaded(true);
+            if (setsToUse && setsToUse.length > 0) {
+               const sanitizedSets = setsToUse.map(s => sanitizeSet(s));
+               console.log("[App] Loaded", sanitizedSets.length, "sets from storage");
+               setLibrarySets(sanitizedSets);
+            } else {
+               console.warn("[App] No sets found in storage - starting with empty library");
+            }
 
-         // Folders
-         const savedFolders = localStorage.getItem(FOLDERS_KEY);
-         if (savedFolders) {
-            try { setFolders(JSON.parse(savedFolders)); } catch (e) { }
-         }
+            // 2. Load Folders
+            const savedFolders = localStorage.getItem(FOLDERS_KEY);
+            if (savedFolders) {
+               try {
+                  const parsedFolders = JSON.parse(savedFolders);
+                  if (Array.isArray(parsedFolders)) setFolders(parsedFolders);
+               } catch (e) { }
+            }
 
-         // Settings
-         const savedSettings = localStorage.getItem(SETTINGS_KEY);
-         if (savedSettings) {
-            try {
-               const s = JSON.parse(savedSettings);
-               setSettings({ ...settings, ...s });
-            } catch (e) { }
-         }
+            // 3. Load Settings
+            const savedSettings = localStorage.getItem(SETTINGS_KEY);
+            if (savedSettings) {
+               try {
+                  const s = JSON.parse(savedSettings);
+                  setSettings(prev => ({ ...prev, ...s }));
+               } catch (e) { }
+            }
 
-         const savedStats = localStorage.getItem(STATS_KEY);
-         if (savedStats) {
-            try { setLifetimeCorrect(JSON.parse(savedStats).lifetimeCorrect || 0); } catch (e) { }
+            // 4. Load Stats
+            const savedStats = localStorage.getItem(STATS_KEY);
+            if (savedStats) {
+               try {
+                  const parsedStats = JSON.parse(savedStats);
+                  if (parsedStats && typeof parsedStats.lifetimeCorrect === 'number') {
+                     setLifetimeCorrect(parsedStats.lifetimeCorrect);
+                  }
+               } catch (e) { }
+            }
+
+            console.log("[App] ✅ Initial data load complete.");
+         } catch (error) {
+            console.error("[App] ❌ CRITICAL ERROR during loadData:", error);
+            console.error("[App] Stack:", error instanceof Error ? error.stack : 'No stack trace');
+         } finally {
+            // CRITICAL: Always mark as loaded, even if there was an error
+            // Otherwise the storage system is permanently broken
+            console.log("[App] Setting isLibraryLoaded = true");
+            setIsLibraryLoaded(true);
          }
       };
 
       loadData();
    }, []);
 
-   // Save Effects
+   // Save Effects - WITH AGGRESSIVE PROTECTION AGAINST BOOT WIPES
+   // CRITICAL: We need to ensure the save effects don't fire during initial load OR hot reloads
+   const hasCompletedInitialLoad = useRef(false);
+   const mountTime = useRef(Date.now());
+
    useEffect(() => {
-      if (isLibraryLoaded) {
+      const timeSinceMount = Date.now() - mountTime.current;
+
+      // HARD RULE: No saves allowed for first 3 seconds after mount
+      if (timeSinceMount < 3000) {
+         console.log('[App] Save blocked - too soon after mount (', timeSinceMount, 'ms )');
+         return;
+      }
+
+      if (isLibraryLoaded && hasCompletedInitialLoad.current) {
+         console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
          saveLibrary(librarySets);
+      } else if (isLibraryLoaded && !hasCompletedInitialLoad.current) {
+         console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save will be enabled in', (3000 - timeSinceMount), 'ms');
+         hasCompletedInitialLoad.current = true;
       }
    }, [librarySets, isLibraryLoaded]);
 
    useEffect(() => {
-      if (isLibraryLoaded) {
+      const timeSinceMount = Date.now() - mountTime.current;
+      if (timeSinceMount < 3000) return;
+
+      if (isLibraryLoaded && hasCompletedInitialLoad.current) {
+         console.log('[App] AUTO-SAVING folders');
          saveFolders(folders);
       }
    }, [folders, isLibraryLoaded]);
 
    useEffect(() => {
-      if (isLibraryLoaded) {
+      const timeSinceMount = Date.now() - mountTime.current;
+      if (timeSinceMount < 3000) return;
+
+      if (isLibraryLoaded && hasCompletedInitialLoad.current) {
+         console.log('[App] AUTO-SAVING settings');
          saveSettings(settings);
       }
    }, [settings, isLibraryLoaded]);
@@ -1355,6 +1753,11 @@ const App: React.FC = () => {
             onLogin={handleLogin}
             onLogout={handleLogout}
             initialTab={settingsInitialTab}
+            tags={tags}
+            onUpdateTags={(newTags) => {
+               setTags(newTags);
+               saveTags(newTags);
+            }}
          />
 
          <UserModal
@@ -1513,6 +1916,17 @@ const App: React.FC = () => {
                   initialEditSetId={editRequestSetId}
                   onClearEditRequest={() => setEditRequestSetId(null)}
                   onUploadImage={handleImageUpload}
+                  tags={tags}
+                  onUpdateTags={(newTags) => {
+                     setTags(newTags);
+                     saveTags(newTags);
+                  }}
+                  appliedTags={appliedTags}
+                  onOpenSettings={() => {
+                     setSettingsInitialTab('tags');
+                     setIsSettingsOpen(true);
+                  }}
+                  setAppliedTags={setAppliedTags}
                />
             )}
 
@@ -1524,6 +1938,7 @@ const App: React.FC = () => {
                   onStartLearn={handleStartLearnFromDetail}
                   onStartFlashcards={handleStartFlashcardsFromDetail}
                   onUpdateSet={handleUpdateLibrarySet}
+                  tags={tags}
                   onEdit={() => {
                      // Set the edit request and go back to menu
                      setEditRequestSetId(detailSet.id);

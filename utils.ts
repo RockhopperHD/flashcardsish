@@ -564,14 +564,14 @@ export const parseInput = (text: string): Partial<Card>[] => {
       }
 
       // 1.5 Extract Tags (%%TAGS%%)
-      // Format: ... %%TAGS%%tag1%%tag2
+      // Format: ... %%TAGS%%tag1, tag2
       let tags: string[] = [];
       const tagSplit = contentPart.split('%%TAGS%%');
       if (tagSplit.length > 1) {
         contentPart = tagSplit[0].trim();
         const tagString = tagSplit[1];
-        // Split by %%
-        tags = tagString.split('%%').map(t => t.trim()).filter(Boolean);
+        // Split by comma or %%
+        tags = tagString.split(/,|%%/).map(t => t.trim()).filter(Boolean);
       }
 
       // 1.6 Extract Star (%%STAR%%)

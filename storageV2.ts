@@ -14,7 +14,7 @@
  */
 
 import { get, set, del } from 'idb-keyval';
-import { CardSet, Card, Folder, Settings, SetMetadata } from './types';
+import { CardSet, Card, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 
 // ============================================================================
@@ -44,7 +44,8 @@ export const DEFAULT_SETTINGS: Settings = {
     importOverride: 'duplicate',
     autoCloseImageWindow: false,
     hideTooltips: false,
-    darkMode: true
+    darkMode: true,
+    aiEnabled: false
 };
 
 const CURRENT_VERSION = 1;
@@ -72,6 +73,7 @@ export interface StructureFile {
     folders: Folder[];
     rootSets: string[]; // Set IDs not in any folder
     badges: any[];
+    tags: Tag[]; // Account-wide tags
     stats: {
         lifetimeCorrect: number;
     };
@@ -149,6 +151,7 @@ const createDefaultStructure = (): StructureFile => ({
     folders: [],
     rootSets: [],
     badges: [],
+    tags: [],
     stats: {
         lifetimeCorrect: 0
     }
@@ -561,6 +564,15 @@ export const updateBadges = async (badges: any[]): Promise<void> => {
     await writeStructure(structure);
 };
 
+/**
+ * Update tags in structure
+ */
+export const updateTags = async (tags: Tag[]): Promise<void> => {
+    const { structure } = await readStructure();
+    structure.tags = tags;
+    await writeStructure(structure);
+};
+
 // ============================================================================
 // FLASHCARD SET OPERATIONS
 // ============================================================================
@@ -907,6 +919,7 @@ export const loadBootData = async (): Promise<{
     settings: Settings;
     folders: Folder[];
     badges: any[];
+    tags: Tag[];
     stats: { lifetimeCorrect: number };
     preloadedSets: CardSet[];
     allSetMetadata: SetMetadata[];
@@ -959,6 +972,7 @@ export const loadBootData = async (): Promise<{
         settings: config.settings,
         folders: structure.folders,
         badges: structure.badges,
+        tags: structure.tags || [], // Ensure tags is at least empty array if missing in file
         stats: structure.stats,
         preloadedSets,
         allSetMetadata,

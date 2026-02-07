@@ -18,6 +18,7 @@ import {
   HelpCircle,
   Save,
   FolderOpen,
+  ChevronDown,
   Play,
   Pencil,
   RotateCw,
@@ -49,6 +50,7 @@ import {
   Folder,
   CustomFieldDefinition,
   CustomFieldType,
+  Tag,
 } from "../types";
 import { CursorTooltip } from "./CursorTooltip";
 import {
@@ -65,6 +67,33 @@ import { RichInput, RichInputRef } from "./RichInput";
 import clsx from "clsx";
 import { AddSetModal } from "./AddSetModal";
 import { RawTextImport } from "./RawTextImport";
+
+// Color map for preset tag colors (Tailwind 500 shades)
+const TAG_COLOR_MAP: Record<string, string> = {
+  red: '#ef4444',
+  orange: '#f97316',
+  amber: '#f59e0b',
+  yellow: '#eab308',
+  lime: '#84cc16',
+  green: '#22c55e',
+  emerald: '#10b981',
+  teal: '#14b8a6',
+  cyan: '#06b6d4',
+  sky: '#0ea5e9',
+  blue: '#3b82f6',
+  indigo: '#6366f1',
+  violet: '#8b5cf6',
+  purple: '#a855f7',
+  fuchsia: '#d946ef',
+  pink: '#ec4899',
+  rose: '#f43f5e',
+  slate: '#64748b',
+  gray: '#6b7280',
+  zinc: '#71717a',
+  neutral: '#737373',
+  stone: '#78716c',
+};
+const getTagColor = (color: string) => color.startsWith('#') ? color : (TAG_COLOR_MAP[color] || '#3b82f6');
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -84,6 +113,11 @@ interface StartMenuProps {
   initialEditSetId?: string | null;
   onClearEditRequest?: () => void;
   onUploadImage?: (file: File) => Promise<string>;
+  tags: Tag[];
+  onUpdateTags: (tags: Tag[]) => void;
+  appliedTags: string[];
+  setAppliedTags: (tags: string[]) => void;
+  onOpenSettings?: () => void;
 }
 
 interface BuilderRow {
@@ -113,7 +147,7 @@ const GREETINGS = [
   "Greatness incoming?",
   "Hey, you're here.",
   "Welcome... or welcome back.",
-  "Ready to study?",
+  "Ready?",
   "You're in the right place.",
   "Onward.",
   "Heyo.",
@@ -905,9 +939,9 @@ const FieldRowComponent: React.FC<{
                 className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
               >
                 <span className="capitalize truncate">
-                  {field.type === "ab" ? "A/B" : field.type}
+                  {field.type === "ab" ? "A/B" : field.type === "tf" ? "True/False" : field.type}
                 </span>
-                <Settings2 size={12} className="opacity-50 flex-shrink-0" />
+                <ChevronDown size={12} className="opacity-50 flex-shrink-0" />
               </button>
 
               {isDropdownOpen && (
@@ -1006,6 +1040,11 @@ const SetConfigurationModal: React.FC<{
   hideImportButton?: boolean;
   builderRows?: BuilderRow[];
   setBuilderRows?: (rows: BuilderRow[]) => void;
+  tags: Tag[];
+  onUpdateTags: (tags: Tag[]) => void;
+  appliedTags: string[];
+  setAppliedTags: (tags: string[]) => void;
+  onManageTags?: () => void;
 }> = ({
   isOpen,
   onClose,
@@ -1032,9 +1071,26 @@ const SetConfigurationModal: React.FC<{
   hideImportButton,
   builderRows,
   setBuilderRows,
+  tags,
+  onUpdateTags,
+  appliedTags,
+  setAppliedTags,
+  onManageTags,
 }) => {
     const [mode, setMode] = useState<"config" | "import">("config");
     const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
+    const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+          setIsTagDropdownOpen(false);
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
     const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(null);
 
     // Reset mode on open
@@ -1141,7 +1197,7 @@ const SetConfigurationModal: React.FC<{
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-2xl font-bold text-text">Set Configuration</h3>
+            <h3 className="text-2xl font-bold text-text" style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}>Set Configuration</h3>
             {!hideImportButton && (
               <button
                 onClick={() => setMode("import")}
@@ -1152,6 +1208,7 @@ const SetConfigurationModal: React.FC<{
               </button>
             )}
           </div>
+          <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
           <p className="text-muted mb-8 text-sm leading-relaxed">
             You can tailor your flashcards set by renaming the main fields and
             adding up to 4 custom fields per side. <br /> <br />
@@ -1290,91 +1347,181 @@ const SetConfigurationModal: React.FC<{
             </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-outline/50 flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4">
-              <CursorTooltip
-                content="Adds an extra custom field for putting the year in. Goes on the term side."
-                isEnabled={!settings.hideTooltips}
-                tooltipClassName="w-80 max-w-[90vw]"
-              >
-                <label className="flex items-center gap-3 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={showYear}
-                    onChange={() => setShowYear(!showYear)}
-                    className="hidden"
-                  />
-                  <div
-                    className={clsx(
-                      "w-5 h-5 rounded border flex items-center justify-center transition-colors",
-                      showYear
-                        ? "bg-accent border-accent text-bg"
-                        : "bg-panel-2 border-outline",
-                    )}
-                  >
-                    {showYear && <Check size={14} strokeWidth={4} />}
-                  </div>
-                  <div className="text-sm font-bold text-text">
-                    Enable Year Field
-                  </div>
-                </label>
-              </CursorTooltip>
+          {/* Tags Section */}
+          <div className="mt-8 pt-6 border-t border-outline/50">
+            <h4 className="text-lg font-bold text-text mb-4">Tags</h4>
+            <div className="flex flex-col gap-4">
+              {/* Applied Tags List */}
+              {appliedTags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {tags.filter(t => appliedTags.includes(t.id)).map(tag => (
+                    <div key={tag.id} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-text text-sm font-medium">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: getTagColor(tag.color) }}
+                      />
+                      {tag.name}
+                      <button
+                        onClick={() => setAppliedTags(appliedTags.filter(id => id !== tag.id))}
+                        className="ml-1 text-muted hover:text-red transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-              <CursorTooltip
-                content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
-                isEnabled={!settings.hideTooltips}
-                tooltipClassName="w-80 max-w-[90vw]"
-              >
-                <label className="flex items-center gap-3 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={enableTermCards}
-                    onChange={() => {
-                      const newValue = !enableTermCards;
-                      setEnableTermCards(newValue);
-                      // Clear term images when disabling
-                      if (!newValue && builderRows && setBuilderRows) {
-                        setBuilderRows(builderRows.map(row => ({ ...row, termImage: "" })));
-                      }
-                    }}
-                    className="hidden"
-                  />
-                  <div
-                    className={clsx(
-                      "w-5 h-5 rounded border flex items-center justify-center transition-colors",
-                      enableTermCards
-                        ? "bg-accent border-accent text-bg"
-                        : "bg-panel-2 border-outline",
-                    )}
-                  >
-                    {enableTermCards && <Check size={14} strokeWidth={4} />}
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
+                >
+                  <Plus size={16} />
+                  Add Tag
+                </button>
+
+                {isTagDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl z-50 animate-in fade-in zoom-in-95 flex flex-col overflow-hidden">
+                    <div className="max-h-60 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                      {tags.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-muted italic">No tags found.</div>
+                      ) : (
+                        tags.map(tag => {
+                          const isSelected = appliedTags.includes(tag.id);
+                          return (
+                            <button
+                              key={tag.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setAppliedTags(appliedTags.filter(id => id !== tag.id));
+                                } else {
+                                  setAppliedTags([...appliedTags, tag.id]);
+                                }
+                              }}
+                              className={clsx(
+                                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
+                                isSelected ? "bg-accent/10 text-text" : "hover:bg-panel-2 text-muted hover:text-text"
+                              )}
+                            >
+                              <div
+                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                style={{ backgroundColor: getTagColor(tag.color) }}
+                              />
+                              <span className="flex-1 truncate">{tag.name}</span>
+                              {isSelected && <Check size={14} className="text-accent" />}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Frozen Footer */}
+                    <div className="p-2 border-t border-outline bg-panel-2">
+                      <button
+                        onClick={() => {
+                          setIsTagDropdownOpen(false);
+                          if (onManageTags) onManageTags();
+                        }}
+                        className="w-full text-center px-3 py-2 text-xs font-bold text-accent hover:underline transition-all"
+                      >
+                        Manage Tags
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-sm font-bold text-text">
-                    Enable Term Images
-                  </div>
-                </label>
-              </CursorTooltip>
+                )}
+              </div>
             </div>
+          </div>
 
-            <button
-              onClick={() => {
-                // Filter out blank fields before closing
-                const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
-                const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
+          <div className="mt-8 pt-6 border-t border-outline/50">
+            <h4 className="text-lg font-bold text-text mb-4">Misc.</h4>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-4">
+                <CursorTooltip
+                  content="Adds an extra custom field for putting the year in. Goes on the term side."
+                  isEnabled={!settings.hideTooltips}
+                  tooltipClassName="w-80 max-w-[90vw]"
+                >
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showYear}
+                      onChange={() => setShowYear(!showYear)}
+                      className="hidden"
+                    />
+                    <div
+                      className={clsx(
+                        "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                        showYear
+                          ? "bg-accent border-accent text-bg"
+                          : "bg-panel-2 border-outline",
+                      )}
+                    >
+                      {showYear && <Check size={14} strokeWidth={4} />}
+                    </div>
+                    <div className="text-sm font-bold text-text">
+                      Enable Year Field
+                    </div>
+                  </label>
+                </CursorTooltip>
 
-                if (cleanTermFields.length !== termSideFields.length) {
-                  setTermSideFields(cleanTermFields);
-                }
-                if (cleanDefFields.length !== defSideFields.length) {
-                  setDefSideFields(cleanDefFields);
-                }
+                <CursorTooltip
+                  content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
+                  isEnabled={!settings.hideTooltips}
+                  tooltipClassName="w-80 max-w-[90vw]"
+                >
+                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={enableTermCards}
+                      onChange={() => {
+                        const newValue = !enableTermCards;
+                        setEnableTermCards(newValue);
+                        // Clear term images when disabling
+                        if (!newValue && builderRows && setBuilderRows) {
+                          setBuilderRows(builderRows.map(row => ({ ...row, termImage: "" })));
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <div
+                      className={clsx(
+                        "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                        enableTermCards
+                          ? "bg-accent border-accent text-bg"
+                          : "bg-panel-2 border-outline",
+                      )}
+                    >
+                      {enableTermCards && <Check size={14} strokeWidth={4} />}
+                    </div>
+                    <div className="text-sm font-bold text-text">
+                      Enable Term Images
+                    </div>
+                  </label>
+                </CursorTooltip>
+              </div>
 
-                onClose();
-              }}
-              className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:scale-105 transition-transform"
-            >
-              OK
-            </button>
+              <button
+                onClick={() => {
+                  // Filter out blank fields before closing
+                  const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
+                  const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
+
+                  if (cleanTermFields.length !== termSideFields.length) {
+                    setTermSideFields(cleanTermFields);
+                  }
+                  if (cleanDefFields.length !== defSideFields.length) {
+                    setDefSideFields(cleanDefFields);
+                  }
+
+                  onClose();
+                }}
+                className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:scale-105 transition-transform"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2001,6 +2148,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   initialEditSetId,
   onClearEditRequest,
   onUploadImage,
+  tags,
+  onUpdateTags,
+  appliedTags,
+  setAppliedTags,
+  onOpenSettings,
 }) => {
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [showAddSetModal, setShowAddSetModal] = useState(false);
@@ -2558,8 +2710,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setEditingSetId(null);
     setTermLabel("Term");
     setDefinitionLabel("Definition");
+    setTermLabel("Term");
+    setDefinitionLabel("Definition");
     setTermSideFields([]);
     setDefSideFields([]);
+    setAppliedTags([]);
     setBuilderRows([
       {
         id: "1",
@@ -2905,7 +3060,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     else setShowYear(false);
 
     setEnableTermCards(set.enableTermCards || false);
-
+    setAppliedTags(set.tags || []);
     setBuilderRows(rows);
     setView("builder");
     setBuilderMode("visual");
@@ -3186,6 +3341,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       defSideFields,
       enableTermCards,
       folderId: currentFolderId || undefined,
+      tags: appliedTags,
     };
 
     if (editingSetId) {
@@ -3468,6 +3624,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         hideImportButton={view === "raw-text"}
         builderRows={builderRows}
         setBuilderRows={setBuilderRows}
+        tags={tags}
+        onUpdateTags={onUpdateTags}
+        appliedTags={appliedTags}
+        setAppliedTags={setAppliedTags}
+        onManageTags={onOpenSettings}
       />
 
       <AddSetModal

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CardSet, Card, Settings } from '../types';
+import { CardSet, Card, Settings, Tag } from '../types';
 import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2 } from 'lucide-react';
 import { renderMarkdown, renderInline, downloadFile, sanitizeImageUrl } from '../utils';
 import clsx from 'clsx';
@@ -14,6 +14,7 @@ interface SetDetailProps {
     onEdit: () => void;
     onDuplicate: () => void;
     onDelete: () => void;
+    tags: Tag[]; // Global tag definitions
 }
 
 // Mode Button Component
@@ -151,7 +152,8 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     onUpdateSet,
     onEdit,
     onDuplicate,
-    onDelete
+    onDelete,
+    tags
 }) => {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
 
@@ -200,6 +202,35 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                 >
                     {set.name}
                 </h1>
+
+                {/* Tag Pills */}
+                {set.tags && set.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        {set.tags.map(tagId => {
+                            const tagDef = tags.find(t => t.id === tagId);
+                            if (!tagDef) return null;
+                            return (
+                                <div
+                                    key={tagId}
+                                    className={clsx(
+                                        "px-2.5 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1.5 opacity-90",
+                                        // Dynamic color classes might be tricky if not safelisted, but let's try standard approach or style
+                                        `bg-${tagDef.color}-500/10 text-${tagDef.color}-600 border-${tagDef.color}-500/20`
+                                    )}
+                                    // Fallback style just in case Tailwind doesn't generate these on fly
+                                    style={{
+                                        backgroundColor: `var(--color-${tagDef.color}-500-10, rgba(0,0,0,0.05))`,
+                                        borderColor: `var(--color-${tagDef.color}-500-20, rgba(0,0,0,0.1))`,
+                                        color: `var(--color-${tagDef.color}-600, currentColor)`
+                                    }}
+                                >
+                                    <div className={`w-1.5 h-1.5 rounded-full bg-${tagDef.color}-500`} style={{ backgroundColor: `var(--color-${tagDef.color}-500)` }} />
+                                    {tagDef.name}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
                 <div className="flex items-center gap-6 text-muted">
                     <span className="font-mono">{set.cards.length} cards</span>
                     {masteredCount > 0 && (

@@ -10,6 +10,7 @@ interface RichInputProps {
     onFocus?: () => void;
     onKeyDown?: (e: React.KeyboardEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
+    onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export interface RichInputRef {
@@ -38,6 +39,9 @@ const htmlToMarkdown = (node: Node): string => {
 
     if (node.nodeType === Node.ELEMENT_NODE) {
         const el = node as HTMLElement;
+
+        if (el.tagName === 'BR') return '\n';
+
         let content = '';
         el.childNodes.forEach(child => {
             content += htmlToMarkdown(child);
@@ -169,25 +173,100 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     onBlur,
     onFocus,
     onKeyDown,
-    onMouseUp
+    onMouseUp,
+    onContextMenu
 }, ref) => {
     const contentEditableRef = useRef<HTMLDivElement>(null);
     const isTyping = useRef(false);
 
+    const getMarkdownFromContent = () => {
+        if (!contentEditableRef.current) return '';
+        let md = '';
+        contentEditableRef.current.childNodes.forEach(child => {
+            md += htmlToMarkdown(child);
+        });
+
+        // Strip a single leading newline if present, to account for first-block behavior
+        if (md.startsWith('\n')) return md.substring(1);
+        return md;
+    };
+
     // Sync value to HTML (only when not typing to avoid cursor jumps / loops)
     useEffect(() => {
         if (isTyping.current) return;
-        if (contentEditableRef.current && value !== htmlToMarkdown(contentEditableRef.current)) {
-            contentEditableRef.current.innerHTML = markdownToHtml(value);
+        if (contentEditableRef.current) {
+            const currentMd = getMarkdownFromContent();
+            if (value !== currentMd) {
+                contentEditableRef.current.innerHTML = markdownToHtml(value);
+            }
         }
     }, [value]);
 
     const handleInput = () => {
         if (contentEditableRef.current) {
             isTyping.current = true;
-            const md = htmlToMarkdown(contentEditableRef.current);
+            const md = getMarkdownFromContent();
             onChange(md);
             setTimeout(() => isTyping.current = false, 50);
+        }
+    };
+
+    const applyFormat = (type: string, val?: string) => {
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        if (!contentEditableRef.current?.contains(range.commonAncestorContainer)) return;
+
+        // Removing Highlight logic
+        if (type === 'highlight' && !val) {
+            // This is a naive implementation that attempts to unwrap if check passes
+            // Currently complex due to DOM nesting, but 'none' was requested as a button.
+            // For proper unwrapping we'd need to walk up from current selection.
+            // Given constraint, we might skip complex unwrap now or implement simple
+            // unwrap if the strict parent is the span.
+            const parent = range.commonAncestorContainer.parentElement;
+            if (parent && parent.dataset.mdStart && parent.dataset.mdStart.startsWith('<h=')) {
+                // Unwrap
+                const docFrag = document.createDocumentFragment();
+                while (parent.firstChild) {
+                    docFrag.appendChild(parent.firstChild);
+                }
+                parent.parentNode?.replaceChild(docFrag, parent);
+                handleInput();
+                return;
+            }
+            return;
+        }
+
+        // Apply Formatting
+        let def: any;
+        if (type === 'highlight' && val) {
+            def = TAGS[`hl-${val}`];
+        } else {
+            def = TAGS[type];
+        }
+
+        if (!def) return;
+
+        const span = document.createElement('span');
+        span.className = def.className;
+        span.dataset.mdStart = def.start;
+        span.dataset.mdEnd = def.end;
+
+        try {
+            const content = range.extractContents();
+            span.appendChild(content);
+            range.insertNode(span);
+
+            selection.removeAllRanges();
+            const newRange = document.createRange();
+            newRange.selectNodeContents(span);
+            selection.addRange(newRange);
+
+            handleInput();
+        } catch (e) {
+            console.error("Formatting failed", e);
         }
     };
 
@@ -195,50 +274,30 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         focus: () => {
             contentEditableRef.current?.focus();
         },
-        applyFormat: (type: string, val?: string) => {
-            const selection = window.getSelection();
-            if (!selection || !selection.rangeCount) return;
+        applyFormat
+    }));
 
-            const range = selection.getRangeAt(0);
-            if (!contentEditableRef.current?.contains(range.commonAncestorContainer)) return;
-
-            // Create the wrapper wrapper
-            let def: any;
-            if (type === 'highlight' && val) {
-                def = TAGS[`hl-${val}`];
-            } else {
-                def = TAGS[type];
-            }
-
-            if (!def) return;
-
-            // Custom Span insertion
-            const span = document.createElement('span');
-            span.className = def.className;
-            span.dataset.mdStart = def.start;
-            span.dataset.mdEnd = def.end;
-
-            // Surround contents
-            try {
-                // range.surroundContents fails if range partially selects a non-text node.
-                // Safer way: extractContents -> append to span -> insert span
-                const content = range.extractContents();
-                span.appendChild(content);
-                range.insertNode(span);
-
-                // Clean up selection
-                selection.removeAllRanges();
-                const newRange = document.createRange();
-                newRange.selectNodeContents(span);
-                selection.addRange(newRange);
-
-                // Trigger Change
-                handleInput();
-            } catch (e) {
-                console.error("Formatting failed", e);
+    const handleKeyDownInternal = (e: React.KeyboardEvent) => {
+        // Keyboard Shortcuts
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+            const key = e.key.toLowerCase();
+            if (key === 'b') {
+                e.preventDefault();
+                applyFormat('bold');
+            } else if (key === 'i') {
+                e.preventDefault();
+                applyFormat('italic');
+            } else if (key === 'u') {
+                e.preventDefault();
+                applyFormat('underline');
+            } else if (key === '`') { // Code shortcut
+                e.preventDefault();
+                applyFormat('code');
             }
         }
-    }));
+
+        if (onKeyDown) onKeyDown(e);
+    };
 
     return (
         <div
@@ -248,8 +307,9 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             onInput={handleInput}
             onBlur={onBlur}
             onFocus={onFocus}
-            onKeyDown={onKeyDown}
+            onKeyDown={handleKeyDownInternal}
             onMouseUp={onMouseUp}
+            onContextMenu={onContextMenu}
             data-placeholder={placeholder}
             suppressContentEditableWarning // React complains otherwise
         />

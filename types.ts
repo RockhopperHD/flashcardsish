@@ -21,12 +21,19 @@ export interface Card {
   originalSetName?: string;
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
 export interface CardSet {
   id: string;
   sourceId?: string; // Link to original library set
   name: string;
   cards: Card[];
   customFieldNames?: string[]; // Names of custom fields (Legacy V1)
+  tags?: string[]; // IDs of tags applied to this set
 
   // V2 Fields
   version?: number;
@@ -59,7 +66,7 @@ export interface Settings {
   retypeOnMistake: boolean;
   darkMode: boolean;
   starredOnly: boolean;
-  mode: 'standard' | 'multiple_choice';
+  mode: 'standard' | 'multiple_choice' | 'ai_random_choice';
   answerWithDefinition: boolean;
   hideTooltips: boolean;
   batchLength: number; // Batch mode: number of cards per batch (default 10)
@@ -68,6 +75,8 @@ export interface Settings {
   importAppend?: boolean;
   importOverride?: 'keep' | 'duplicate' | 'override';
   autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
+  // AI Features
+  aiEnabled?: boolean; // Master killswitch for AI features (default false)
 }
 
 export interface Badge {

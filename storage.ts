@@ -1,5 +1,5 @@
 import { get, set } from 'idb-keyval';
-import { CardSet, Folder, Settings, SetMetadata } from './types';
+import { CardSet, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import * as storageV2 from './storageV2';
 
@@ -165,7 +165,14 @@ export const saveLibrary = async (sets: CardSet[]) => {
  * In V2, loads from structure + individual .flashcards files
  */
 export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
-    const user = await getUser();
+    let user = null;
+
+    // Try to get user, but don't let Google Drive errors break local loading
+    try {
+        user = await getUser();
+    } catch (error) {
+        console.warn('[Storage] Could not check Google Drive user (this is OK for offline use):', error);
+    }
 
     // Try local cache first
     try {
@@ -413,6 +420,21 @@ export const loadBadges = async (): Promise<any[]> => {
 };
 
 // ============================================================================
+// TAGS
+// ============================================================================
+
+export const saveTags = async (tags: Tag[]) => {
+    // Save locally
+    // localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
+
+    const user = await getUser();
+    if (!user) return;
+
+    // Save to V2
+    await storageV2.updateTags(tags);
+};
+
+// ============================================================================
 // STATS
 // ============================================================================
 
@@ -464,6 +486,7 @@ interface AllUserData {
     settings?: Settings;
     badges?: any[];
     stats?: { lifetimeCorrect: number };
+    tags?: Tag[];
     corruptions?: storageV2.CorruptionReport[];
 }
 
@@ -499,6 +522,7 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
             folders: bootData.folders,
             settings: bootData.settings,
             badges: bootData.badges,
+            tags: bootData.tags,
             stats: bootData.stats,
             corruptions: bootData.corruptions
         };

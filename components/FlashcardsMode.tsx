@@ -569,6 +569,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                 <div className="relative mb-8 perspective-1000">
                     {/* The Card Inner (Container that rotates) */}
                     <div
+                        key={currentCard?.id}
                         onClick={flipCard}
                         className={clsx(
                             "relative min-h-[400px] w-full transition-all duration-500 transform-style-3d cursor-pointer",

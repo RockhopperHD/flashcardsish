@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat } from '../utils';
-import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock } from 'lucide-react';
+import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
+import { generateIncorrectAnswers, isAiAvailable } from '../src/aiService';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
 
@@ -155,6 +156,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Toolbar State
    const [toolbarVisible, setToolbarVisible] = useState(false);
    const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0 });
+   const [toolbarAnchor, setToolbarAnchor] = useState<'top' | 'bottom'>('bottom');
    const activeToolbarRef = useRef<{
       field: "term" | "def";
    } | null>(null);
@@ -174,6 +176,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    // Multiple Choice State
    const [options, setOptions] = useState<string[]>([]);
+   const [isLoadingAiOptions, setIsLoadingAiOptions] = useState(false);
+   const [aiOptionsError, setAiOptionsError] = useState<string | null>(null);
 
    // Multistudy Edit Warning
    const [showEditWarning, setShowEditWarning] = useState(false);
@@ -310,29 +314,71 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    // Generate Options for Multiple Choice
    useEffect(() => {
-      if (settings.mode === 'multiple_choice' && currentCard) {
+      let isMounted = true;
+      if ((settings.mode === 'multiple_choice' || settings.mode === 'ai_random_choice') && currentCard) {
          // In definition mode, options are definitions. Otherwise, options are terms.
          const correctAnswer = settings.answerWithDefinition
             ? currentCard.content
             : currentCard.term[0]; // Use primary term
 
-         // Get all other cards from the set
-         const allOtherCards = set.cards.filter(c => c.id !== currentCard.id);
+         const fallbackToRegularMultipleChoice = () => {
+            if (!isMounted) return;
+            // Get all other cards from the set
+            const allOtherCards = set.cards.filter(c => c.id !== currentCard.id);
 
-         // Shuffle and pick 3
-         const distractors: string[] = [];
-         const shuffledOthers = [...allOtherCards].sort(() => 0.5 - Math.random());
+            // Shuffle and pick 3
+            const distractors: string[] = [];
+            const shuffledOthers = [...allOtherCards].sort(() => 0.5 - Math.random());
 
-         for (let i = 0; i < Math.min(3, shuffledOthers.length); i++) {
-            distractors.push(settings.answerWithDefinition
-               ? shuffledOthers[i].content
-               : shuffledOthers[i].term[0]);
+            for (let i = 0; i < Math.min(3, shuffledOthers.length); i++) {
+               distractors.push(settings.answerWithDefinition
+                  ? shuffledOthers[i].content
+                  : shuffledOthers[i].term[0]);
+            }
+
+            // Combine and shuffle
+            const newOptions = [correctAnswer, ...distractors].sort(() => 0.5 - Math.random());
+            setOptions(newOptions);
+         };
+
+         if (settings.mode === 'ai_random_choice' && isAiAvailable()) {
+            // AI Random Choice Mode
+            setIsLoadingAiOptions(true);
+            setAiOptionsError(null);
+
+            const term = settings.answerWithDefinition
+               ? currentCard.term[0]
+               : currentCard.content;
+
+            generateIncorrectAnswers(term, correctAnswer)
+               .then(result => {
+                  if (!isMounted) return;
+
+                  if (result && result.answers.length === 3) {
+                     // Combine correct answer with AI-generated distractors and shuffle
+                     const newOptions = [correctAnswer, ...result.answers].sort(() => 0.5 - Math.random());
+                     setOptions(newOptions);
+                     setAiOptionsError(null);
+                  } else {
+                     // Fallback to regular multiple choice if AI fails
+                     setAiOptionsError(result?.error || 'Failed to generate AI options');
+                     fallbackToRegularMultipleChoice();
+                  }
+                  setIsLoadingAiOptions(false);
+               })
+               .catch(err => {
+                  if (!isMounted) return;
+                  console.error('AI generation error:', err);
+                  setAiOptionsError('AI service error');
+                  fallbackToRegularMultipleChoice();
+                  setIsLoadingAiOptions(false);
+               });
+         } else {
+            // Regular Multiple Choice Mode
+            fallbackToRegularMultipleChoice();
          }
-
-         // Combine and shuffle
-         const newOptions = [correctAnswer, ...distractors].sort(() => 0.5 - Math.random());
-         setOptions(newOptions);
       }
+      return () => { isMounted = false; };
    }, [currentCard, settings.mode, settings.answerWithDefinition, set.cards]);
 
    // Focus Management
@@ -637,13 +683,31 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const rect = range.getBoundingClientRect();
 
          setToolbarPos({
-            top: rect.top - 20,
+            top: rect.top - 10, // Adjusted padding
             left: rect.left + (rect.width / 2),
          });
+         setToolbarAnchor('bottom');
          setToolbarVisible(true);
       } else {
          activeToolbarRef.current = null;
          setToolbarVisible(false);
+      }
+   };
+
+   const handleContextMenu = (
+      e: React.MouseEvent,
+      field: "term" | "def",
+   ) => {
+      e.preventDefault();
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+         activeToolbarRef.current = { field };
+         setToolbarPos({
+            top: e.clientY,
+            left: e.clientX,
+         });
+         setToolbarAnchor('top');
+         setToolbarVisible(true);
       }
    };
 
@@ -1384,35 +1448,54 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                )}
 
                {/* Input Area or Multiple Choice Grid */}
-               {settings.mode === 'multiple_choice' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {options.map((opt, i) => {
-                        const isSelected = false; // Could track selected for styling
-                        let stateClass = "border-outline hover:border-accent bg-panel-2";
+               {(settings.mode === 'multiple_choice' || settings.mode === 'ai_random_choice') ? (
+                  <div className="space-y-4">
+                     {/* AI Loading/Error indicators */}
+                     {settings.mode === 'ai_random_choice' && isLoadingAiOptions && (
+                        <div className="flex items-center justify-center gap-2 p-4 bg-purple/10 border border-purple/20 rounded-xl">
+                           <Loader2 className="animate-spin text-purple" size={20} />
+                           <span className="text-purple font-medium">AI is generating options...</span>
+                        </div>
+                     )}
 
-                        if (feedback.type === 'correct' && currentCard.term.includes(opt)) {
-                           stateClass = "border-green bg-green/10 text-green";
-                        } else if (feedback.type === 'incorrect' && currentCard.term.includes(opt)) {
-                           stateClass = "border-green bg-green/10 text-green"; // Show correct answer
-                        } else if (feedback.type !== 'idle' && !currentCard.term.includes(opt)) {
-                           stateClass = "opacity-50 border-transparent bg-panel-2";
-                        }
+                     {settings.mode === 'ai_random_choice' && aiOptionsError && (
+                        <div className="p-3 bg-yellow/10 border border-yellow/30 rounded-xl">
+                           <p className="text-yellow text-sm">
+                              AI generation issue: {aiOptionsError}. Using fallback options.
+                           </p>
+                        </div>
+                     )}
 
-                        return (
-                           <button
-                              key={i}
-                              onClick={() => isInteractive && handleOptionClick(opt)}
-                              disabled={!isInteractive}
-                              className={clsx(
-                                 "p-6 rounded-xl text-lg font-bold text-left transition-all border-2",
-                                 stateClass,
-                                 isInteractive && "hover:scale-[1.02] active:scale-[0.98]"
-                              )}
-                           >
-                              {opt}
-                           </button>
-                        );
-                     })}
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {options.map((opt, i) => {
+                           const isSelected = false; // Could track selected for styling
+                           let stateClass = "border-outline hover:border-accent bg-panel-2";
+
+                           if (feedback.type === 'correct' && currentCard.term.includes(opt)) {
+                              stateClass = "border-green bg-green/10 text-green";
+                           } else if (feedback.type === 'incorrect' && currentCard.term.includes(opt)) {
+                              stateClass = "border-green bg-green/10 text-green"; // Show correct answer
+                           } else if (feedback.type !== 'idle' && !currentCard.term.includes(opt)) {
+                              stateClass = "opacity-50 border-transparent bg-panel-2";
+                           }
+
+                           return (
+                              <button
+                                 key={i}
+                                 onClick={() => isInteractive && handleOptionClick(opt)}
+                                 disabled={!isInteractive || isLoadingAiOptions}
+                                 className={clsx(
+                                    "p-6 rounded-xl text-lg font-bold text-left transition-all border-2",
+                                    stateClass,
+                                    (isInteractive && !isLoadingAiOptions) && "hover:scale-[1.02] active:scale-[0.98]",
+                                    isLoadingAiOptions && "opacity-50 cursor-wait"
+                                 )}
+                              >
+                                 {opt}
+                              </button>
+                           );
+                        })}
+                     </div>
                   </div>
                ) : (
                   <div className={clsx("grid grid-cols-1 md:grid-cols-12 gap-4", isShaking && "animate-shake")}>
@@ -1772,6 +1855,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onChange={(val) => updateTermFromValue(val)}
                                  onBlur={() => setToolbarVisible(false)}
                                  onMouseUp={(e) => handleMouseUp(e, 'term')}
+                                 onContextMenu={(e) => handleContextMenu(e, 'term')}
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Enter term..."
@@ -1817,6 +1901,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onChange={(val) => handleUpdateCard(currentCard.id, { content: val })}
                                  onBlur={() => setToolbarVisible(false)}
                                  onMouseUp={(e) => handleMouseUp(e, 'def')}
+                                 onContextMenu={(e) => handleContextMenu(e, 'def')}
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Enter definition..."
@@ -1855,7 +1940,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         Save Changes
                      </button>
                   </div>
-                  <FloatingToolbar visible={toolbarVisible} position={toolbarPos} onFormat={applyFormat} />
+                  <FloatingToolbar visible={toolbarVisible} position={toolbarPos} anchor={toolbarAnchor} onFormat={applyFormat} />
                </div>
             )
          }
