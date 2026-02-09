@@ -17,7 +17,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         <Shield size={24} className="text-accent" />
                         <div>
                             <h2 className="text-xl font-bold text-text">Privacy Policy</h2>
-                            <div className="text-sm text-muted">Last updated: February 4, 2026</div>
+                            <div className="text-sm text-muted">Last updated: February 9, 2026</div>
                         </div>
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
@@ -54,16 +54,22 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                             <div>
                                 <h4 className="font-bold text-text mb-2">2.1 Information from Google OAuth</h4>
                                 <p className="text-muted leading-relaxed">
-                                    You don't have to sign in with Google for Flashcardsish to function, though signing in is required for features like image uploading. When you sign in using Google, we receive and store:
+                                    Flashcardsish does not require a Google account for core functionality. However, authenticating via Google allows for cloud synchronization and image hosting features. When you authenticate using Google, the Service accesses the following transient data for session management:
                                 </p>
                                 <ul className="list-disc pl-5 mt-2 space-y-1 text-muted">
-                                    <li>Your email address</li>
-                                    <li>Your name (as provided by Google/listed on your Google account)</li>
-                                    <li>Your profile picture URL</li>
-                                    <li>A unique user identifier</li>
+                                    <li>Email address (for account identification)</li>
+                                    <li>Full Name (as provided by the identity provider)</li>
+                                    <li>Profile Picture URL (for UI display purposes)</li>
+                                    <li>Unique User Identifier (sub)</li>
                                 </ul>
                                 <p className="text-muted leading-relaxed mt-2">
-                                    We use this information to authenticate you and manage your account. We do not use this information for any other purpose.
+                                    The Service retains this data in client-side memory and/or local storage solely for the duration of your authenticated session. We do not aggregate, sell, or permanently store this personal identifiable information (PII) on independent backend servers.
+                                </p>
+                            </div>
+                            <div>
+                                <h4 className="font-bold text-text mb-2">2.4 Developer API Credentials</h4>
+                                <p className="text-muted leading-relaxed">
+                                    Users electing to utilize "Developer API Access" features may input third-party API keys (e.g., Google AI Studio API Keys). These credentials are processed exclusively within the client-side browser environment and are transmitted directly to the respective third-party provider (Google Vertex AI/Gemini/Google AI Studio). Flashcardsish does not log, store, or transmit these keys to any first-party server.
                                 </p>
                             </div>
                             <div>
@@ -78,6 +84,9 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                     <li>Usage statistics (e.g., number of cards saved, sets created, study time)</li>
                                     <li>Application settings and preferences</li>
                                 </ul>
+                                <p className="text-muted leading-relaxed mt-3 text-sm italic">
+                                    <strong>Important Note:</strong> This data is not stored on servers owned by the Service or the owner of the Service. It is stored directly in <span className="text-accent">your personal Google Drive</span> in a dedicated folder. Flashcardsish simply acts as a tool to read, write, and organize these files for you.
+                                </p>
                             </div>
                             <div>
                                 <h4 className="font-bold text-text mb-2">2.3 Local Storage</h4>
