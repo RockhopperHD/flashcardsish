@@ -22,255 +22,145 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                     </div>
                     <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
-                    <div className="mb-6 p-4 bg-accent/10 border border-accent/20 rounded-xl">
-                        <p className="text-accent font-medium text-sm">
-                            CONSENT AND AGREEMENT: By accessing or using the Service, you signify your irrevocable acceptance of this Privacy Policy. You acknowledge that your data may be processed in accordance with this policy as well as our Terms of Service. If you do not agree to these terms, you must immediately cease all use of the Service.
-                        </p>
-                    </div>
-
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text/90">
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">1. Introduction</h3>
-                        <p className="text-muted leading-relaxed">
-                            This Privacy Policy governs the collection, processing, and retention of data by Flashcardsish ("the Service").
-                            Your interaction with the Service constitutes a binding agreement to the practices described herein.
-                            If you do not consent to these data practices, you must decline the Google OAuth request and refrain
-                            from using the Service.
-                        </p>
-                        <p className="text-muted leading-relaxed mt-3">
-                            Flashcardsish is maintained and developed by one person (regardless, Flashcardsish as an entity is referred to as "we" in this page). This Privacy Policy applies to the app Flashcardsish hosted at{' '}
-                            <a href="https://flashcardsish.owenwhelan.com" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                flashcardsish.owenwhelan.com
-                            </a>; Flashcardsish itself, however, is open source via GitHub and anyone can download and make a copy of it.
-                        </p>
-                        <p className="text-muted leading-relaxed mt-3">
-                            This Privacy Policy is subject to change. We reserve the right to update this Privacy Policy at any time, and we will notify you of any changes by posting the new Privacy Policy on this page.
-                        </p>
+                        <h3 className="text-lg font-bold text-text mb-2">1. Overview</h3>
+                        <p>Flashcardsish (“the Service”) is an experimental, open-source flashcard application created and maintained by an individual developer as a personal project. This Privacy Policy explains how data is handled when you use the Service.</p>
+                        <p className="mt-2">By using the Service, you acknowledge and agree to the data practices described in this Privacy Policy. If you do not agree, do not use the Service or authenticate with Google.</p>
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">2. Information We Collect</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <h4 className="font-bold text-text mb-2">2.1 Information from Google OAuth</h4>
-                                <p className="text-muted leading-relaxed">
-                                    Flashcardsish does not require a Google account for core functionality. However, authenticating via Google allows for cloud synchronization and image hosting features. When you authenticate using Google, the Service accesses the following transient data for session management:
-                                </p>
-                                <ul className="list-disc pl-5 mt-2 space-y-1 text-muted">
-                                    <li>Email address (for account identification)</li>
-                                    <li>Full Name (as provided by the identity provider)</li>
-                                    <li>Profile Picture URL (for UI display purposes)</li>
-                                    <li>Unique User Identifier (sub)</li>
-                                </ul>
-                                <p className="text-muted leading-relaxed mt-2">
-                                    The Service retains this data in client-side memory and/or local storage solely for the duration of your authenticated session. We do not aggregate, sell, or permanently store this personal identifiable information (PII) on independent backend servers.
-                                </p>
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-text mb-2">2.4 Developer API Credentials</h4>
-                                <p className="text-muted leading-relaxed">
-                                    Users electing to utilize "Developer API Access" features may input third-party API keys (e.g., Google AI Studio API Keys). These credentials are processed exclusively within the client-side browser environment and are transmitted directly to the respective third-party provider (Google Vertex AI/Gemini/Google AI Studio). Flashcardsish does not log, store, or transmit these keys to any first-party server.
-                                </p>
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-text mb-2">2.2 User-Generated Content & Usage Stats</h4>
-                                <p className="text-muted leading-relaxed">
-                                    We store data you create and generate within the application, including:
-                                </p>
-                                <ul className="list-disc pl-5 mt-2 space-y-1 text-muted">
-                                    <li>Flashcard sets (terms, definitions, images)</li>
-                                    <li>Folders and organizational data</li>
-                                    <li>Study progress, mastery levels, and lifetime correct answer counts</li>
-                                    <li>Usage statistics (e.g., number of cards saved, sets created, study time)</li>
-                                    <li>Application settings and preferences</li>
-                                </ul>
-                                <p className="text-muted leading-relaxed mt-3 text-sm italic">
-                                    <strong>Important Note:</strong> This data is not stored on servers owned by the Service or the owner of the Service. It is stored directly in <span className="text-accent">your personal Google Drive</span> in a dedicated folder. Flashcardsish simply acts as a tool to read, write, and organize these files for you.
-                                </p>
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-text mb-2">2.3 Local Storage</h4>
-                                <p className="text-muted leading-relaxed">
-                                    We use browser local storage and IndexedDB to store your data locally on your device
-                                    for offline access and improved performance. This data remains on your device unless
-                                    you are signed in, in which case it syncs with your Google Drive. In simple terms: if you don't sign in, we store your data on your device; otherwise, we use what we have stored online.
-                                </p>
-                            </div>
-                        </div>
+                        <h3 className="text-lg font-bold text-text mb-2">2. Who We Are</h3>
+                        <p>Flashcardsish is developed and operated by an individual, not a company or legal entity. References to “we,” “us,” or “our” in this document refer solely to the individual developer.</p>
+                        <p className="mt-2">The Service is hosted at: <strong>flashcardsish.owenwhelan.com</strong></p>
+                        <p>The source code is publicly available and open source.</p>
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">3. How We Use Your Information</h3>
-                        <p className="text-muted leading-relaxed mb-2">
-                            We use the information we collect to:
-                        </p>
-                        <ul className="list-disc pl-5 space-y-1 text-muted">
-                            <li>Enable cloud synchronization of your flashcard data across devices (saving your sets online)</li>
-                            <li>Host your uploaded images securely</li>
-                            <li>Authenticate your identity and manage your account (making sure only you can access your data if you keep your account safe and treat it as intended)</li>
-                        </ul>
-                    </section>
+                        <h3 className="text-lg font-bold text-text mb-2">3. Data We Collect</h3>
 
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">4. Third-Party Services</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <h4 className="font-bold text-text mb-2">4.1 Google Drive Storage</h4>
-                                <p className="text-muted leading-relaxed">
-                                    We currently utilize your personal Google Drive for data storage. Flashcardsish creates
-                                    a scoped directory within your Drive to store flashcard resources.
-                                    <strong className="text-text"> RESERVATION OF ARCHITECTURAL RIGHTS:</strong> We reserve the right
-                                    to migrate user data to proprietary servers, centralized databases, or alternative
-                                    cloud providers at any time to improve Service functionality. By using the Service,
-                                    you consent to such future data migrations.
-                                    Your data remains subject to Google's own{' '}
-                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                        Privacy Policy
-                                    </a> while residing on their infrastructure.
-                                </p>
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-text mb-2">4.2 Google OAuth</h4>
-                                <p className="text-muted leading-relaxed">
-                                    We use Google's OAuth service for authentication. Google's privacy policy applies to any
-                                    data processed by Google during the authentication process. You can review it at{' '}
-                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                                        policies.google.com/privacy
-                                    </a>.
-                                </p>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">5. Data Security</h3>
-                        <p className="text-muted leading-relaxed">
-                            We implement appropriate technical and organizational security measures to protect your personal
-                            information. However, no method of transmission over the Internet or electronic storage is 100%
-                            secure. While we strive to protect your personal information, we cannot guarantee its absolute security.
-                        </p>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">6. Data Retention</h3>
-                        <p className="text-muted leading-relaxed">
-                            We retain your personal information for as long as your account is active or as needed to provide
-                            you services. You may delete your account and associated data at any time using the "Delete All My Data"
-                            button in Settings (top right corner on the home screen).
-                        </p>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">7. Your Rights</h3>
-                        <p className="text-muted leading-relaxed mb-2">
-                            Depending on your location, you may have the following rights:
-                        </p>
-                        <ul className="list-disc pl-5 space-y-1 text-muted">
-                            <li><strong>Access:</strong> Request a copy of the personal data we hold about you</li>
-                            <li><strong>Rectification:</strong> Request correction of inaccurate personal data</li>
-                            <li><strong>Deletion:</strong> Request deletion of your personal data</li>
-                            <li><strong>Data Portability:</strong> Request your data in a machine-readable format</li>
-                            <li><strong>Withdraw Consent:</strong> Withdraw consent where processing is based on consent</li>
-                        </ul>
-                        <p className="text-muted leading-relaxed mt-2">
-                            To exercise these rights, go to Settings where you can:
-                        </p>
-                        <ul className="list-disc pl-5 mt-2 space-y-1 text-muted">
-                            <li><strong>Export your data:</strong> Use "Export All My Data" to download a JSON file containing all your flashcard sets, folders, and settings</li>
-                            <li><strong>Delete your data:</strong> Use "Delete All My Data" to permanently remove all data from your device and our cloud servers</li>
-                        </ul>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">8. Children's Privacy</h3>
-                        <div className="space-y-3 text-muted leading-relaxed">
-                            <p>
-                                <strong className="text-text">8.1</strong> Flashcardsish is not intended for children under 13 years
-                                of age. We do not knowingly collect personal information from children under 13.
-                            </p>
-                            <p>
-                                <strong className="text-text">8.2</strong> If we discover that we have inadvertently collected
-                                personal information from a child under 13, we will promptly delete such information from our systems.
-                            </p>
-                            <p>
-                                <strong className="text-text">8.3</strong> If you are a parent or guardian and believe your child
-                                has provided personal information to us, please contact us at{' '}
-                                <a href="mailto:owenw2023@gmail.com" className="text-accent hover:underline">owenw2023@gmail.com</a>{' '}
-                                and we will take steps to delete the information.
-                            </p>
-                            <p>
-                                <strong className="text-text">8.4</strong> We comply with applicable children's privacy laws,
-                                including the Children's Online Privacy Protection Act (COPPA) where applicable.
-                            </p>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">9. Open Source</h3>
-                        <p className="text-muted leading-relaxed">
-                            Flashcardsish is open-source software. You can review our source code to understand exactly how
-                            we handle your data. The code is available on our public repository.
-                        </p>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">10. Changes to This Policy</h3>
-                        <p className="text-muted leading-relaxed">
-                            We may update this Privacy Policy from time to time. We will notify you of any changes by updating
-                            the "Last updated" date at the top of this policy. You are advised to review this Privacy Policy
-                            periodically for any changes.
-                        </p>
-                    </section>
-
-                    <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">11. Experimental Status and Liability</h3>
-                        <div className="p-4 bg-yellow/10 rounded-xl border border-yellow/30 mb-3">
-                            <p className="text-muted leading-relaxed">
-                                <strong className="text-yellow">⚠️ NO WARRANTY OF CONTINUITY:</strong> Flashcardsish is an
-                                experimental development project. We provide no guarantees regarding software stability,
-                                data persistence, or uptime.
-                            </p>
-                        </div>
-                        <div className="space-y-3 text-muted leading-relaxed">
-                            <p>
-                                Your data may be deleted under the following circumstances:
-                            </p>
-                            <ul className="list-disc pl-5 space-y-1">
-                                <li>Infrastructure migrations or technological obsolescence</li>
-                                <li>Service suspension or decommissioning</li>
-                                <li>Failure of upstream third-party dependencies</li>
-                                <li>Security remediation or data integrity enforcement</li>
-                                <li>As determined by our absolute discretion to ensure Service sustainability</li>
+                        <div className="mb-4">
+                            <h4 className="font-bold mb-1">3.1 Google Authentication Data</h4>
+                            <p>If you choose to sign in with Google, Google provides the following information to the Service:</p>
+                            <ul className="list-disc pl-5 my-2 space-y-1">
+                                <li>Email address</li>
+                                <li>Display name</li>
+                                <li>Profile image URL</li>
+                                <li>A unique Google account identifier (“sub”)</li>
                             </ul>
-                            <p>
-                                <strong className="text-text">LIMITATION OF LIABILITY:</strong> Under no circumstances shall
-                                Flashcardsish or its developers be liable for the loss of user-generated content, metadata,
-                                or study statistics. Users are solely responsible for data redundancy via the "Export" feature.
-                            </p>
-                            <p>
-                                We will make reasonable efforts to notify users before planned deletions when feasible,
-                                but this cannot be guaranteed. <strong className="text-text">You are strongly encouraged to regularly
-                                    export your data</strong> using the "Export All My Data" feature in Settings or download .flashcards files
-                                from the List Builder screen.
-                            </p>
+                            <p>This information is used only to authenticate you and associate your local or Google Drive data with your session. <strong>We do not store this information on our own servers.</strong> Session-related data may be stored temporarily in your browser’s memory or local storage while you are signed in.</p>
+                        </div>
+
+                        <div className="mb-4">
+                            <h4 className="font-bold mb-1">3.2 User-Generated Content</h4>
+                            <p>The Service stores content you create, including:</p>
+                            <ul className="list-disc pl-5 my-2 space-y-1">
+                                <li>Flashcard sets, terms, definitions, and images</li>
+                                <li>Folder and organizational data</li>
+                                <li>Study progress and statistics</li>
+                                <li>Application settings and preferences</li>
+                            </ul>
+                            <p className="mt-2"><strong>Important:</strong> This data is stored either:</p>
+                            <ul className="list-decimal pl-5 my-1 space-y-1">
+                                <li>Locally in your browser (localStorage / IndexedDB), or</li>
+                                <li>In your personal Google Drive, inside a Flashcardsish-specific folder</li>
+                            </ul>
+                            <p className="mt-2">Flashcardsish does not operate its own backend database and does not store your flashcard content on developer-owned servers.</p>
+                        </div>
+
+                        <div className="mb-4">
+                            <h4 className="font-bold mb-1">3.3 Google Drive Access</h4>
+                            <p>When enabled, the Service accesses Google Drive using the specific scope: <strong>drive.file</strong>.</p>
+                            <p>This means the Service can <strong>only</strong> access files that it has created itself. It cannot see, read, or modify any other files in your Google Drive (such as your personal photos, documents, or files created by other apps).</p>
+                        </div>
+
+                        <div className="mb-4">
+                            <h4 className="font-bold mb-1">3.4 Developer API Keys (Optional Features)</h4>
+                            <p>Some optional features allow you to supply your own third-party API keys (for example, Google AI Studio or similar services).</p>
+                            <ul className="list-disc pl-5 my-2 space-y-1">
+                                <li>API keys are entered by you</li>
+                                <li>They are processed only within your browser</li>
+                                <li>They are sent directly to the third-party provider</li>
+                                <li>Flashcardsish does not log, store, or transmit these keys to any first-party server</li>
+                            </ul>
+                            <p>You are solely responsible for how you use third-party APIs and for complying with their terms.</p>
+                        </div>
+
+                        <div>
+                            <h4 className="font-bold mb-1">3.5 Local Storage</h4>
+                            <p>The Service uses browser local storage and IndexedDB to support offline access and performance. This data remains on your device unless you enable Google Drive synchronization.</p>
                         </div>
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-accent mb-3">12. Contact Us</h3>
-                        <p className="text-muted leading-relaxed">
-                            If you have any questions about this Privacy Policy or our data practices, you can reach us at:
-                        </p>
-                        <p className="mt-2">
-                            <a href="mailto:owenw2023@gmail.com" className="text-accent hover:underline font-bold">
-                                owenw2023@gmail.com
-                            </a>
-                        </p>
-                        <p className="text-muted leading-relaxed mt-2">
-                            You can also open an issue on our GitHub repository.
-                        </p>
+                        <h3 className="text-lg font-bold text-text mb-2">4. How We Use Data</h3>
+                        <p>Data is used only to:</p>
+                        <ul className="list-disc pl-5 my-2 space-y-1">
+                            <li>Provide flashcard functionality</li>
+                            <li>Synchronize your data across devices</li>
+                            <li>Display your content within the app</li>
+                            <li>Authenticate your session</li>
+                        </ul>
+                        <p>We do not sell data, run ads, or perform analytics tracking.</p>
+                        <p className="mt-2">We do not track users across third-party websites and therefore do not respond to Do Not Track (DNT) signals.</p>
                     </section>
 
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">5. Legal Basis for Processing (EEA / UK Users)</h3>
+                        <p>For users in the EU or UK, data processing is based on:</p>
+                        <ul className="list-disc pl-5 my-2 space-y-1">
+                            <li><strong>Consent</strong>, when you choose to sign in with Google or enable synchronization</li>
+                            <li><strong>Legitimate interest</strong>, to operate a personal educational tool you voluntarily use</li>
+                        </ul>
+                        <p>You may withdraw consent at any time by stopping use of the Service and deleting your data.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">6. Data Deletion</h3>
+                        <p>You may delete your data at any time using the “Delete All My Data” option in Settings. This action:</p>
+                        <ul className="list-disc pl-5 my-2 space-y-1">
+                            <li>Deletes Flashcardsish files stored in your Google Drive folder</li>
+                            <li>Deletes local browser data related to the Service</li>
+                            <li>Removes the Flashcardsish folder if it becomes empty</li>
+                        </ul>
+                        <p>You may also manually delete the Flashcardsish folder from Google Drive at any time.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">7. Data Retention</h3>
+                        <p>We retain no copies of your content outside your device or your Google Drive. If you stop using the Service, your data remains wherever you stored it until you delete it.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">8. Security</h3>
+                        <p>Reasonable technical measures are used to reduce risk, but no software system is completely secure. You acknowledge that you use the Service at your own risk.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">9. Third-Party Services</h3>
+                        <p>The Service relies on Google services, including Google OAuth and Google Drive. Your use of those services is governed by Google’s own policies. Flashcardsish is not responsible for Google service outages, Google data breaches, Google account issues, or changes to Google APIs or terms.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">10. Children’s Privacy</h3>
+                        <p>The Service is intended for users 16 years and older. AI-related features require users to be 18 years or older.</p>
+                        <p className="mt-2">We do not knowingly collect personal information from children under 16. If such data is discovered, it will be deleted.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">11. Experimental & Open-Source Notice</h3>
+                        <p>Flashcardsish is an experimental, open-source project provided for personal and educational use. Features may change or stop working at any time. <strong>You are strongly encouraged to export your data regularly.</strong></p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">12. Changes to This Policy</h3>
+                        <p>This Privacy Policy may be updated from time to time. Updates will be posted on this page with a revised “Last updated” date.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="text-lg font-bold text-text mb-2">13. Contact</h3>
+                        <p>Questions or requests may be sent to: <strong>owenw2023@gmail.com</strong></p>
+                    </section>
                 </div>
             </div>
         </div>
