@@ -25,13 +25,13 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text/90">
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Overview</h3>
-                        <p>Flashcardsish (“the Service”) is an experimental, open-source flashcard application created and maintained by an individual developer as a personal project. This Privacy Policy explains how data is handled when you use the Service.</p>
+                        <p>Flashcardsish ("the Service") is an experimental, open-source flashcard application created and maintained by an individual developer as a personal project. This Privacy Policy explains how data is handled when you use the Service.</p>
                         <p className="mt-2">By using the Service, you acknowledge and agree to the data practices described in this Privacy Policy. If you do not agree, do not use the Service or authenticate with Google.</p>
                     </section>
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">2. Who We Are</h3>
-                        <p>Flashcardsish is developed and operated by an individual, not a company or legal entity. References to “we,” “us,” or “our” in this document refer solely to the individual developer.</p>
+                        <p>Flashcardsish is developed and operated by an individual, not a company or legal entity. References to "we," "us," or "our" in this document refer solely to the individual developer.</p>
                         <p className="mt-2">The Service is hosted at: <strong>flashcardsish.owenwhelan.com</strong></p>
                         <p>The source code is publicly available and open source.</p>
                     </section>
@@ -46,9 +46,9 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 <li>Email address</li>
                                 <li>Display name</li>
                                 <li>Profile image URL</li>
-                                <li>A unique Google account identifier (“sub”)</li>
+                                <li>A unique Google account identifier ("sub")</li>
                             </ul>
-                            <p>This information is used only to authenticate you and associate your local or Google Drive data with your session. <strong>We do not store this information on our own servers.</strong> Session-related data may be stored temporarily in your browser’s memory or local storage while you are signed in.</p>
+                            <p>This information is used only to authenticate you and associate your local or Google Drive data with your session. <strong>We do not store this information on our own servers.</strong> Session-related data may be stored temporarily in your browser's memory or local storage while you are signed in.</p>
                         </div>
 
                         <div className="mb-4">
@@ -117,7 +117,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">6. Data Deletion</h3>
-                        <p>You may delete your data at any time using the “Delete All My Data” option in Settings. This action:</p>
+                        <p>You may delete your data at any time using the "Delete All My Data" option in Settings. This action:</p>
                         <ul className="list-disc pl-5 my-2 space-y-1">
                             <li>Deletes Flashcardsish files stored in your Google Drive folder</li>
                             <li>Deletes local browser data related to the Service</li>
@@ -138,11 +138,11 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">9. Third-Party Services</h3>
-                        <p>The Service relies on Google services, including Google OAuth and Google Drive. Your use of those services is governed by Google’s own policies. Flashcardsish is not responsible for Google service outages, Google data breaches, Google account issues, or changes to Google APIs or terms.</p>
+                        <p>The Service relies on Google services, including Google OAuth and Google Drive. Your use of those services is governed by Google's own policies. Flashcardsish is not responsible for Google service outages, Google data breaches, Google account issues, or changes to Google APIs or terms.</p>
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-text mb-2">10. Children’s Privacy</h3>
+                        <h3 className="text-lg font-bold text-text mb-2">10. Children's Privacy</h3>
                         <p>The Service is intended for users 16 years and older. AI-related features require users to be 18 years or older.</p>
                         <p className="mt-2">We do not knowingly collect personal information from children under 16. If such data is discovered, it will be deleted.</p>
                     </section>
@@ -154,7 +154,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">12. Changes to This Policy</h3>
-                        <p>This Privacy Policy may be updated from time to time. Updates will be posted on this page with a revised “Last updated” date.</p>
+                        <p>This Privacy Policy may be updated from time to time. Updates will be posted on this page with a revised "Last updated" date.</p>
                     </section>
 
                     <section>

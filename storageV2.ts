@@ -13,7 +13,7 @@
  * - Auto-discovery: Orphaned files are automatically recovered
  */
 
-import { get, set, del } from 'idb-keyval';
+import { get, set, del, keys } from 'idb-keyval';
 import { CardSet, Card, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 
@@ -84,6 +84,9 @@ export interface FlashcardFile {
     id: string;
     name: string;
     cards: Card[];
+    customFieldNames?: string[]; // Legacy V1 field names
+    tags?: string[]; // Set-level tag IDs
+    sourceId?: string; // Link to original library set
     termLabel?: string;
     definitionLabel?: string;
     termSideFields?: any[];
@@ -249,10 +252,13 @@ const isValidCard = (card: any): card is Card => {
  * Convert a CardSet to FlashcardFile format
  */
 const setToFile = (set: CardSet): FlashcardFile => ({
-    version: CURRENT_VERSION,
+    version: set.version || CURRENT_VERSION,
     id: set.id,
     name: set.name,
     cards: set.cards,
+    customFieldNames: set.customFieldNames,
+    tags: set.tags,
+    sourceId: set.sourceId,
     termLabel: set.termLabel,
     definitionLabel: set.definitionLabel,
     termSideFields: set.termSideFields,
@@ -266,24 +272,96 @@ const setToFile = (set: CardSet): FlashcardFile => ({
 });
 
 /**
+ * Fix mojibake / encoding-corrupted Unicode characters in a string.
+ * Smart quotes, apostrophes, em/en dashes etc. that were double- or
+ * triple-encoded as UTF-8 to Latin-1 produce garbled sequences.
+ * This replaces all known patterns with their ASCII equivalents.
+ */
+const MOJIBAKE_REPLACEMENTS: [RegExp, string][] = [
+    // Triple/quadruple-encoded patterns (fix widest first)
+    [/(?:\u00c3\u0082|\u00c3\u00a2|\u00c3\u0083)+(?:\u00c2\u00a2)?(?:\u00c3\u0082|\u00c3\u00a2|\u00c3\u0083)*(?:\u00c2[\u0080-\u009c])+/g, '"'],
+    // Double-encoded left double quote
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u009c/g, '"'],
+    // Double-encoded right double quote
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u009d/g, '"'],
+    // Double-encoded left single quote
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u0098/g, "'"],
+    // Double-encoded right single quote / apostrophe
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u0099/g, "'"],
+    // Double-encoded em dash
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u0094/g, '-'],
+    // Double-encoded en dash
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u0093/g, '-'],
+    // Double-encoded ellipsis
+    [/\u00c3\u00a2\u00c2\u0080\u00c2\u00a6/g, '...'],
+    // Single-pass Unicode smart chars to ASCII
+    [/\u201c/g, '"'],
+    [/\u201d/g, '"'],
+    [/\u2018/g, "'"],
+    [/\u2019/g, "'"],
+    [/\u2014/g, '-'],
+    [/\u2013/g, '-'],
+    [/\u2026/g, '...'],
+    // Catch remaining double-encoding debris
+    [/(?:\u00c3[\u0080-\u00bf]\u00c2[\u0080-\u00bf])+/g, ''],
+];
+
+function fixMojibake(str: string): string {
+    let result = str;
+    for (const [pattern, replacement] of MOJIBAKE_REPLACEMENTS) {
+        result = result.replace(pattern, replacement);
+    }
+    return result;
+}
+
+/**
+ * Recursively sanitize all string values in a data structure to fix
+ * encoding corruption (mojibake). Works on strings, arrays, and objects.
+ */
+export function sanitizeStrings<T>(data: T): T {
+    if (typeof data === 'string') {
+        return fixMojibake(data) as unknown as T;
+    }
+    if (Array.isArray(data)) {
+        return data.map(item => sanitizeStrings(item)) as unknown as T;
+    }
+    if (data !== null && typeof data === 'object') {
+        const result: any = {};
+        for (const key of Object.keys(data as any)) {
+            result[key] = sanitizeStrings((data as any)[key]);
+        }
+        return result as T;
+    }
+    return data;
+}
+
+/**
  * Convert a FlashcardFile to CardSet format
  */
-const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => ({
-    id: file.id,
-    name: file.name,
-    cards: file.cards,
-    termLabel: file.termLabel,
-    definitionLabel: file.definitionLabel,
-    termSideFields: file.termSideFields,
-    defSideFields: file.defSideFields,
-    enableTermCards: file.enableTermCards,
-    lastPlayed: file.lastPlayed,
-    elapsedTime: file.elapsedTime,
-    topStreak: file.topStreak,
-    isSessionActive: file.isSessionActive,
-    isMultistudy: file.isMultistudy,
-    folderId
-});
+const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
+    // Sanitize all string content to fix encoding corruption
+    const cleanFile = sanitizeStrings(file);
+    return {
+        id: cleanFile.id,
+        name: cleanFile.name,
+        cards: cleanFile.cards,
+        customFieldNames: cleanFile.customFieldNames,
+        tags: cleanFile.tags,
+        sourceId: cleanFile.sourceId,
+        version: cleanFile.version,
+        termLabel: cleanFile.termLabel,
+        definitionLabel: cleanFile.definitionLabel,
+        termSideFields: cleanFile.termSideFields,
+        defSideFields: cleanFile.defSideFields,
+        enableTermCards: cleanFile.enableTermCards,
+        lastPlayed: cleanFile.lastPlayed,
+        elapsedTime: cleanFile.elapsedTime,
+        topStreak: cleanFile.topStreak,
+        isSessionActive: cleanFile.isSessionActive,
+        isMultistudy: cleanFile.isMultistudy,
+        folderId
+    };
+};
 
 /**
  * Extract metadata from a set without loading full cards
@@ -335,19 +413,44 @@ const ensureSessionsFolder = async (parentFolderId: string): Promise<string> => 
 // ============================================================================
 
 /**
- * Read config.json from Google Drive
+ * Invalidate all local caches so next read goes to Google Drive.
+ * Call this before cloud sync to ensure fresh data.
  */
-export const readConfig = async (): Promise<{ config: ConfigFile; wasCorrupted: boolean }> => {
+export const invalidateLocalCaches = async (): Promise<void> => {
+    console.log('[StorageV2] Invalidating all local caches');
+    localStorage.removeItem(CONFIG_CACHE_KEY);
+    localStorage.removeItem(STRUCTURE_CACHE_KEY);
+
+    // Clear IndexedDB set caches
+    try {
+        const allKeys = await keys();
+        for (const key of allKeys) {
+            if (typeof key === 'string' && key.startsWith(SET_CACHE_PREFIX)) {
+                await del(key);
+            }
+        }
+    } catch (e) {
+        console.warn('[StorageV2] Failed to clear IndexedDB caches:', e);
+    }
+};
+
+/**
+ * Read config.json from Google Drive
+ * @param forceCloud - If true, skip local cache and read directly from Google Drive
+ */
+export const readConfig = async (forceCloud = false): Promise<{ config: ConfigFile; wasCorrupted: boolean }> => {
     const user = await getUser();
 
-    // Try local cache first
-    const cached = localStorage.getItem(CONFIG_CACHE_KEY);
-    if (cached) {
-        const { data, hadError } = safeParseJSON<ConfigFile>(cached, createDefaultConfig());
-        if (!hadError) {
-            // Merge with defaults to add any new settings
-            data.settings = deepMerge(DEFAULT_SETTINGS, data.settings);
-            return { config: data, wasCorrupted: false };
+    // Try local cache first (unless forceCloud is set)
+    if (!forceCloud) {
+        const cached = localStorage.getItem(CONFIG_CACHE_KEY);
+        if (cached) {
+            const { data, hadError } = safeParseJSON<ConfigFile>(cached, createDefaultConfig());
+            if (!hadError) {
+                // Merge with defaults to add any new settings
+                data.settings = deepMerge(DEFAULT_SETTINGS, data.settings);
+                return { config: data, wasCorrupted: false };
+            }
         }
     }
 
@@ -356,6 +459,7 @@ export const readConfig = async (): Promise<{ config: ConfigFile; wasCorrupted: 
     }
 
     try {
+        console.log('[StorageV2] Reading config from Google Drive (forceCloud:', forceCloud, ')');
         const folderId = await ensureDriveFolder();
         const content = await googleDrive.readFile(folderId, 'config.json');
 
@@ -440,16 +544,19 @@ export const updateLastUsedSets = async (setId: string): Promise<void> => {
 
 /**
  * Read structure.json from Google Drive
+ * @param forceCloud - If true, skip local cache and read directly from Google Drive
  */
-export const readStructure = async (): Promise<{ structure: StructureFile; wasCorrupted: boolean }> => {
+export const readStructure = async (forceCloud = false): Promise<{ structure: StructureFile; wasCorrupted: boolean }> => {
     const user = await getUser();
 
-    // Try local cache first
-    const cached = localStorage.getItem(STRUCTURE_CACHE_KEY);
-    if (cached) {
-        const { data, hadError } = safeParseJSON<StructureFile>(cached, createDefaultStructure());
-        if (!hadError) {
-            return { structure: data, wasCorrupted: false };
+    // Try local cache first (unless forceCloud is set)
+    if (!forceCloud) {
+        const cached = localStorage.getItem(STRUCTURE_CACHE_KEY);
+        if (cached) {
+            const { data, hadError } = safeParseJSON<StructureFile>(cached, createDefaultStructure());
+            if (!hadError) {
+                return { structure: data, wasCorrupted: false };
+            }
         }
     }
 
@@ -458,6 +565,7 @@ export const readStructure = async (): Promise<{ structure: StructureFile; wasCo
     }
 
     try {
+        console.log('[StorageV2] Reading structure from Google Drive (forceCloud:', forceCloud, ')');
         const folderId = await ensureDriveFolder();
         const content = await googleDrive.readFile(folderId, 'structure.json');
 
@@ -579,8 +687,9 @@ export const updateTags = async (tags: Tag[]): Promise<void> => {
 
 /**
  * Read a single flashcard set file
+ * @param forceCloud - If true, skip local cache and read directly from Google Drive
  */
-export const readFlashcardSet = async (setId: string): Promise<{
+export const readFlashcardSet = async (setId: string, forceCloud = false): Promise<{
     set: CardSet | null;
     wasCorrupted: boolean;
     recoveredCards?: number;
@@ -588,10 +697,12 @@ export const readFlashcardSet = async (setId: string): Promise<{
 }> => {
     const user = await getUser();
 
-    // Try local cache first
-    const cached = await get<CardSet>(`${SET_CACHE_PREFIX}${setId}`);
-    if (cached) {
-        return { set: cached, wasCorrupted: false };
+    // Try local cache first (unless forceCloud is set)
+    if (!forceCloud) {
+        const cached = await get<CardSet>(`${SET_CACHE_PREFIX}${setId}`);
+        if (cached) {
+            return { set: cached, wasCorrupted: false };
+        }
     }
 
     if (!user) {
@@ -641,7 +752,7 @@ export const readFlashcardSet = async (setId: string): Promise<{
             return { set: null, wasCorrupted: true, recoveredCards: 0, totalCards: total };
         }
 
-        // Find folder for this set
+        // Find folder for this set (use cache for structure here — folder assignment is local concern)
         const { structure } = await readStructure();
         let fId: string | undefined;
         for (const folder of structure.folders) {
@@ -914,8 +1025,9 @@ export const migrateFromV1 = async (): Promise<{ success: boolean; error?: strin
 
 /**
  * Load all data on app boot (config, structure, and last 3 used sets)
+ * @param forceCloud - If true, bypass all local caches and read directly from Google Drive
  */
-export const loadBootData = async (): Promise<{
+export const loadBootData = async (forceCloud = true): Promise<{
     settings: Settings;
     folders: Folder[];
     badges: any[];
@@ -927,8 +1039,10 @@ export const loadBootData = async (): Promise<{
 }> => {
     const corruptions: CorruptionReport[] = [];
 
-    // Load config
-    const { config, wasCorrupted: configCorrupted } = await readConfig();
+    console.log('[StorageV2] Loading boot data (forceCloud:', forceCloud, ')');
+
+    // Load config (from cloud when forceCloud is true)
+    const { config, wasCorrupted: configCorrupted } = await readConfig(forceCloud);
     if (configCorrupted) {
         corruptions.push({
             type: 'config',
@@ -937,8 +1051,8 @@ export const loadBootData = async (): Promise<{
         });
     }
 
-    // Load structure
-    const { structure, wasCorrupted: structureCorrupted } = await readStructure();
+    // Load structure (from cloud when forceCloud is true)
+    const { structure, wasCorrupted: structureCorrupted } = await readStructure(forceCloud);
     if (structureCorrupted) {
         corruptions.push({
             type: 'structure',
@@ -947,10 +1061,10 @@ export const loadBootData = async (): Promise<{
         });
     }
 
-    // Preload last 3 used sets
+    // Preload last 3 used sets (from cloud when forceCloud is true)
     const preloadedSets: CardSet[] = [];
     for (const setId of config.lastUsedSets.slice(0, 3)) {
-        const { set, wasCorrupted, recoveredCards, totalCards } = await readFlashcardSet(setId);
+        const { set, wasCorrupted, recoveredCards, totalCards } = await readFlashcardSet(setId, forceCloud);
         if (set) {
             preloadedSets.push(set);
         }

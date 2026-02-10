@@ -14,6 +14,10 @@ const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
 // Need both Drive access and user info access
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
+const TOKEN_KEY = 'flashcardsish-google-token';
+const USER_KEY = 'flashcardsish-google-user';
+const TOKEN_EXPIRY_KEY = 'flashcardsish-google-token-expiry';
+
 export interface GoogleDriveUser {
     id: string;
     email: string;
@@ -30,19 +34,58 @@ class GoogleDriveClient {
     private currentUser: GoogleDriveUser | null = null;
 
     async init(): Promise<void> {
+        if (this.gapiInitialized && this.gisInitialized) return;
+
         console.log('[GoogleDrive] Starting initialization...');
-        console.log('[GoogleDrive] CLIENT_ID:', CLIENT_ID);
-        console.log('[GoogleDrive] API_KEY:', API_KEY ? 'Present' : 'Missing');
+        
+        // 1. Try to restore session from localStorage first
+        this.restoreSession();
 
         await this.initGapi();
         await this.initGis();
 
+        // 2. If we restored a token, verify it and set up GAPI
+        if (this.accessToken) {
+            this.setAuthToken();
+            await this.fetchUserInfo();
+        }
+
         console.log('[GoogleDrive] ✅ Initialization complete');
+    }
+
+    private restoreSession(): void {
+        const token = localStorage.getItem(TOKEN_KEY);
+        const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
+        const userJson = localStorage.getItem(USER_KEY);
+
+        if (token && expiry) {
+            const now = Date.now();
+            if (now < parseInt(expiry)) {
+                this.accessToken = token;
+                console.log('[GoogleDrive] Restored token from storage');
+                
+                if (userJson) {
+                    try {
+                        this.currentUser = JSON.parse(userJson);
+                        // Trigger callbacks early for smoother UI transition
+                        this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
+                    } catch (e) {}
+                }
+            } else {
+                console.log('[GoogleDrive] Stored token expired');
+                this.clearStorage();
+            }
+        }
+    }
+
+    private clearStorage(): void {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_EXPIRY_KEY);
+        localStorage.removeItem(USER_KEY);
     }
 
     private async initGapi(): Promise<void> {
         if (this.gapiInitialized) {
-            console.log('[GoogleDrive] GAPI already initialized');
             return;
         }
 
@@ -54,7 +97,6 @@ class GoogleDriveClient {
                 return;
             }
 
-            console.log('[GoogleDrive] Loading GAPI client...');
             window.gapi.load('client', async () => {
                 try {
                     await window.gapi.client.init({
@@ -74,7 +116,6 @@ class GoogleDriveClient {
 
     private async initGis(): Promise<void> {
         if (this.gisInitialized) {
-            console.log('[GoogleDrive] GIS already initialized');
             return;
         }
 
@@ -86,7 +127,6 @@ class GoogleDriveClient {
                 return;
             }
 
-            console.log('[GoogleDrive] Initializing GIS token client...');
             this.tokenClient = window.google.accounts.oauth2.initTokenClient({
                 client_id: CLIENT_ID,
                 scope: SCOPES,
@@ -97,6 +137,12 @@ class GoogleDriveClient {
                         return;
                     }
                     this.accessToken = response.access_token;
+                    
+                    // Save to storage with expiry (response.expires_in is in seconds)
+                    localStorage.setItem(TOKEN_KEY, this.accessToken!);
+                    const expiryTime = Date.now() + (response.expires_in * 1000) - (60 * 1000); // 1 minute buffer
+                    localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+
                     console.log('[GoogleDrive] ✅ Access token obtained');
                     this.setAuthToken();
                     this.fetchUserInfo();
@@ -118,12 +164,10 @@ class GoogleDriveClient {
 
     private async fetchUserInfo(): Promise<void> {
         if (!this.accessToken) {
-            console.warn('[GoogleDrive] ⚠️ No access token available for user info');
             return;
         }
 
         try {
-            console.log('[GoogleDrive] Fetching user info...');
             // Use the OAuth2 API to get user info
             const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
                 headers: { Authorization: `Bearer ${this.accessToken}` },
@@ -137,15 +181,20 @@ class GoogleDriveClient {
                     name: data.name,
                     picture: data.picture,
                 };
+                
+                // Save user info to persistence
+                localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser));
+                
                 console.log('[GoogleDrive] ✅ User info fetched:', this.currentUser.email);
                 this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
             } else {
-                const errorText = await response.text();
-                console.error('[GoogleDrive] ❌ User info fetch failed:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    error: errorText
-                });
+                if (response.status === 401) {
+                    console.warn('[GoogleDrive] ⚠️ Token invalid or expired, clearing session');
+                    this.signOut();
+                } else {
+                    const errorText = await response.text();
+                    console.error('[GoogleDrive] ❌ User info fetch failed:', errorText);
+                }
             }
         } catch (error) {
             console.error('[GoogleDrive] ❌ Failed to fetch user info:', error);
@@ -175,9 +224,6 @@ class GoogleDriveClient {
                 }
             };
 
-            console.log('[GoogleDrive] Requesting access token...');
-            // Use 'select_account' to allow switching between Google accounts
-            // Use '' (empty) for subsequent logins to use the last account
             this.tokenClient.requestAccessToken({ prompt: 'select_account' });
         });
     }
@@ -186,14 +232,21 @@ class GoogleDriveClient {
         console.log('[GoogleDrive] Sign-out requested...');
 
         if (this.accessToken) {
-            window.google.accounts.oauth2.revoke(this.accessToken, () => {
-                console.log('[GoogleDrive] ✅ Token revoked');
-            });
+            try {
+                window.google.accounts.oauth2.revoke(this.accessToken, () => {
+                    console.log('[GoogleDrive] ✅ Token revoked');
+                });
+            } catch (e) {}
         }
 
         this.accessToken = null;
         this.currentUser = null;
-        window.gapi.client.setToken(null);
+        this.clearStorage();
+        
+        if (this.gapiInitialized) {
+            window.gapi.client.setToken(null);
+        }
+        
         this.authChangeCallbacks.forEach(cb => cb(null));
         console.log('[GoogleDrive] ✅ Signed out');
     }

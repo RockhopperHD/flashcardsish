@@ -67,6 +67,7 @@ import { RichInput, RichInputRef } from "./RichInput";
 import clsx from "clsx";
 import { AddSetModal } from "./AddSetModal";
 import { RawTextImport } from "./RawTextImport";
+import BreathingLoader from "./BreathingLoader";
 
 // Color map for preset tag colors (Tailwind 500 shades)
 const TAG_COLOR_MAP: Record<string, string> = {
@@ -118,6 +119,7 @@ interface StartMenuProps {
   appliedTags: string[];
   setAppliedTags: (tags: string[]) => void;
   onOpenSettings?: () => void;
+  isCloudLoading?: boolean;
 }
 
 interface BuilderRow {
@@ -2131,6 +2133,7 @@ const CustomFieldInput: React.FC<{
 };
 
 export const StartMenu: React.FC<StartMenuProps> = ({
+  isCloudLoading,
   librarySets,
   onStartFromLibrary,
   onResumeSession,
@@ -3395,31 +3398,67 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const handleDownloadFlashcards = () => {
-    let content = rawText;
-    content = builderRows
-      .filter((r) => r.term.trim() || r.def.trim())
-      .map((r) => {
-        let line = `${r.term.trim()} / ${r.def.trim()}`;
-        if (r.year.trim()) line += ` /// ${r.year.trim()}`;
-        if (r.image.trim()) line += ` ||| ${r.image.trim()}`;
+    const cards: Card[] = builderRows
+      .filter((row) => row.term.trim() || row.def.trim())
+      .map((row) => {
+        // Parse tags from term string
+        let termRaw = row.term.trim();
+        let tags: string[] = [];
 
-        if (r.customFields.length > 0) {
-          if (!r.image.trim()) line += ` ||| `;
-          line += ` , `;
-          r.customFields.forEach((f) => {
-            line += `(${f.name})(${f.value})`;
-          });
+        const tagRegex = /^(\s*\([^)]+\)\s*)+/;
+        const tagMatch = termRaw.match(tagRegex);
+
+        if (tagMatch) {
+          const fullTagString = tagMatch[0];
+          const extractedTags =
+            fullTagString
+              .match(/\(([^)]+)\)/g)
+              ?.map((t) => t.slice(1, -1).trim()) || [];
+          tags = extractedTags;
+          termRaw = termRaw.replace(tagRegex, "").trim();
         }
 
-        if (r.star) {
-          line += ` %%STAR%%`;
-        }
+        return {
+          id: generateId(),
+          term: [termRaw],
+          content: row.def.trim(),
+          year: row.year.trim(),
+          image: row.image,
+          customFields: row.customFields.filter((f) =>
+            [...termSideFields, ...defSideFields].some(
+              (def) => def.name === f.name,
+            ),
+          ),
+          mastery: 0,
+          star: row.star,
+          tags: tags,
+          originalSetId: editingSetId || undefined,
+          originalSetName: setName,
+        };
+      });
 
-        return line;
-      })
-      .join("\n\n&&&\n\n");
+    const exportSet: CardSet = {
+      id: editingSetId || generateId(),
+      name: setName || "Untitled Set",
+      cards,
+      lastPlayed: Date.now(),
+      elapsedTime: 0,
+      topStreak: 0,
+      version: 2,
+      termLabel,
+      definitionLabel,
+      termSideFields,
+      defSideFields,
+      enableTermCards,
+      folderId: currentFolderId || undefined,
+      tags: appliedTags,
+    };
 
-    downloadFile((setName || "deck") + ".flashcards", content, "text");
+    downloadFile(
+      (setName || "deck") + ".flashcards",
+      JSON.stringify(exportSet, null, 2),
+      "json",
+    );
   };
 
   const handleCopyCode = () => {
@@ -3981,11 +4020,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
 
               {librarySets.length === 0 ? (
-                <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
-                  <p className="text-muted italic mb-4">
-                    Your library is empty.
-                  </p>
-                </div>
+                isCloudLoading ? (
+                  <BreathingLoader />
+                ) : (
+                  <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
+                    <p className="text-muted italic mb-4">
+                      Your library is empty.
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="space-y-8">
                   {/* Folders Section */}

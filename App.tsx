@@ -10,10 +10,11 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, Terminal } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, Terminal, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
+import { sanitizeStrings } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
@@ -1126,7 +1127,100 @@ const App: React.FC = () => {
    // Corruption Reports (from V2 storage)
    const [corruptionReports, setCorruptionReports] = useState<CorruptionReport[]>([]);
 
+   // Cloud sync status: 'idle' | 'saving' | 'saved' | 'error'
+   const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+   const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+   // Cloud loading state (pulling sets from Drive)
+   const [isCloudLoading, setIsCloudLoading] = useState(false);
+   const syncInProgressRef = useRef(false);
+   const hasSyncedOnceRef = useRef(false);
+
    // --- AUTH & CLOUD SYNC ---
+
+   const syncCloudData = async () => {
+      // Prevent re-entrant / concurrent calls
+      if (syncInProgressRef.current) {
+         console.log('[Sync] Already in progress, skipping');
+         return;
+      }
+      syncInProgressRef.current = true;
+      setIsCloudLoading(true);
+      try {
+         const data = await loadAllUserData();
+         if (!data) {
+            return;
+         }
+
+         console.log("[Sync] Starting smart merge with cloud data...");
+
+         // 1. SMART MERGE LIBRARY SETS
+         if (data.library_sets && data.library_sets.length > 0) {
+            const cloudSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
+
+            setLibrarySets(prevLocalSets => {
+               const merged = [...prevLocalSets];
+
+               cloudSets.forEach(cloudSet => {
+                  const localIndex = merged.findIndex(s => s.id === cloudSet.id);
+                  if (localIndex === -1) {
+                     // Set only exists in cloud, add it
+                     merged.push(cloudSet);
+                  } else {
+                     // Set exists in both, use the most recently played version
+                     const localSet = merged[localIndex];
+                     if (cloudSet.lastPlayed > localSet.lastPlayed) {
+                        console.log(`[Sync] Updating set "${localSet.name}" with newer cloud version`);
+                        merged[localIndex] = cloudSet;
+                     } else {
+                        console.log(`[Sync] Keeping local version of "${localSet.name}" (it's newer than cloud)`);
+                     }
+                  }
+               });
+
+               return merged;
+            });
+         }
+
+         // 2. MERGE FOLDERS
+         if (data.folders && data.folders.length > 0) {
+            setFolders(prev => {
+               const merged = [...prev];
+               data.folders!.forEach(cf => {
+                  if (!merged.some(lf => lf.id === cf.id)) merged.push(cf);
+               });
+               return merged;
+            });
+         }
+
+         // 3. MERGE TAGS
+         if (data.tags && data.tags.length > 0) {
+            setTags(prev => {
+               const merged = [...prev];
+               data.tags!.forEach(ct => {
+                  if (!merged.some(lt => lt.id === ct.id)) merged.push(ct);
+               });
+               return merged;
+            });
+         }
+
+         // 4. MERGE SETTINGS
+         if (data.settings && Object.keys(data.settings).length > 0) {
+            setSettings(prev => ({ ...prev, ...data.settings }));
+         }
+
+         // 5. CORRUPTION REPORTS
+         if (data.corruptions && data.corruptions.length > 0) {
+            setCorruptionReports(data.corruptions);
+         }
+
+         console.log("[Sync] ✅ Smart merge complete");
+         hasSyncedOnceRef.current = true;
+      } finally {
+         syncInProgressRef.current = false;
+         setIsCloudLoading(false);
+      }
+   };
 
    const handleLogin = async () => {
       try {
@@ -1266,23 +1360,8 @@ const App: React.FC = () => {
             const currentUser = await googleDrive.getSession();
             setUser(currentUser);
 
-            if (currentUser) {
-               // User just logged in, fetch cloud data
-               const data = await loadAllUserData();
-               if (data) {
-                  if (data.library_sets && data.library_sets.length > 0) {
-                     const sanitizedSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
-                     setLibrarySets(sanitizedSets);
-                  }
-                  if (data.folders && data.folders.length > 0) setFolders(data.folders);
-                  if (data.tags && data.tags.length > 0) setTags(data.tags);
-                  if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
-
-                  // Handle any corruption reports
-                  if (data.corruptions && data.corruptions.length > 0) {
-                     setCorruptionReports(data.corruptions);
-                  }
-               }
+            if (currentUser && !hasSyncedOnceRef.current) {
+               await syncCloudData();
             }
          } catch (error) {
             console.error('Failed to initialize Google Drive:', error);
@@ -1291,26 +1370,11 @@ const App: React.FC = () => {
 
       initializeAuth();
 
-      // Listen for sign-in state changes
+      // Listen for sign-in state changes (e.g. user signs in via popup)
       const unsubscribe = googleDrive.onAuthStateChange(async (newUser) => {
          setUser(newUser);
-         if (newUser) {
-            // User just logged in, fetch cloud data
-            const data = await loadAllUserData();
-            if (data) {
-               if (data.library_sets && data.library_sets.length > 0) {
-                  const sanitizedSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
-                  setLibrarySets(sanitizedSets);
-               }
-               if (data.folders && data.folders.length > 0) setFolders(data.folders);
-               if (data.tags && data.tags.length > 0) setTags(data.tags);
-               if (data.settings && Object.keys(data.settings).length > 0) setSettings(data.settings);
-
-               // Handle any corruption reports
-               if (data.corruptions && data.corruptions.length > 0) {
-                  setCorruptionReports(data.corruptions);
-               }
-            }
+         if (newUser && !hasSyncedOnceRef.current) {
+            await syncCloudData();
          }
       });
 
@@ -1346,7 +1410,7 @@ const App: React.FC = () => {
             }
 
             if (setsToUse && setsToUse.length > 0) {
-               const sanitizedSets = setsToUse.map(s => sanitizeSet(s));
+               const sanitizedSets = setsToUse.map(s => sanitizeSet(sanitizeStrings(s)));
                console.log("[App] Loaded", sanitizedSets.length, "sets from storage");
                setLibrarySets(sanitizedSets);
             } else {
@@ -1413,7 +1477,26 @@ const App: React.FC = () => {
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
-         saveLibrary(librarySets);
+
+         // Show saving indicator if logged in
+         if (user) setCloudSyncStatus('saving');
+
+         saveLibrary(librarySets).then(result => {
+            if (result.savedToCloud) {
+               setCloudSyncStatus('saved');
+               // Reset to idle after 3 seconds
+               if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+               cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 3000);
+            } else if (result.error) {
+               setCloudSyncStatus('error');
+               // Reset to idle after 5 seconds
+               if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+               cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
+            } else {
+               // No user / saved locally only
+               setCloudSyncStatus('idle');
+            }
+         });
       } else if (isLibraryLoaded && !hasCompletedInitialLoad.current) {
          console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save will be enabled in', (3000 - timeSinceMount), 'ms');
          hasCompletedInitialLoad.current = true;
@@ -1843,10 +1926,7 @@ const App: React.FC = () => {
                         className="text-lg tracking-tight text-text opacity-80"
                         style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
                      >
-                        Flashcardsish
-                        <CursorTooltip content="Alpha">
-                           <sup style={{ fontSize: '0.6em', marginLeft: '2px', cursor: 'pointer' }}>α</sup>
-                        </CursorTooltip>
+                        Flashcardsish<sup className="italic text-xs ml-1 opacity-70">alpha</sup>
                      </div>
                   )}
                </div>
@@ -1888,6 +1968,32 @@ const App: React.FC = () => {
                      <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
                   </button>
 
+                  {/* Cloud Sync Status Indicator */}
+                  {user && cloudSyncStatus !== 'idle' && (
+                     <div
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all ${cloudSyncStatus === 'saving' ? 'text-amber-400' :
+                           cloudSyncStatus === 'saved' ? 'text-emerald-400' :
+                              'text-red-400'
+                           }`}
+                        title={
+                           cloudSyncStatus === 'saving' ? 'Saving to cloud...' :
+                              cloudSyncStatus === 'saved' ? 'Saved to cloud' :
+                                 'Failed to save to cloud'
+                        }
+                     >
+
+                        {cloudSyncStatus === 'saving' && (
+                           <RefreshCw size={14} className="animate-spin" />
+                        )}
+                        {cloudSyncStatus === 'saved' && (
+                           <CheckCircle2 size={14} />
+                        )}
+                        {cloudSyncStatus === 'error' && (
+                           <XCircle size={14} />
+                        )}
+                     </div>
+                  )}
+
                   <button
                      onClick={() => {
                         setSettingsInitialTab('set');
@@ -1907,6 +2013,7 @@ const App: React.FC = () => {
          <main className="flex-grow p-6 md:p-8 max-w-5xl mx-auto w-full">
             {gameState === GameState.MENU && (
                <StartMenu
+                  isCloudLoading={isCloudLoading}
                   librarySets={librarySets}
                   setLibrarySets={setLibrarySets}
                   folders={folders}

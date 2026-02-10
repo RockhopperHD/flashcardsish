@@ -108,8 +108,9 @@ export const checkAndMigrate = async (): Promise<{
 /**
  * Save all library sets
  * In V2, this saves each set as a separate .flashcards file
+ * Returns { success, savedToCloud, error? } to enable UI feedback
  */
-export const saveLibrary = async (sets: CardSet[]) => {
+export const saveLibrary = async (sets: CardSet[]): Promise<{ success: boolean; savedToCloud: boolean; error?: string }> => {
     // Always save locally first for speed
     try {
         await set(LIBRARY_KEY, sets);
@@ -118,10 +119,15 @@ export const saveLibrary = async (sets: CardSet[]) => {
     }
 
     const user = await getUser();
-    if (!user) return;
+    if (!user) {
+        console.log('[Storage] No user session - saving locally only');
+        return { success: true, savedToCloud: false };
+    }
 
     // Save each set individually to V2
     try {
+        console.log(`[Storage] Saving ${sets.length} sets to Google Drive...`);
+
         // Get current structure to track root sets
         const { structure } = await storageV2.readStructure();
 
@@ -131,6 +137,7 @@ export const saveLibrary = async (sets: CardSet[]) => {
         structure.folders.forEach(f => f.setIds.forEach(id => existingSetIds.add(id)));
 
         for (const cardSet of sets) {
+            console.log(`[Storage] Writing set "${cardSet.name}" (${cardSet.id})...`);
             await storageV2.writeFlashcardSet(cardSet);
 
             // Add to root if not in any folder
@@ -155,8 +162,12 @@ export const saveLibrary = async (sets: CardSet[]) => {
         }));
 
         await storageV2.writeStructure(structure);
+        console.log(`[Storage] ✅ Successfully saved ${sets.length} sets to Google Drive`);
+        return { success: true, savedToCloud: true };
     } catch (error) {
-        console.error('[Storage] Failed to save library to V2:', error);
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[Storage] ❌ Failed to save library to Google Drive:', msg);
+        return { success: true, savedToCloud: false, error: msg };
     }
 };
 
@@ -491,8 +502,9 @@ interface AllUserData {
 }
 
 /**
- * Load all user data at once (for login)
- * Uses V2 boot loader with lazy loading for sets
+ * Load all user data at once (for cloud sync / login)
+ * Invalidates local caches first, then reads everything from Google Drive.
+ * Loads ALL sets (not just preloaded), so syncCloudData can do a proper merge.
  */
 export const loadAllUserData = async (): Promise<AllUserData | null> => {
     const user = await getUser();
@@ -502,6 +514,10 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
     await checkAndMigrate();
 
     try {
+        // Invalidate local caches so we get fresh data from Drive
+        await storageV2.invalidateLocalCaches();
+
+        // Load boot data (forceCloud = true by default)
         const bootData = await storageV2.loadBootData();
 
         // Cache locally
@@ -510,21 +526,62 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
         localStorage.setItem(BADGES_KEY, JSON.stringify(bootData.badges));
         localStorage.setItem(STATS_KEY, JSON.stringify(bootData.stats));
 
-        // For preloaded sets, also cache
-        if (bootData.preloadedSets.length > 0) {
+        // Now load ALL sets from cloud, not just the preloaded 3
+        // Collect all set IDs from the cloud structure
+        const allSetIds = new Set<string>();
+        bootData.allSetMetadata.forEach(m => allSetIds.add(m.id));
+        // Also include preloaded set IDs
+        bootData.preloadedSets.forEach(s => allSetIds.add(s.id));
+
+        console.log(`[Storage] Loading ALL ${allSetIds.size} sets from cloud...`);
+
+        const allSets: CardSet[] = [];
+        const corruptions = [...bootData.corruptions];
+
+        // Preloaded sets are already loaded, use them directly
+        const preloadedMap = new Map<string, CardSet>();
+        bootData.preloadedSets.forEach(s => preloadedMap.set(s.id, s));
+
+        for (const setId of allSetIds) {
+            // Re-use preloaded if available
+            if (preloadedMap.has(setId)) {
+                allSets.push(preloadedMap.get(setId)!);
+                continue;
+            }
+
+            // Load from cloud (forceCloud = true)
+            const { set: cardSet, wasCorrupted, recoveredCards, totalCards } = await storageV2.readFlashcardSet(setId, true);
+            if (cardSet) {
+                allSets.push(cardSet);
+            }
+            if (wasCorrupted) {
+                corruptions.push({
+                    type: 'set',
+                    fileName: `${setId}.flashcards`,
+                    recoveredCards,
+                    totalCards,
+                    error: recoveredCards ? `Recovered ${recoveredCards}/${totalCards} cards` : 'Set was completely corrupted'
+                });
+            }
+        }
+
+        console.log(`[Storage] ✅ Loaded ${allSets.length} sets from cloud`);
+
+        // Cache all loaded sets in IndexedDB
+        if (allSets.length > 0) {
             try {
-                await set(LIBRARY_KEY, bootData.preloadedSets);
+                await set(LIBRARY_KEY, allSets);
             } catch (e) { }
         }
 
         return {
-            library_sets: bootData.preloadedSets,
+            library_sets: allSets,
             folders: bootData.folders,
             settings: bootData.settings,
             badges: bootData.badges,
             tags: bootData.tags,
             stats: bootData.stats,
-            corruptions: bootData.corruptions
+            corruptions
         };
     } catch (error) {
         console.error('[Storage] Failed to load all user data:', error);

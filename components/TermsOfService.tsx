@@ -62,7 +62,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">6. Experimental Nature & Data Loss</h3>
-                        <p>The Service is provided <strong>“AS IS”</strong> and <strong>“AS AVAILABLE.”</strong></p>
+                        <p>The Service is provided <strong>"AS IS"</strong> and <strong>"AS AVAILABLE."</strong></p>
                         <p className="mt-2 font-bold">Data loss may occur due to:</p>
                         <ul className="list-disc pl-5 my-2 space-y-1">
                             <li>Software bugs</li>
