@@ -11,6 +11,7 @@ interface RichInputProps {
     onKeyDown?: (e: React.KeyboardEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    maxLength?: number;
 }
 
 export interface RichInputRef {
@@ -174,7 +175,8 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     onFocus,
     onKeyDown,
     onMouseUp,
-    onContextMenu
+    onContextMenu,
+    maxLength
 }, ref) => {
     const contentEditableRef = useRef<HTMLDivElement>(null);
     const isTyping = useRef(false);
@@ -278,6 +280,21 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     }));
 
     const handleKeyDownInternal = (e: React.KeyboardEvent) => {
+        // Enforce Max Length
+        if (maxLength) {
+            const currentText = contentEditableRef.current?.innerText || '';
+            const isControlKey = e.ctrlKey || e.metaKey || e.altKey;
+            const isNavigation = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Tab'].includes(e.key);
+
+            if (currentText.length >= maxLength && !isControlKey && !isNavigation && e.key.length === 1) {
+                // Check if selection exists (replacing text)
+                const selection = window.getSelection();
+                if (!selection || selection.isCollapsed) {
+                    e.preventDefault();
+                }
+            }
+        }
+
         // Keyboard Shortcuts
         if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
             const key = e.key.toLowerCase();
@@ -299,6 +316,33 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         if (onKeyDown) onKeyDown(e);
     };
 
+    const handlePaste = (e: React.ClipboardEvent) => {
+        if (!maxLength) return;
+
+        const text = e.clipboardData.getData('text/plain');
+        const currentText = contentEditableRef.current?.innerText || '';
+
+        // If selection exists, the selected text will be replaced, so we gain some space
+        let selectionLength = 0;
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) {
+            selectionLength = selection.toString().length;
+        }
+
+        const remaining = maxLength - (currentText.length - selectionLength);
+
+        if (remaining <= 0) {
+            e.preventDefault();
+            return;
+        }
+
+        if (text.length > remaining) {
+            e.preventDefault();
+            const toInsert = text.substring(0, remaining);
+            document.execCommand('insertText', false, toInsert);
+        }
+    };
+
     return (
         <div
             ref={contentEditableRef}
@@ -308,6 +352,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             onBlur={onBlur}
             onFocus={onFocus}
             onKeyDown={handleKeyDownInternal}
+            onPaste={handlePaste}
             onMouseUp={onMouseUp}
             onContextMenu={onContextMenu}
             data-placeholder={placeholder}

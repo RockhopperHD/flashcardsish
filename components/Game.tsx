@@ -1859,6 +1859,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Enter term..."
+                                 maxLength={1000}
                               />
                            </div>
 
@@ -1905,6 +1906,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Enter definition..."
+                                 maxLength={1000}
                               />
                            </div>
 

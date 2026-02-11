@@ -566,6 +566,13 @@ class GoogleDriveClient {
 
         const blob = new Blob([content], { type: 'application/json' });
 
+        // Safeguard: Prevent uploading files larger than 15MB
+        const MAX_SIZE = 15 * 1024 * 1024;
+        if (blob.size > MAX_SIZE) {
+            console.error(`[GoogleDrive] ❌ File too large: ${filename} (${(blob.size / 1024 / 1024).toFixed(2)}MB)`);
+            throw new Error(`File is too large to sync (${(blob.size / 1024 / 1024).toFixed(2)}MB). Please remove some images.`);
+        }
+
         // Search for existing file
         const response = await window.gapi.client.drive.files.list({
             q: `name='${filename}' and '${folderId}' in parents and trashed=false`,

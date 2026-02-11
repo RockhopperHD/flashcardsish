@@ -119,15 +119,16 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
 
             if (term || def) {
                 result.push({
-                    term: [term], // Card type uses array for terms sometimes? check type def. 
-                    // Wait, Card definition says term: string[]
-                    content: def,
+                    term: [term.substring(0, 1000)],
+                    content: def.substring(0, 1000),
                     year: year,
                     id: generateId(),
                     mastery: 0,
                     star: false
                 });
             }
+
+            if (result.length >= 500) return;
         });
 
         return result;
@@ -440,6 +441,19 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
 
                     {/* Info Row & Bottom Action */}
                     <div className="shrink-0 space-y-4">
+                        {parsedCards.length >= 500 && (
+                            <div className="bg-yellow/10 border border-yellow/20 rounded-xl p-4 animate-in slide-in-from-bottom-2">
+                                <div className="flex items-start gap-3">
+                                    <AlertCircle className="text-yellow shrink-0 mt-0.5" size={20} />
+                                    <div>
+                                        <h3 className="font-bold text-yellow text-sm mb-1">Set Capacity Reached</h3>
+                                        <p className="text-sm text-text/80 leading-relaxed">
+                                            Flashcardsish supports a maximum of 500 cards per set to ensure optimal performance. Only the first 500 cards from your text will be imported.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between text-sm px-1">
                             <div className="text-muted font-medium">
                                 Current Count: <span className="text-text font-bold">{parsedCards.length} Cards</span>

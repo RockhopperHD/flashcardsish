@@ -249,13 +249,35 @@ const isValidCard = (card: any): card is Card => {
 };
 
 /**
- * Convert a CardSet to FlashcardFile format
+ * Strip Base64 image data from a card ONLY if it's a newly added Base64 string.
+ * This ensures we are non-destructive for existing users who already have Base64 images.
  */
-const setToFile = (set: CardSet): FlashcardFile => ({
+const sanitizeCardForStorage = (card: Card, existingSet?: CardSet): Card => {
+    const clean = { ...card };
+    const existingCard = existingSet?.cards.find(c => c.id === card.id);
+
+    // Only strip if it's Base64 AND it's different from what was already there
+    if (clean.image && clean.image.startsWith('data:image') && clean.image !== existingCard?.image) {
+        console.warn(`[StorageV2] Stripping NEW Base64 image from card ${card.id} during save`);
+        clean.image = '';
+    }
+    if (clean.termImage && clean.termImage.startsWith('data:image') && clean.termImage !== existingCard?.termImage) {
+        console.warn(`[StorageV2] Stripping NEW Base64 term image from card ${card.id} during save`);
+        clean.termImage = '';
+    }
+    return clean;
+};
+
+/**
+ * Convert a CardSet to FlashcardFile format
+ * @param set The set to convert
+ * @param existingSet The version of the set currently in storage (to prevent destructive stripping)
+ */
+const setToFile = (set: CardSet, existingSet?: CardSet): FlashcardFile => ({
     version: set.version || CURRENT_VERSION,
     id: set.id,
     name: set.name,
-    cards: set.cards,
+    cards: set.cards.map(c => sanitizeCardForStorage(c, existingSet)),
     customFieldNames: set.customFieldNames,
     tags: set.tags,
     sourceId: set.sourceId,
@@ -778,7 +800,11 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
  * Write a flashcard set file
  */
 export const writeFlashcardSet = async (cardSet: CardSet): Promise<void> => {
-    const file = setToFile(cardSet);
+    // 1. Get existing version from cache/DB to prevent destructive stripping
+    const existing = await get<CardSet>(`${SET_CACHE_PREFIX}${cardSet.id}`);
+
+    // 2. Convert to file format with smart sanitization
+    const file = setToFile(cardSet, existing);
 
     // Cache locally
     await set(`${SET_CACHE_PREFIX}${cardSet.id}`, cardSet);

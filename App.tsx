@@ -1131,10 +1131,17 @@ const App: React.FC = () => {
    const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-   // Cloud loading state (pulling sets from Drive)
-   const [isCloudLoading, setIsCloudLoading] = useState(false);
-   const syncInProgressRef = useRef(false);
-   const hasSyncedOnceRef = useRef(false);
+   // Prevent tab close while saving
+   useEffect(() => {
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+         if (cloudSyncStatus === 'saving') {
+            e.preventDefault();
+            e.returnValue = ''; // Standard way to trigger browser dialog
+         }
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+   }, [cloudSyncStatus]);
 
    // --- AUTH & CLOUD SYNC ---
 
@@ -1544,6 +1551,26 @@ const App: React.FC = () => {
       console.log('App: light-mode class on body:', document.body.classList.contains('light-mode'));
    }, [settings.darkMode]);
 
+   // --- MODAL NAVIGATION ---
+
+   const closeAllModals = () => {
+      setIsSettingsOpen(false);
+      setIsUserModalOpen(false);
+      setIsPrivacyOpen(false);
+      setIsTermsOpen(false);
+      setNoStarredModalSet(null);
+   };
+
+   useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+         if (e.key === 'Escape') {
+            closeAllModals();
+         }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+   }, []);
+
    const updateSettings = (newSettings: Settings) => {
       console.log('DEBUG: updateSettings called with darkMode:', newSettings.darkMode);
       setSettings(newSettings);
@@ -1826,6 +1853,15 @@ const App: React.FC = () => {
       await resetSettingsToDefault();
    };
 
+   const handleHeaderHomeClick = () => {
+      if (gameState === GameState.MENU) {
+         // Dispatch a custom event that StartMenu can listen to
+         window.dispatchEvent(new CustomEvent('flashcardsish-home-click'));
+      } else {
+         handleBackToMenu();
+      }
+   };
+
    return (
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
@@ -1902,31 +1938,50 @@ const App: React.FC = () => {
                   </button>
                </div>
 
-               <div className="w-1/3 flex justify-center">
-                  {gameState === GameState.PLAYING && activeSession ? (
-                     isRenaming ? (
-                        <input
-                           autoFocus
-                           defaultValue={activeSession.name}
-                           onBlur={(e) => handleRenameSession(e.target.value)}
-                           onKeyDown={(e) => e.key === 'Enter' && handleRenameSession(e.currentTarget.value)}
-                           className="bg-transparent border-b border-accent text-center font-bold text-text focus:outline-none pb-1 min-w-[200px]"
-                        />
-                     ) : (
-                        <span
-                           onClick={() => setIsRenaming(true)}
-                           className="font-bold text-text opacity-50 hover:opacity-100 cursor-pointer hover:text-accent transition-all truncate max-w-[250px]"
-                           title="Click to rename"
-                        >
-                           {activeSession.name}
-                        </span>
-                     )
-                  ) : (
-                     <div
-                        className="text-lg tracking-tight text-text opacity-80"
+               <div className="w-1/3 flex justify-center h-8 relative overflow-hidden">
+                  <div
+                     className={clsx(
+                        "absolute inset-0 flex flex-col items-center justify-center transition-all duration-500 ease-in-out",
+                        (gameState === GameState.PLAYING || gameState === GameState.FLASHCARDS) && activeSession
+                           ? "-translate-y-full opacity-0 scale-75 pointer-events-none"
+                           : "translate-y-0 opacity-100 scale-100"
+                     )}
+                  >
+                     <button
+                        onClick={handleHeaderHomeClick}
+                        className="text-lg tracking-tight text-text/80 hover:text-yellow transition-all duration-300 group flex items-center gap-1"
                         style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
                      >
-                        Flashcardsish<sup className="italic text-xs ml-1 opacity-70">alpha</sup>
+                        Flashcardsish<sup className="italic text-[10px] ml-0.5 opacity-50 group-hover:opacity-100">alpha</sup>
+                     </button>
+                  </div>
+
+                  {activeSession && (
+                     <div
+                        className={clsx(
+                           "absolute inset-0 flex flex-col items-center justify-center transition-all duration-500 ease-in-out",
+                           (gameState === GameState.PLAYING || gameState === GameState.FLASHCARDS)
+                              ? "translate-y-0 opacity-100 scale-100"
+                              : "translate-y-full opacity-0 scale-125 pointer-events-none"
+                        )}
+                     >
+                        {isRenaming ? (
+                           <input
+                              autoFocus
+                              defaultValue={activeSession.name}
+                              onBlur={(e) => handleRenameSession(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleRenameSession(e.currentTarget.value)}
+                              className="bg-transparent border-b border-accent text-center font-bold text-text focus:outline-none pb-1 min-w-[200px]"
+                           />
+                        ) : (
+                           <span
+                              onClick={() => setIsRenaming(true)}
+                              className="font-bold text-text opacity-50 hover:opacity-100 cursor-pointer hover:text-accent transition-all truncate max-w-[250px]"
+                              title="Click to rename"
+                           >
+                              {activeSession.name}
+                           </span>
+                        )}
                      </div>
                   )}
                </div>
@@ -1969,29 +2024,39 @@ const App: React.FC = () => {
                   </button>
 
                   {/* Cloud Sync Status Indicator */}
-                  {user && cloudSyncStatus !== 'idle' && (
-                     <div
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all ${cloudSyncStatus === 'saving' ? 'text-amber-400' :
-                           cloudSyncStatus === 'saved' ? 'text-emerald-400' :
-                              'text-red-400'
-                           }`}
-                        title={
-                           cloudSyncStatus === 'saving' ? 'Saving to cloud...' :
-                              cloudSyncStatus === 'saved' ? 'Saved to cloud' :
-                                 'Failed to save to cloud'
+                  {user && (
+                     <CursorTooltip
+                        content={
+                           cloudSyncStatus === 'saving' ? "Currently cloud-syncing..." :
+                              cloudSyncStatus === 'saved' ? "Changes saved to cloud. You're good to go!" :
+                                 cloudSyncStatus === 'error' ? "Failed to sync to cloud. Check your connection." :
+                                    "Your data is safe and synced. Safe to close Flashcardsish."
                         }
+                        isEnabled={true}
                      >
-
-                        {cloudSyncStatus === 'saving' && (
-                           <RefreshCw size={14} className="animate-spin" />
-                        )}
-                        {cloudSyncStatus === 'saved' && (
-                           <CheckCircle2 size={14} />
-                        )}
-                        {cloudSyncStatus === 'error' && (
-                           <XCircle size={14} />
-                        )}
-                     </div>
+                        <div
+                           className={clsx(
+                              "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all duration-500",
+                              cloudSyncStatus === 'saving' && "text-amber-400 bg-amber-400/5",
+                              cloudSyncStatus === 'saved' && "text-emerald-400 bg-emerald-400/5",
+                              cloudSyncStatus === 'error' && "text-red-400 bg-red-400/5",
+                              cloudSyncStatus === 'idle' && "text-text/30"
+                           )}
+                        >
+                           {cloudSyncStatus === 'saving' ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                           ) : cloudSyncStatus === 'saved' ? (
+                              <CheckCircle2 size={14} />
+                           ) : cloudSyncStatus === 'error' ? (
+                              <XCircle size={14} />
+                           ) : (
+                              <CheckCircle2 size={14} />
+                           )}
+                           <span className="hidden sm:inline font-bold uppercase tracking-tighter text-[10px]">
+                              {cloudSyncStatus === 'saving' ? "Syncing" : "Cloud"}
+                           </span>
+                        </div>
+                     </CursorTooltip>
                   )}
 
                   <button

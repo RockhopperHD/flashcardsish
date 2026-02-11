@@ -307,15 +307,8 @@ const ImageModal: React.FC<{
         setIsUploading(false);
       }
     } else {
-      // Fallback to Base64 for guests
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === "string") {
-          onSave(reader.result);
-          onClose();
-        }
-      };
-      reader.readAsDataURL(file);
+      // REQUIRE LOGIN: Don't allow Base64 anymore
+      setUploadError('Please sign in to Google Drive to upload images. We no longer support local image storage to keep your sets small and fast.');
     }
   };
 
@@ -1836,6 +1829,7 @@ const BuilderRowItem: React.FC<{
                     onKeyDown={handleTermKeyDown}
                     className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-bold text-text h-full"
                     placeholder="Enter term..."
+                    maxLength={1000}
                   />
                 </div>
               ) : (
@@ -1908,6 +1902,7 @@ const BuilderRowItem: React.FC<{
                     onKeyDown={handleDefKeyDown}
                     className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-medium text-text h-full"
                     placeholder="Enter definition..."
+                    maxLength={1000}
                   />
                 </div>
               ) : (
@@ -2400,6 +2395,40 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   }, [initialEditSetId]);
 
+  // --- HOME CLICK HANDLER ---
+  useEffect(() => {
+    const handleHomeClick = () => {
+      if (view !== 'menu') {
+        handleBackToLibrary();
+      }
+    };
+    window.addEventListener('flashcardsish-home-click', handleHomeClick);
+    return () => window.removeEventListener('flashcardsish-home-click', handleHomeClick);
+  }, [view, builderRows, rawText]);
+
+  // --- ESCAPE KEY HANDLER ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowAddSetModal(false);
+        setIsConfigModalOpen(false);
+        setShowUnsavedModal(false);
+        setShowImageModal(false);
+        setWarningModal(prev => ({ ...prev, isOpen: false }));
+        setShowInvalidFileModal(false);
+        setNoStarredModalSet(null);
+        setDeleteFolderModal(null);
+        setShowMarkdownHelp(false);
+        setDeleteConfirmId(null);
+        setOngoingDeleteConfirmId(null);
+        setIsCreatingFolder(false);
+        setMoveToMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Close move menu when selection is cleared
   useEffect(() => {
     if (selectedSetIds.size === 0) {
@@ -2801,9 +2830,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const handleRawTextContinue = (cards: Partial<Card>[]) => {
     // Convert cards to BuilderRows
-    const newRows: BuilderRow[] = cards.map((c, i) => {
+    let newRows: BuilderRow[] = cards.map((c, i) => {
       let term = c.term?.[0] || "";
-      // Tags handling if needed... (assuming raw text import parses tags? not yet implemented in RawTextImport but let's assume safely)
       return {
         id: generateId() + "_imported_" + i,
         term: term,
@@ -2822,32 +2850,53 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     // Merge Logic based on importAppend & importOverride
     if (!settings.importAppend) {
-      // If not appending, replace entirely
+      // If not appending, replace entirely - limit to 500
+      if (newRows.length > 500) {
+        setWarningModal({
+          isOpen: true,
+          message: "Only the first 500 cards are being imported to stay within the set capacity limit.",
+          onConfirm: () => { }
+        });
+        newRows = newRows.slice(0, 500);
+      }
       setBuilderRows(newRows);
     } else {
-      // Append mode
+      // Append mode - limit total to 500
       setBuilderRows(prev => {
         const result = [...prev];
         const strategy = settings.importOverride || 'keep';
+        const remainingCapacity = 500 - result.length;
 
-        newRows.forEach(row => {
-          // Check for duplicate by term
-          // Note: This matches exact case. If we ignored case, it would be checking settings.ignoreCapitalization?
-          // For builder, we usually stick to exact string match for overrides.
+        if (remainingCapacity <= 0) {
+          setWarningModal({
+            isOpen: true,
+            message: "Cannot import: This set has already reached the maximum capacity of 500 cards.",
+            onConfirm: () => { }
+          });
+          return prev;
+        }
+
+        let limitedNewRows = newRows;
+        if (newRows.length > remainingCapacity) {
+          setWarningModal({
+            isOpen: true,
+            message: `Only the first ${remainingCapacity} cards are being imported to stay within the 500-card limit.`,
+            onConfirm: () => { }
+          });
+          limitedNewRows = newRows.slice(0, remainingCapacity);
+        }
+
+        limitedNewRows.forEach(row => {
           const existingIndex = result.findIndex(r => r.term === row.term);
 
           if (existingIndex === -1) {
-            // No match, just add
             result.push(row);
           } else {
-            // Match found
             if (strategy === 'duplicate') {
               result.push(row);
             } else if (strategy === 'override') {
-              // Replace existing with new
               result[existingIndex] = row;
             }
-            // if 'keep', we ignore the new row
           }
         });
         return result;
@@ -3493,6 +3542,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   // --- HELPER FOR VISUAL BUILDER ---
 
   const addRow = useCallback(() => {
+    if (builderRows.length >= 500) {
+      setWarningModal({
+        isOpen: true,
+        message: "Maximum 500 cards allowed per set for performance and safety.",
+        onConfirm: () => { }
+      });
+      return;
+    }
     setBuilderRows((prev) => [
       ...prev,
       {
@@ -3507,7 +3564,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         star: false,
       },
     ]);
-  }, []);
+  }, [builderRows]);
 
   const updateRow = useCallback(
     (id: string, field: keyof BuilderRow, value: any) => {
@@ -3519,6 +3576,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   );
 
   const duplicateRow = (id: string) => {
+    if (builderRows.length >= 500) {
+      setWarningModal({
+        isOpen: true,
+        message: "Maximum 500 cards allowed per set.",
+        onConfirm: () => { }
+      });
+      return;
+    }
     setBuilderRows((prev) => {
       const index = prev.findIndex((r) => r.id === id);
       if (index === -1) return prev;
