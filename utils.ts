@@ -686,11 +686,13 @@ export const renderMarkdown = (content: string): React.ReactNode => {
 
     lines.forEach((line, lineIdx) => {
       const trimmed = line.trim();
-      if (trimmed.startsWith('-')) {
+      // Support both - and * for lists
+      if (trimmed.startsWith('-') || trimmed.startsWith('* ')) {
         // List item
+        const content = trimmed.startsWith('* ') ? trimmed.substring(2) : trimmed.substring(1);
         listBuffer.push(
           React.createElement('li', { key: `li-${lineIdx}`, className: "list-disc marker:text-accent pl-1" },
-            renderInline(trimmed.substring(1).trim(), `li-content-${blockIdx}-${lineIdx}`)
+            renderInline(content.trim(), `li-content-${blockIdx}-${lineIdx}`)
           )
         );
       } else {

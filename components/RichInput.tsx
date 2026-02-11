@@ -55,6 +55,15 @@ const htmlToMarkdown = (node: Node): string => {
             return `${markStart}${content}${markEnd}`;
         }
 
+        // List Handling
+        if (el.tagName === 'UL' || el.tagName === 'OL') {
+            return content; // List items handles newlines
+        }
+        if (el.tagName === 'LI') {
+            // Ensure lists use "- " format
+            return `- ${content.trim()}\n`; // Add newline after item
+        }
+
         // Fallbacks for pasted content or browser execCommand
         if (el.tagName === 'B' || el.tagName === 'STRONG') return `**${content}**`;
         if (el.tagName === 'I' || el.tagName === 'EM') return `*${content}*`;
@@ -67,11 +76,61 @@ const htmlToMarkdown = (node: Node): string => {
     return '';
 };
 
-// MARKDOWN TO HTML (Simple Regex Parser that supports nesting)
+// MARKDOWN TO HTML (Supports Lists first, then Recursive Helpers)
 const markdownToHtml = (text: string): string => {
     if (!text) return '';
 
-    // We need to parse recursively to build the HTML tree string
+    // 1. Pre-process Lists (Blocks)
+    // Identify blocks of lines starting with "- "
+    // Regex matches consecutive lines starting with "- " (handling \n)
+    // We treat the whole block as a list
+    let processedText = text;
+
+    // We can't easily regex match the whole block with JS regex without multiline flag carefully
+    // Instead, let's process line by line or use a block replacer
+
+    // List parser for lines starting with "- " or "* "
+    const lines = text.split('\n');
+    let inList = false;
+    let newLines: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+            if (!inList) {
+                newLines.push('<ul>');
+                inList = true;
+            }
+            // Process content of list item recursively (for bold etc)
+            const content = trimmed.substring(2);
+            newLines.push(`<li>${markdownToHtmlInline(content)}</li>`);
+        } else {
+            if (inList) {
+                newLines.push('</ul>');
+                inList = false;
+            }
+            newLines.push(line);
+        }
+    }
+    if (inList) newLines.push('</ul>');
+
+    // Join back. 
+    // BUT: markdownToHtmlInline expects text tokens.
+    // Ideally we return the HTML string now for non-list lines too?
+    // Let's refactor: separate inline parser
+
+    const htmlLines = newLines.map(line => {
+        if (line.startsWith('<ul>') || line.startsWith('<li>') || line.startsWith('</ul>')) return line;
+        return markdownToHtmlInline(line);
+    });
+
+    return htmlLines.join(''); // Join without \n because <li> handles block, keeping \n might be redundant or needed for paragraphs
+};
+
+// Inline Parser (Old markdownToHtml)
+const markdownToHtmlInline = (text: string): string => {
+    if (!text) return '';
     let remaining = text;
     let html = '';
 
@@ -81,7 +140,7 @@ const markdownToHtml = (text: string): string => {
         const match = remaining.match(tokenRegex);
 
         if (!match) {
-            html += remaining; // Escape HTML? Ideally yes.
+            html += remaining;
             break;
         }
 
@@ -116,7 +175,7 @@ const markdownToHtml = (text: string): string => {
 
             if (endIdx !== -1) {
                 const innerMd = rest.substring(0, endIdx);
-                const innerHtml = markdownToHtml(innerMd);
+                const innerHtml = markdownToHtmlInline(innerMd);
                 html += `<span data-md-start="${def.start}" data-md-end="${def.end}" class="${def.className}">${innerHtml}</span>`;
                 remaining = rest.substring(endIdx + 4); // skip </h>
             } else {
@@ -127,41 +186,37 @@ const markdownToHtml = (text: string): string => {
             // Bold
             const end = rest.indexOf('**');
             if (end !== -1) {
-                html += `<span data-md-start="**" data-md-end="**" class="${TAGS.bold.className}">${markdownToHtml(rest.substring(0, end))}</span>`;
+                html += `<span data-md-start="**" data-md-end="**" class="${TAGS.bold.className}">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 2);
             } else { html += token; remaining = rest; }
         } else if (token === '*') {
             // Italic
             const end = rest.indexOf('*');
             if (end !== -1) {
-                html += `<span data-md-start="*" data-md-end="*" class="${TAGS.italic.className}">${markdownToHtml(rest.substring(0, end))}</span>`;
+                html += `<span data-md-start="*" data-md-end="*" class="${TAGS.italic.className}">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 1);
             } else { html += token; remaining = rest; }
         } else if (token === '__') {
             const end = rest.indexOf('__');
             if (end !== -1) {
-                html += `<span data-md-start="__" data-md-end="__" class="${TAGS.underline.className}">${markdownToHtml(rest.substring(0, end))}</span>`;
+                html += `<span data-md-start="__" data-md-end="__" class="${TAGS.underline.className}">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 2);
             } else { html += token; remaining = rest; }
         } else if (token === '`') {
             const end = rest.indexOf('`');
             if (end !== -1) {
-                html += `<span data-md-start="\`" data-md-end="\`" class="${TAGS.code.className}">${rest.substring(0, end)}</span>`; // Code is literal, no recurse
+                html += `<span data-md-start="\`" data-md-end="\`" class="${TAGS.code.className}">${rest.substring(0, end)}</span>`;
                 remaining = rest.substring(end + 1);
             } else { html += token; remaining = rest; }
         } else if (token.startsWith('</')) {
-            // Stray closer
             html += token;
             remaining = rest;
         } else {
-            // Other tokens (?)
             html += token;
             remaining = rest;
         }
-
         continue;
     }
-
     return html;
 };
 
@@ -191,13 +246,71 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         return md;
     };
 
+    // Helpers for Cursor Preservation
+    const getCaretIndex = (element: HTMLElement) => {
+        let position = 0;
+        const isSupported = typeof window.getSelection !== "undefined";
+        if (isSupported) {
+            const selection = window.getSelection();
+            if (selection && selection.rangeCount !== 0) {
+                const range = window.getSelection()!.getRangeAt(0);
+                const preCaretRange = range.cloneRange();
+                preCaretRange.selectNodeContents(element);
+                preCaretRange.setEnd(range.endContainer, range.endOffset);
+                position = preCaretRange.toString().length;
+            }
+        }
+        return position;
+    };
+
+    const setCaretIndex = (element: HTMLElement, index: number) => {
+        let charIndex = 0;
+        const range = document.createRange();
+        range.setStart(element, 0);
+        range.collapse(true);
+        const nodeStack = [element];
+        let node;
+        let found = false;
+
+        while (!found && (node = nodeStack.pop())) {
+            if (node.nodeType === 3) {
+                const nextCharIndex = charIndex + (node.textContent?.length || 0);
+                if (index >= charIndex && index <= nextCharIndex) {
+                    range.setStart(node, index - charIndex);
+                    range.collapse(true);
+                    found = true;
+                }
+                charIndex = nextCharIndex;
+            } else {
+                let i = node.childNodes.length;
+                while (i--) {
+                    nodeStack.push(node.childNodes[i]);
+                }
+            }
+        }
+
+        const selection = window.getSelection();
+        if (selection) {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    };
+
     // Sync value to HTML (only when not typing to avoid cursor jumps / loops)
     useEffect(() => {
         if (isTyping.current) return;
         if (contentEditableRef.current) {
             const currentMd = getMarkdownFromContent();
             if (value !== currentMd) {
+                // Preserve cursor
+                const caretPos = getCaretIndex(contentEditableRef.current);
+
                 contentEditableRef.current.innerHTML = markdownToHtml(value);
+
+                // Restore cursor if we had focus
+                if (document.activeElement === contentEditableRef.current) {
+                    setCaretIndex(contentEditableRef.current, caretPos);
+                }
             }
         }
     }, [value]);
@@ -272,12 +385,126 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
 
     useImperativeHandle(ref, () => ({
         focus: () => {
-            contentEditableRef.current?.focus();
+            if (contentEditableRef.current) {
+                contentEditableRef.current.focus();
+
+                // Move cursor to end of content
+                const range = document.createRange();
+                range.selectNodeContents(contentEditableRef.current);
+                range.collapse(false);
+                const selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                }
+            }
         },
         applyFormat
     }));
 
     const handleKeyDownInternal = (e: React.KeyboardEvent) => {
+        const selection = window.getSelection();
+
+        // Auto-list on '* ' or '- ' (WYSIWYG)
+        if (e.key === ' ' && selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const node = range.startContainer;
+
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                const offset = range.startOffset;
+
+                // Check if we are typing space after '*' or '-'
+                if (offset > 0) {
+                    const char = text.charAt(offset - 1);
+                    if (char === '*' || char === '-') {
+                        // Check if it's the start of the line (ignoring whitespace)
+                        const prefix = text.substring(0, offset - 1);
+                        if (/^\s*$/.test(prefix)) {
+                            // Valid list trigger
+                            e.preventDefault();
+
+                            // 1. Remove the marker characters (* or -) using execCommand to preserve history
+                            const removeRange = document.createRange();
+                            removeRange.setStart(node, offset - 1);
+                            removeRange.setEnd(node, offset);
+                            selection.removeAllRanges();
+                            selection.addRange(removeRange);
+                            document.execCommand('delete');
+
+                            // 2. Ensure we are in a separate block (splits <br> lines if necessary)
+                            // This prevents "absorbing" the previous line into the bullet
+                            document.execCommand('formatBlock', false, 'div');
+
+                            // 3. Convert to list
+                            document.execCommand('insertUnorderedList');
+
+                            handleInput();
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle Backspace in empty list item
+        if (e.key === 'Backspace' && selection && selection.rangeCount > 0) {
+            // Find LI
+            let current = selection.getRangeAt(0).commonAncestorContainer;
+            let foundLi: HTMLElement | null = null;
+
+            // Walk up
+            while (current && current !== contentEditableRef.current) {
+                if (current.nodeName === 'LI') {
+                    foundLi = current as HTMLElement;
+                    break;
+                }
+                current = current.parentElement!;
+            }
+
+            if (foundLi) {
+                // Check if empty
+                const text = foundLi.textContent || '';
+                // If text is effectively empty (just whitespace or nothing), exit list
+                if (text.trim().length === 0) {
+                    e.preventDefault();
+                    document.execCommand('outdent'); // Turn LI into normal block (Div/P)
+                    handleInput();
+                    return;
+                }
+            }
+        }
+
+        // Handle <p> trigger
+        // "typing <p> within a bulleted list exits the list mode for that line"
+        if (e.key === '>' && selection && selection.rangeCount > 0) {
+            // Check previous chars
+            const range = selection.getRangeAt(0);
+            const startOffset = range.startOffset;
+            if (startOffset >= 2 && range.startContainer.textContent) {
+                const textBefore = range.startContainer.textContent.substring(startOffset - 2, startOffset);
+                if (textBefore === '<p') {
+                    // Trigger found!
+                    e.preventDefault();
+
+                    // 1. Select the '<p' to remove it properly via execCommand
+                    const removeRange = document.createRange();
+                    removeRange.setStart(range.startContainer, startOffset - 2);
+                    removeRange.setEnd(range.startContainer, startOffset);
+                    selection.removeAllRanges();
+                    selection.addRange(removeRange);
+                    document.execCommand('delete');
+
+                    // 2. Exit list mode
+                    // 'outdent' converts <li> to a block element at the same level
+                    document.execCommand('outdent');
+
+                    handleInput();
+                    return;
+                }
+            }
+        }
+
         // Keyboard Shortcuts
         if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
             const key = e.key.toLowerCase();
@@ -303,7 +530,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         <div
             ref={contentEditableRef}
             contentEditable
-            className={clsx("outline-none whitespace-pre-wrap", className)}
+            className={clsx("outline-none whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className)}
             onInput={handleInput}
             onBlur={onBlur}
             onFocus={onFocus}
