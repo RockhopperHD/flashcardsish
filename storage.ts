@@ -567,12 +567,8 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
 
         console.log(`[Storage] ✅ Loaded ${allSets.length} sets from cloud`);
 
-        // Cache all loaded sets in IndexedDB
-        if (allSets.length > 0) {
-            try {
-                await set(LIBRARY_KEY, allSets);
-            } catch (e) { }
-        }
+        // Do not overwrite local cache here - wait for App.tsx to merge and save
+        // This prevents wiping local-only sets that aren't in the cloud yet
 
         return {
             library_sets: allSets,

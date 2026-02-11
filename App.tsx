@@ -13,7 +13,7 @@ import { FlashcardsMode } from './components/FlashcardsMode';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, Terminal, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
+import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, deleteSet } from './storage';
 import { sanitizeStrings } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
@@ -1131,6 +1131,13 @@ const App: React.FC = () => {
    const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+   // Cloud loading state (for StartMenu loading indicator)
+   const [isCloudLoading, setIsCloudLoading] = useState(false);
+
+   // Sync guards
+   const syncInProgressRef = useRef(false);
+   const hasSyncedOnceRef = useRef(false);
+
    // Prevent tab close while saving
    useEffect(() => {
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -1558,7 +1565,6 @@ const App: React.FC = () => {
       setIsUserModalOpen(false);
       setIsPrivacyOpen(false);
       setIsTermsOpen(false);
-      setNoStarredModalSet(null);
    };
 
    useEffect(() => {
@@ -1689,7 +1695,9 @@ const App: React.FC = () => {
       setLibrarySets(prev => prev.map(s => s.id === updatedSet.id ? updatedSet : s));
    };
 
-   const handleDeleteLibrarySet = (id: string) => {
+   const handleDeleteLibrarySet = async (id: string) => {
+      // Delete from storage/Drive first to prevent "zombie" reappearance
+      await deleteSet(id);
       setLibrarySets(prev => prev.filter(s => s.id !== id));
    };
 
@@ -2078,7 +2086,7 @@ const App: React.FC = () => {
          <main className="flex-grow p-6 md:p-8 max-w-5xl mx-auto w-full">
             {gameState === GameState.MENU && (
                <StartMenu
-                  isCloudLoading={isCloudLoading}
+                  isCloudLoading={isCloudLoading || !isLibraryLoaded}
                   librarySets={librarySets}
                   setLibrarySets={setLibrarySets}
                   folders={folders}
