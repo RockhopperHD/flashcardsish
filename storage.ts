@@ -1,4 +1,4 @@
-import { get, set } from 'idb-keyval';
+import { get, set, del } from 'idb-keyval';
 import { CardSet, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import * as storageV2 from './storageV2';
@@ -71,14 +71,15 @@ export const checkAndMigrate = async (): Promise<{
             return { migrated: false };
         }
 
+        // ...
         const needsMig = await storageV2.needsMigration();
         if (needsMig) {
-            console.log('[Storage] Starting migration to V2...');
+            // console.log('[Storage] Starting migration to V2...');
             const result = await storageV2.migrateFromV1();
 
             if (result.success) {
                 localStorage.setItem(MIGRATION_DONE_KEY, 'true');
-                console.log('[Storage] ✅ Migration to V2 complete');
+                // console.log('[Storage] ✅ Migration to V2 complete');
                 migrationCheckDone = true;
                 migrationInProgress = false;
                 return { migrated: true };
@@ -120,49 +121,50 @@ export const saveLibrary = async (sets: CardSet[]): Promise<{ success: boolean; 
 
     const user = await getUser();
     if (!user) {
-        console.log('[Storage] No user session - saving locally only');
+        // console.log('[Storage] No user session - saving locally only');
         return { success: true, savedToCloud: false };
     }
 
-    // Save each set individually to V2
+    // Filter out local-only sets for cloud storage
+    const cloudSets = sets.filter(s => !s.isLocalOnly);
+    const cloudSetIds = new Set(cloudSets.map(s => s.id));
+
     try {
-        console.log(`[Storage] Saving ${sets.length} sets to Google Drive...`);
+        // console.log(`[Storage] Saving ${cloudSets.length} sets to Google Drive...`);
 
         // Get current structure to track root sets
         const { structure } = await storageV2.readStructure();
 
-        // Track which sets exist
-        const existingSetIds = new Set<string>();
-        structure.rootSets.forEach(id => existingSetIds.add(id));
-        structure.folders.forEach(f => f.setIds.forEach(id => existingSetIds.add(id)));
-
-        for (const cardSet of sets) {
-            console.log(`[Storage] Writing set "${cardSet.name}" (${cardSet.id})...`);
+        // Write eligible sets to Drive
+        for (const cardSet of cloudSets) {
+            // console.log(`[Storage] Writing set "${cardSet.name}" (${cardSet.id})...`);
             await storageV2.writeFlashcardSet(cardSet);
-
-            // Add to root if not in any folder
-            let inFolder = false;
-            for (const folder of structure.folders) {
-                if (folder.setIds.includes(cardSet.id)) {
-                    inFolder = true;
-                    break;
-                }
-            }
-            if (!inFolder && !structure.rootSets.includes(cardSet.id)) {
-                structure.rootSets.push(cardSet.id);
-            }
         }
 
-        // Remove deleted sets from structure
-        const currentIds = new Set(sets.map(s => s.id));
-        structure.rootSets = structure.rootSets.filter(id => currentIds.has(id));
-        structure.folders = structure.folders.map(f => ({
+        // Rebuild structure based on current cloud sets
+        // 1. Filter existing root sets to only include current cloud sets
+        let newRootSets = structure.rootSets.filter(id => cloudSetIds.has(id));
+
+        // 2. Filter folder contents
+        let newFolders = structure.folders.map(f => ({
             ...f,
-            setIds: f.setIds.filter(id => currentIds.has(id))
+            setIds: f.setIds.filter(id => cloudSetIds.has(id))
         }));
 
+        // 3. Add any new cloud sets to root if they aren't in a folder
+        cloudSets.forEach(cardSet => {
+            const inFolder = newFolders.some(f => f.setIds.includes(cardSet.id));
+            if (!inFolder && !newRootSets.includes(cardSet.id)) {
+                newRootSets.push(cardSet.id);
+            }
+        });
+
+        // 4. Assign new structure
+        structure.rootSets = newRootSets;
+        structure.folders = newFolders;
+
         await storageV2.writeStructure(structure);
-        console.log(`[Storage] ✅ Successfully saved ${sets.length} sets to Google Drive`);
+        // console.log(`[Storage] ✅ Successfully saved ${cloudSets.length} sets to Google Drive`);
         return { success: true, savedToCloud: true };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
@@ -185,28 +187,28 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
         console.warn('[Storage] Could not check Google Drive user (this is OK for offline use):', error);
     }
 
-    // Try local cache first
+    // 1. Get Local Cache (we ALWAYS want this as base/fallback)
+    let localSets: CardSet[] = [];
     try {
         const cached = await get<CardSet[]>(LIBRARY_KEY);
-        if (cached && cached.length > 0 && !user) {
-            return cached;
+        if (cached && Array.isArray(cached)) {
+            localSets = cached;
+        } else {
+            // Fallback to localStorage
+            const local = localStorage.getItem(LIBRARY_KEY);
+            if (local) {
+                localSets = JSON.parse(local);
+            }
         }
-    } catch (error) {
-        console.error('Failed to load from IndexedDB:', error);
+    } catch (e) {
+        console.error('Failed to load from IndexedDB/LocalStorage:', e);
     }
 
     if (!user) {
-        // Fall back to localStorage for offline users
-        try {
-            const local = localStorage.getItem(LIBRARY_KEY);
-            if (local) {
-                return JSON.parse(local);
-            }
-        } catch (e) { }
-        return undefined;
+        return localSets.length > 0 ? localSets : undefined;
     }
 
-    // Load from V2
+    // 2. Load from V2 Cloud
     try {
         const { structure } = await storageV2.readStructure();
 
@@ -220,8 +222,8 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
             });
         });
 
-        // Load each set
-        const sets: CardSet[] = [];
+        // Load each cloud set
+        const cloudSets: CardSet[] = [];
         for (const setId of allSetIds) {
             const { set: cardSet } = await storageV2.readFlashcardSet(setId);
             if (cardSet) {
@@ -232,23 +234,34 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
                         break;
                     }
                 }
-                sets.push(cardSet);
+                cloudSets.push(cardSet);
             }
         }
 
-        // Cache locally
-        await set(LIBRARY_KEY, sets);
+        // 3. Smart Merge: Cloud wins for same ID, Local-only kept and marked
+        const mergedMap = new Map<string, CardSet>();
 
-        return sets;
+        // Add Cloud Sets first (authoritative)
+        cloudSets.forEach(s => mergedMap.set(s.id, s));
+
+        // Add Local Sets if not present (and mark as Local Only if not in cloud)
+        localSets.forEach(s => {
+            if (!mergedMap.has(s.id)) {
+                // This set exists locally but not in cloud structure.
+                const localOnlySet = { ...s, isLocalOnly: true };
+                mergedMap.set(s.id, localOnlySet);
+            }
+        });
+
+        const finalSets = Array.from(mergedMap.values());
+
+        // Cache merged result locally
+        await set(LIBRARY_KEY, finalSets);
+
+        return finalSets;
     } catch (error) {
         console.error('[Storage] Failed to load library from V2:', error);
-
-        // Fall back to local cache
-        try {
-            return await get<CardSet[]>(LIBRARY_KEY);
-        } catch (e) {
-            return undefined;
-        }
+        return localSets.length > 0 ? localSets : undefined;
     }
 };
 
@@ -533,7 +546,7 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
         // Also include preloaded set IDs
         bootData.preloadedSets.forEach(s => allSetIds.add(s.id));
 
-        console.log(`[Storage] Loading ALL ${allSetIds.size} sets from cloud...`);
+        // console.log(`[Storage] Loading ALL ${allSetIds.size} sets from cloud...`);
 
         const allSets: CardSet[] = [];
         const corruptions = [...bootData.corruptions];
@@ -565,7 +578,7 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
             }
         }
 
-        console.log(`[Storage] ✅ Loaded ${allSets.length} sets from cloud`);
+        // console.log(`[Storage] ✅ Loaded ${allSets.length} sets from cloud`);
 
         // Cache all loaded sets in IndexedDB
         if (allSets.length > 0) {
@@ -608,7 +621,6 @@ export const deleteAllUserData = async (): Promise<{ success: boolean; error?: s
 
     // Clear IndexedDB
     try {
-        const { del } = await import('idb-keyval');
         await del(LIBRARY_KEY);
     } catch (e) {
         console.error('Failed to clear IndexedDB:', e);

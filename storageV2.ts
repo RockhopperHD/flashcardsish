@@ -45,7 +45,16 @@ export const DEFAULT_SETTINGS: Settings = {
     autoCloseImageWindow: false,
     hideTooltips: false,
     darkMode: true,
-    aiEnabled: false
+    aiEnabled: false,
+    learnModeLeftKey1: 'a',
+    learnModeLeftKey2: 'ArrowLeft',
+    learnModeRightKey1: 'b',
+    learnModeRightKey2: 'ArrowRight',
+    autoAdvanceOnAnswer: true,
+    flipCardKey1: ' ',
+    flipCardKey2: 'Enter',
+    submitAnswerKey1: 'Enter',
+    nextFieldKey1: 'Tab'
 };
 
 const CURRENT_VERSION = 1;
@@ -97,6 +106,7 @@ export interface FlashcardFile {
     topStreak: number;
     isSessionActive?: boolean;
     isMultistudy?: boolean;
+    isLocalOnly?: boolean;
 }
 
 export interface SessionFile {
@@ -268,7 +278,8 @@ const setToFile = (set: CardSet): FlashcardFile => ({
     elapsedTime: set.elapsedTime,
     topStreak: set.topStreak,
     isSessionActive: set.isSessionActive,
-    isMultistudy: set.isMultistudy
+    isMultistudy: set.isMultistudy,
+    isLocalOnly: set.isLocalOnly
 });
 
 /**
@@ -359,6 +370,7 @@ const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
         topStreak: cleanFile.topStreak,
         isSessionActive: cleanFile.isSessionActive,
         isMultistudy: cleanFile.isMultistudy,
+        isLocalOnly: cleanFile.isLocalOnly,
         folderId
     };
 };
@@ -416,8 +428,12 @@ const ensureSessionsFolder = async (parentFolderId: string): Promise<string> => 
  * Invalidate all local caches so next read goes to Google Drive.
  * Call this before cloud sync to ensure fresh data.
  */
+/**
+ * Invalidate all local caches so next read goes to Google Drive.
+ * Call this before cloud sync to ensure fresh data.
+ */
 export const invalidateLocalCaches = async (): Promise<void> => {
-    console.log('[StorageV2] Invalidating all local caches');
+    // console.log('[StorageV2] Invalidating all local caches');
     localStorage.removeItem(CONFIG_CACHE_KEY);
     localStorage.removeItem(STRUCTURE_CACHE_KEY);
 
@@ -459,7 +475,7 @@ export const readConfig = async (forceCloud = false): Promise<{ config: ConfigFi
     }
 
     try {
-        console.log('[StorageV2] Reading config from Google Drive (forceCloud:', forceCloud, ')');
+        // console.log('[StorageV2] Reading config from Google Drive (forceCloud:', forceCloud, ')');
         const folderId = await ensureDriveFolder();
         const content = await googleDrive.readFile(folderId, 'config.json');
 
@@ -565,7 +581,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
     }
 
     try {
-        console.log('[StorageV2] Reading structure from Google Drive (forceCloud:', forceCloud, ')');
+        // console.log('[StorageV2] Reading structure from Google Drive (forceCloud:', forceCloud, ')');
         const folderId = await ensureDriveFolder();
         const content = await googleDrive.readFile(folderId, 'structure.json');
 
@@ -636,7 +652,7 @@ const discoverOrphanedSets = async (folderId: string, structure: StructureFile):
         for (const file of files) {
             const setId = file.name.replace('.flashcards', '');
             if (!knownIds.has(setId)) {
-                console.log('[StorageV2] Found orphaned set, adding to root:', setId);
+                // console.log('[StorageV2] Found orphaned set, adding to root:', setId);
                 structure.rootSets.push(setId);
             }
         }
@@ -783,6 +799,11 @@ export const writeFlashcardSet = async (cardSet: CardSet): Promise<void> => {
     // Cache locally
     await set(`${SET_CACHE_PREFIX}${cardSet.id}`, cardSet);
 
+    // If local only, stop here (do not upload to Drive)
+    if (cardSet.isLocalOnly) {
+        return;
+    }
+
     const user = await getUser();
     if (!user) return;
 
@@ -820,6 +841,23 @@ export const deleteFlashcardSet = async (setId: string): Promise<void> => {
         await writeStructure(structure);
     } catch (error) {
         console.error(`[StorageV2] Failed to delete set ${setId}:`, error);
+    }
+};
+
+/**
+ * Delete a set JUST from the cloud (keep local cache).
+ * Used when moving a set from Cloud to Local Only.
+ */
+export const deleteSetFromCloud = async (setId: string): Promise<void> => {
+    const user = await getUser();
+    if (!user) return;
+
+    try {
+        const folderId = await ensureDriveFolder();
+        const setsFolderId = await ensureSetsFolder(folderId);
+        await googleDrive.deleteFile(setsFolderId, `${setId}.flashcards`);
+    } catch (error) {
+        console.error(`[StorageV2] Failed to delete set ${setId} from cloud:`, error);
     }
 };
 
@@ -965,7 +1003,7 @@ export const migrateFromV1 = async (): Promise<{ success: boolean; error?: strin
             return { success: false, error: 'Legacy data is corrupted' };
         }
 
-        console.log('[StorageV2] Starting migration from V1...');
+        // console.log('[StorageV2] Starting migration from V1...');
 
         // 1. Create config.json
         const config = createDefaultConfig();
@@ -973,7 +1011,7 @@ export const migrateFromV1 = async (): Promise<{ success: boolean; error?: strin
             config.settings = deepMerge(DEFAULT_SETTINGS, legacyData.settings);
         }
         await writeConfig(config);
-        console.log('[StorageV2] Created config.json');
+        // console.log('[StorageV2] Created config.json');
 
         // 2. Create structure.json
         const structure = createDefaultStructure();
@@ -1002,15 +1040,15 @@ export const migrateFromV1 = async (): Promise<{ success: boolean; error?: strin
                     structure.rootSets.push(set.id);
                 }
             }
-            console.log(`[StorageV2] Migrated ${legacyData.library_sets.length} sets`);
+            // console.log(`[StorageV2] Migrated ${legacyData.library_sets.length} sets`);
         }
 
         await writeStructure(structure);
-        console.log('[StorageV2] Created structure.json');
+        // console.log('[StorageV2] Created structure.json');
 
         // 4. Backup and delete legacy file
         await googleDrive.renameFile(folderId, 'flashcardsish_data.json', 'flashcardsish_data.json.backup');
-        console.log('[StorageV2] Backed up legacy file');
+        // console.log('[StorageV2] Backed up legacy file');
 
         return { success: true };
     } catch (error) {
@@ -1039,7 +1077,7 @@ export const loadBootData = async (forceCloud = true): Promise<{
 }> => {
     const corruptions: CorruptionReport[] = [];
 
-    console.log('[StorageV2] Loading boot data (forceCloud:', forceCloud, ')');
+    // console.log('[StorageV2] Loading boot data (forceCloud:', forceCloud, ')');
 
     // Load config (from cloud when forceCloud is true)
     const { config, wasCorrupted: configCorrupted } = await readConfig(forceCloud);

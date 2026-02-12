@@ -1,6 +1,7 @@
 export type CustomFieldType = 'text' | 'number' | 'ab' | 'tf';
 
 export interface CustomFieldDefinition {
+  id?: string;
   name: string;
   type: CustomFieldType;
   options?: { a: string; b: string }; // For 'ab' type
@@ -48,6 +49,7 @@ export interface CardSet {
   isSessionActive?: boolean;
   isMultistudy?: boolean;
   folderId?: string; // If belongs to a folder
+  isLocalOnly?: boolean; // If true, this set is not synced to the cloud
 }
 
 export interface Folder {
@@ -77,6 +79,15 @@ export interface Settings {
   autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
   // AI Features
   aiEnabled?: boolean; // Master killswitch for AI features (default false)
+  learnModeLeftKey1?: string; // Primary key for Left/Option A/True (default 'a')
+  learnModeLeftKey2?: string; // Secondary key for Left/Option A/True (default 'ArrowLeft')
+  learnModeRightKey1?: string; // Primary key for Right/Option B/False (default 'b')
+  learnModeRightKey2?: string; // Secondary key for Right/Option B/False (default 'ArrowRight')
+  autoAdvanceOnAnswer?: boolean; // Whether to auto-advance after answering A/B/True/False (default true)
+  flipCardKey1?: string; // Primary key for flipping flashcard (default ' ' i.e. Space)
+  flipCardKey2?: string; // Secondary key for flipping flashcard (default 'Enter')
+  submitAnswerKey1?: string; // Primary key for submitting answer in Learn mode (default 'Enter')
+  nextFieldKey1?: string; // Primary key for moving to next field (default 'Tab', locked)
 }
 
 export interface Badge {

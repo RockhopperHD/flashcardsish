@@ -140,6 +140,179 @@ const renderEditField = (
    );
 };
 
+
+
+// AB Input Component
+const ABInput = ({
+   fieldDef,
+   val,
+   onChange,
+   onNext,
+   isInteractive,
+   feedback,
+   isCorrect,
+   inputRef,
+   className,
+   settings
+}: {
+   fieldDef: CustomFieldDefinition,
+   val: string,
+   onChange: (val: string) => void,
+   onNext: (dir?: 'next' | 'prev') => void,
+   isInteractive: boolean,
+   feedback: FeedbackState,
+   isCorrect: boolean | undefined,
+   inputRef: (el: HTMLElement | null) => void,
+   className?: string,
+   settings: Settings
+}) => {
+   const [isFocused, setIsFocused] = useState(false);
+   const [showAltKey, setShowAltKey] = useState(false);
+
+   // Toggle alternate keys animation
+   useEffect(() => {
+      if (!isFocused) return;
+      const interval = setInterval(() => {
+         setShowAltKey(prev => !prev);
+      }, 2000); // 2 seconds per key set
+      return () => clearInterval(interval);
+   }, [isFocused]);
+
+   const isTF = fieldDef.type === 'tf';
+   const optionA = isTF ? 'True' : fieldDef.options?.a || 'A';
+   const optionB = isTF ? 'False' : fieldDef.options?.b || 'B';
+   const isB = val === optionB;
+
+   // Get keys from settings or defaults
+   const leftKey1 = settings.learnModeLeftKey1 || (isTF ? 't' : 'a');
+   const leftKey2 = settings.learnModeLeftKey2 || 'ArrowLeft';
+   const rightKey1 = settings.learnModeRightKey1 || (isTF ? 'f' : 'b');
+   const rightKey2 = settings.learnModeRightKey2 || 'ArrowRight';
+
+   const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (!isInteractive) return;
+
+      if (e.key === 'Tab' && e.shiftKey) {
+         e.preventDefault();
+         onNext('prev');
+         return;
+      }
+
+      const k = e.key;
+      const match = (target: string) => k.toLowerCase() === target.toLowerCase() || k === target;
+
+      if (match(leftKey1) || match(leftKey2)) {
+         e.preventDefault();
+         onChange(optionA);
+         if (settings.autoAdvanceOnAnswer !== false) onNext();
+      } else if (match(rightKey1) || match(rightKey2)) {
+         e.preventDefault();
+         onChange(optionB);
+         if (settings.autoAdvanceOnAnswer !== false) onNext();
+      }
+   };
+
+   const formatKey = (k: string) => {
+      if (k === 'ArrowLeft') return '←';
+      if (k === 'ArrowRight') return '→';
+      if (k === 'ArrowUp') return '↑';
+      if (k === 'ArrowDown') return '↓';
+      if (k === ' ') return 'SPACE';
+      return k.toUpperCase().slice(0, 5); // Truncate if too long (unlikely)
+   };
+
+   return (
+      <div
+         className={clsx(
+            className,
+            "relative flex flex-col items-center justify-center p-4 bg-panel-2 border rounded-xl h-full transition-all outline-none",
+            (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red" : "border-outline",
+            feedback.type === 'retype_needed' && isCorrect && "border-green bg-green/5",
+            isFocused && "ring-2 ring-accent ring-offset-2 ring-offset-bg border-accent"
+         )}
+         tabIndex={0}
+         onFocus={() => setIsFocused(true)}
+         onBlur={() => setIsFocused(false)}
+         onKeyDown={handleKeyDown}
+         ref={inputRef}
+      >
+         <div className="text-xs font-bold text-muted uppercase mb-2">{fieldDef.name}</div>
+
+         {/* Feedback Overlay */}
+         {feedback.type === 'retype_needed' && !isCorrect && (
+            <div className="absolute -top-3 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in bg-bg px-2 border border-outline rounded-full mx-auto w-max max-w-[90%] truncate shadow-sm z-10">
+               Incorrect
+            </div>
+         )}
+
+         {/* Selection Slider */}
+         <div className="flex w-full max-w-[200px] h-10 bg-bg border border-outline rounded-lg relative p-1 mb-2">
+            <div className={clsx(
+               "absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent rounded-md transition-all duration-200",
+               isB ? "left-[calc(50%)]" : "left-1",
+               !val && "opacity-0"
+            )} />
+            <button
+               onClick={() => {
+                  if (!isInteractive) return;
+                  onChange(optionA);
+                  if (settings.autoAdvanceOnAnswer !== false) onNext();
+               }}
+               tabIndex={-1}
+               className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionA) ? "text-bg" : "text-muted")}
+            >
+               {isTF ? "T" : optionA}
+            </button>
+            <button
+               onClick={() => {
+                  if (!isInteractive) return;
+                  onChange(optionB);
+                  if (settings.autoAdvanceOnAnswer !== false) onNext();
+               }}
+               tabIndex={-1}
+               className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionB) ? "text-bg" : "text-muted")}
+            >
+               {isTF ? "F" : optionB}
+            </button>
+         </div>
+
+         {/* Key Hint Overlay */}
+         <div className={clsx(
+            "h-6 flex items-center justify-between w-full max-w-[200px] px-2 transition-opacity duration-300",
+            isFocused ? "opacity-100" : "opacity-0"
+         )}>
+            {/* Left Key Hint */}
+            <div className="relative w-8 h-6 flex justify-center">
+               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-0 scale-90" : "opacity-100 scale-100")}>
+                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
+                     {formatKey(leftKey1)}
+                  </kbd>
+               </div>
+               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-100 scale-100" : "opacity-0 scale-90")}>
+                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
+                     {formatKey(leftKey2)}
+                  </kbd>
+               </div>
+            </div>
+
+            {/* Right Key Hint */}
+            <div className="relative w-8 h-6 flex justify-center">
+               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-0 scale-90" : "opacity-100 scale-100")}>
+                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
+                     {formatKey(rightKey1)}
+                  </kbd>
+               </div>
+               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-100 scale-100" : "opacity-0 scale-90")}>
+                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
+                     {formatKey(rightKey2)}
+                  </kbd>
+               </div>
+            </div>
+         </div>
+      </div>
+   );
+};
+
 export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect, onStartGame }) => {
    // Learn Sub-Mode Selection
    const [subMode, setSubMode] = useState<LearnSubMode | null>(null);
@@ -197,6 +370,65 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Refs
    const termInputRef = useRef<HTMLInputElement>(null);
    const yearInputRef = useRef<HTMLInputElement>(null);
+
+   const submitButtonRef = useRef<HTMLButtonElement>(null);
+   const customInputRefs = useRef<Record<string, HTMLElement | null>>({});
+
+   // Helper for focusing next field
+   const focusNext = (currentFieldName: string, direction: 'next' | 'prev' = 'next') => {
+      // Determine field order
+      const isAnsweringWithDef = settings.answerWithDefinition;
+      let relevantFields: CustomFieldDefinition[] = [];
+      const normalize = (f: any[] | undefined): CustomFieldDefinition[] => {
+         if (!f) return [];
+         return f.map(item => typeof item === 'string' ? { name: item, type: 'text' } : item);
+      };
+
+      if (set.version && set.version >= 2) {
+         relevantFields = isAnsweringWithDef ? normalize(set.defSideFields) : normalize(set.termSideFields);
+      } else {
+         relevantFields = normalize(set.customFieldNames);
+      }
+
+      const activeCustomFields = relevantFields.filter(fDef => currentCard?.customFields?.some(f => f.name === fDef.name));
+      const hasYear = !!currentCard?.year;
+
+      // Order: Term -> Year -> Custom Fields -> Submit
+      const order = ['term'];
+      if (hasYear) order.push('year');
+      activeCustomFields.forEach(f => order.push(f.name));
+
+      const currentIndex = order.indexOf(currentFieldName);
+
+      if (direction === 'next') {
+         if (currentIndex !== -1 && currentIndex < order.length - 1) {
+            const nextField = order[currentIndex + 1];
+            if (nextField === 'year') {
+               yearInputRef.current?.focus();
+            } else {
+               // Custom field
+               const el = customInputRefs.current[nextField];
+               if (el) el.focus();
+            }
+         } else {
+            // Focus submit button
+            submitButtonRef.current?.focus();
+         }
+      } else {
+         // Previous
+         if (currentIndex > 0) {
+            const prevField = order[currentIndex - 1];
+            if (prevField === 'term') {
+               termInputRef.current?.focus();
+            } else if (prevField === 'year') {
+               yearInputRef.current?.focus();
+            } else {
+               const el = customInputRefs.current[prevField];
+               if (el) el.focus();
+            }
+         }
+      }
+   }
 
    // Base cards (respecting starred only setting)
    const baseCards = useMemo(() => {
@@ -865,7 +1097,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    };
 
    const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && !e.shiftKey) {
          e.preventDefault();
          e.stopPropagation();
          if (isInteractive) handleAttempt();
@@ -1165,8 +1397,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      </p>
                   </div>
                   <div className="mt-6 flex gap-2">
-                     <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">ENTER</span>
-                     <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">O</span>
+                     <kbd className="px-2 py-1 bg-panel-2 border-b-2 border-outline/50 rounded text-xs font-bold text-muted font-sans">ENTER</kbd>
+                     <kbd className="px-2 py-1 bg-panel-2 border-b-2 border-outline/50 rounded text-xs font-bold text-muted font-sans">O</kbd>
                   </div>
                </button>
 
@@ -1211,7 +1443,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         </span>
                      ) : (
                         <>
-                           <span className="px-2 py-1 bg-accent/10 rounded text-xs font-mono text-accent">
+                           <span className="px-2 py-1 bg-accent/10 rounded text-xs font-bold text-accent">
                               Batch Size: {effectiveBatchSize}
                            </span>
                         </>
@@ -1574,7 +1806,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  type="text"
                                  value={inputTerm}
                                  onChange={(e) => setInputTerm(e.target.value)}
-                                 onKeyDown={handleInputKeyDown}
+
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
                                  placeholder={feedback.type === 'retype_needed'
                                     ? `Retype ${inputLabel.toLowerCase()}...`
@@ -1585,6 +1817,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                     feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green text-green bg-green/5"
                                  )}
                                  autoComplete="off"
+                                 onKeyDown={(e) => {
+                                    handleInputKeyDown(e);
+                                 }}
                               />
                            </div>
                         );
@@ -1601,7 +1836,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  type="text"
                                  value={inputYear}
                                  onChange={(e) => setInputYear(e.target.value)}
-                                 onKeyDown={handleInputKeyDown}
+                                 onKeyDown={(e) => {
+                                    if (e.key === 'Tab' && e.shiftKey) {
+                                       e.preventDefault();
+                                       focusNext('year', 'prev');
+                                       return;
+                                    }
+                                    handleInputKeyDown(e);
+                                 }}
                                  placeholder="Year"
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isYearMatch)}
                                  className={clsx(
@@ -1630,50 +1872,20 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
 
                                  if (fieldDef.type === 'ab' || fieldDef.type === 'tf') {
-                                    const isTF = fieldDef.type === 'tf';
-                                    const optionA = isTF ? 'True' : fieldDef.options?.a || 'A';
-                                    const optionB = isTF ? 'False' : fieldDef.options?.b || 'B';
-                                    const isB = val === optionB;
-
                                     return (
-                                       <div key={fieldName} className={clsx("relative flex flex-col items-center justify-center p-4 bg-panel-2 border rounded-xl h-full", customClasses[i],
-                                          (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red" : "border-outline",
-                                          feedback.type === 'retype_needed' && isCorrect && "border-green bg-green/5"
-                                       )}>
-                                          <div className="text-xs font-bold text-muted uppercase mb-2">{fieldName}</div>
-                                          {feedback.type === 'retype_needed' && !isCorrect && (
-                                             <div className="absolute -top-3 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in bg-bg px-2 border border-outline rounded-full mx-auto w-max max-w-[90%] truncate shadow-sm z-10">
-                                                {field?.value}
-                                             </div>
-                                          )}
-                                          <div className="flex w-full max-w-[200px] h-10 bg-bg border border-outline rounded-lg relative p-1">
-                                             <div className={clsx(
-                                                "absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent rounded-md transition-all duration-200",
-                                                isB ? "left-[calc(50%)]" : "left-1",
-                                                !val && "opacity-0" // Hide slider if no value selected yet?
-                                             )} />
-                                             <button
-                                                onClick={() => {
-                                                   const isDisabled = !isInteractive || (feedback.type === 'retype_needed' && isCorrect);
-                                                   if (isDisabled) return;
-                                                   setInputCustom(prev => ({ ...prev, [fieldName]: optionA }));
-                                                }}
-                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionA) ? "text-bg" : "text-muted")}
-                                             >
-                                                {isTF ? "T" : optionA}
-                                             </button>
-                                             <button
-                                                onClick={() => {
-                                                   const isDisabled = !isInteractive || (feedback.type === 'retype_needed' && isCorrect);
-                                                   if (isDisabled) return;
-                                                   setInputCustom(prev => ({ ...prev, [fieldName]: optionB }));
-                                                }}
-                                                className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionB) ? "text-bg" : "text-muted")}
-                                             >
-                                                {isTF ? "F" : optionB}
-                                             </button>
-                                          </div>
-                                       </div>
+                                       <ABInput
+                                          key={fieldName}
+                                          fieldDef={fieldDef}
+                                          val={val}
+                                          onChange={(newVal) => setInputCustom(prev => ({ ...prev, [fieldName]: newVal }))}
+                                          onNext={(dir) => focusNext(fieldName, dir)}
+                                          isInteractive={isInteractive && (!feedback.type || feedback.type === 'idle' || feedback.type === 'retype_needed' && !isCorrect)}
+                                          feedback={feedback}
+                                          isCorrect={isCorrect}
+                                          inputRef={(el) => { customInputRefs.current[fieldName] = el; }}
+                                          className={customClasses[i]}
+                                          settings={settings}
+                                       />
                                     );
                                  }
 
@@ -1693,7 +1905,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                           type="text"
                                           value={val}
                                           onChange={(e) => setInputCustom(prev => ({ ...prev, [fieldName]: e.target.value }))}
-                                          onKeyDown={handleInputKeyDown}
+                                          onKeyDown={(e) => {
+                                             if (e.key === 'Tab' && e.shiftKey) {
+                                                e.preventDefault();
+                                                focusNext(fieldName, 'prev');
+                                                return;
+                                             }
+                                             handleInputKeyDown(e);
+                                          }}
                                           placeholder={fieldName}
                                           disabled={!isInteractive || (feedback.type === 'retype_needed' && isCorrect)}
                                           className={clsx(
@@ -1747,7 +1966,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            </button>
                            <button
                               onClick={handleAttempt}
-                              className="bg-accent text-bg font-extrabold px-10 py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg"
+                              ref={submitButtonRef}
+                              className="bg-accent text-bg font-extrabold px-10 py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg focus:ring-4 focus:ring-accent/30 outline-none"
                            >
                               Submit
                            </button>
@@ -1755,6 +1975,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      ) : (
                         <button
                            autoFocus
+                           ref={submitButtonRef}
                            onClick={() => nextCard()}
                            className="bg-text text-bg font-extrabold px-12 py-4 rounded-xl animate-in zoom-in duration-200 shadow-lg hover:scale-105 transition-transform"
                         >

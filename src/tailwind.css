@@ -24,6 +24,7 @@
     /* Custom animations */
     --animate-glow-pulse: glowPulse 1s ease-out;
     --animate-fall: fall 3s linear forwards;
+    --animate-pop-in: pop-in 0.5s ease-out forwards;
 }
 
 @keyframes glowPulse {
@@ -47,4 +48,171 @@
     }
 }
 
-[contentEditable]:empty:before { content: attr(data-placeholder); color: var(--color-muted); opacity: 0.5; pointer-events: none; display: block; }
+@keyframes pop-in {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+
+    50% {
+        transform: scale(1.2);
+        opacity: 0.8;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0.7;
+    }
+}
+
+[contentEditable]:empty:before {
+    content: attr(data-placeholder);
+    color: var(--color-muted);
+    opacity: 0.5;
+    pointer-events: none;
+    display: block;
+}
+
+/* ──────────────────────────────────────────────
+   Keybinds Modal – Visual Keyboard
+   ────────────────────────────────────────────── */
+
+.keybinds-keyboard-container {
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: var(--panel-2);
+    border: 1px solid var(--outline);
+}
+
+.keybinds-keyboard {
+    text-align: center;
+    font-size: 11px;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    user-select: none;
+}
+
+.kb-row {
+    display: flex;
+    justify-content: center;
+    gap: 3px;
+    margin-bottom: 3px;
+}
+
+.kb-row--fn {
+    margin-bottom: 6px;
+}
+
+.kb-key {
+    position: relative;
+    background: var(--panel);
+    text-align: center;
+    color: var(--muted);
+    border-radius: 4px;
+    padding: 2px;
+    width: 2.8em;
+    height: 2.6em;
+    box-sizing: border-box;
+    cursor: default;
+    border: 1px solid var(--outline);
+    box-shadow: 0 2px 0 0 rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-size: 11px;
+    transition: all 0.15s ease;
+}
+
+.kb-key[data-highlight] {
+    background: color-mix(in srgb, var(--highlight-color, var(--accent)) 15%, var(--panel));
+    color: var(--text);
+    border-color: var(--highlight-color, var(--accent));
+}
+
+.kb-key--fn-key {
+    width: 3em;
+    height: 1.6em;
+    font-size: 9px;
+}
+
+.kb-key--fn-key span {
+    font-size: 9px;
+}
+
+.kb-key--word {
+    font-size: 9px;
+    height: 1.6em;
+    width: 3em;
+}
+
+.kb-key--word span {
+    font-size: 8px;
+}
+
+.kb-row:not(.kb-row--fn) .kb-key--word {
+    height: 2.6em;
+}
+
+.kb-key--double {
+    font-size: 9px;
+    line-height: 1.1;
+}
+
+.kb-key--double>* {
+    line-height: 1.1;
+}
+
+.kb-key--letter {
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text);
+}
+
+.kb-key--w1 {
+    width: 3.2em;
+}
+
+.kb-key--w3 {
+    width: 4em;
+}
+
+.kb-key--w4 {
+    width: 5em;
+}
+
+.kb-key--w5 {
+    width: 5.5em;
+}
+
+.kb-key--w6 {
+    width: 7em;
+}
+
+.kb-key--space {
+    width: 16em;
+}
+
+.kb-key--arrow {
+    width: 2.8em;
+    height: 1.3em;
+    font-size: 8px;
+}
+
+.kb-key--arrow-tall {
+    width: 2.8em;
+    height: 2.6em;
+    font-size: 8px;
+    line-height: 1.1;
+}
+
+.kb-key--arrow-tall>* {
+    line-height: 1.1;
+}
+
+.kb-row--bottom {
+    margin-top: 0;
+}
+
+.kb-row--bottom .kb-key {
+    height: 2.6em;
+}

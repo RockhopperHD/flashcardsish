@@ -33,6 +33,8 @@ import {
   Settings2,
   GripVertical,
   Minus,
+  HardDrive,
+  CheckCircle2,
 } from "lucide-react";
 import { FloatingToolbar } from "./FloatingToolbar";
 import {
@@ -136,6 +138,23 @@ interface BuilderRow {
 }
 
 const BUILDER_STORAGE_KEY = "flashcard-builder-rows";
+const AUTOSAVE_DRAFT_KEY = "flashcardsish-autosave-draft";
+
+interface AutosaveDraft {
+  builderRows: BuilderRow[];
+  setName: string;
+  termLabel: string;
+  definitionLabel: string;
+  termSideFields: CustomFieldDefinition[];
+  defSideFields: CustomFieldDefinition[];
+  showYear: boolean;
+  enableTermCards: boolean;
+  editingSetId: string | null;
+  appliedTags: string[];
+  rawText: string;
+  builderMode: "visual" | "raw";
+  savedAt: number;
+}
 
 const GREETINGS = [
   "What are we learning next?",
@@ -843,6 +862,11 @@ const FieldRowComponent: React.FC<{
   termLabel: string;
   definitionLabel: string;
   hideTooltips: boolean;
+  onSwap: () => void;
+  dragHandleProps?: DraggableProvided['dragHandleProps'];
+  draggableProps?: DraggableProvided['draggableProps'];
+  innerRef?: (element: HTMLElement | null) => void;
+  isDragging?: boolean;
 }> = ({
   field,
   index,
@@ -856,6 +880,11 @@ const FieldRowComponent: React.FC<{
   termLabel,
   definitionLabel,
   hideTooltips,
+  onSwap,
+  dragHandleProps,
+  draggableProps,
+  innerRef,
+  isDragging,
 }) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -895,28 +924,35 @@ const FieldRowComponent: React.FC<{
     );
 
     return (
-      // CursorTooltip moved to specific icon
       <div
-        key={index}
-        className="relative group/field-row"
-        onFocus={() => setActiveFieldId(`${side}-${index}`)}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-            setActiveFieldId(null);
-          }
-        }}
+        ref={innerRef}
+        {...draggableProps}
+        className="relative pt-2 pr-2"
       >
-        <div className="flex flex-col gap-2 mb-3 bg-panel-2 border border-outline rounded-xl p-3">
+        {/* Delete button - top right corner */}
+        <button
+          onClick={() => remove(index)}
+          className="absolute top-0 right-0 z-10 w-5 h-5 flex items-center justify-center bg-panel border border-outline rounded-full text-muted hover:text-red hover:border-red hover:bg-red hover:text-bg transition-all shadow-sm opacity-0 group-hover/field-row:opacity-100 focus:opacity-100"
+          title="Delete field"
+        >
+          <X size={10} />
+        </button>
+
+        <div
+          className={clsx(
+            "bg-panel-2 border rounded-xl p-3 transition-shadow",
+            isDragging ? "border-accent shadow-2xl bg-panel" : "border-outline"
+          )}
+        >
+          {/* Main row */}
           <div className="flex items-center gap-2">
-            <CursorTooltip
-              content={tooltipContent}
-              isEnabled={!hideTooltips}
+            <div
+              {...dragHandleProps}
+              className="flex-shrink-0 text-muted hover:text-accent cursor-grab active:cursor-grabbing transition-colors p-1"
+              title="Drag to reorder or move"
             >
-              <HelpCircle
-                size={16}
-                className="text-muted hover:text-accent cursor-help flex-shrink-0 transition-colors"
-              />
-            </CursorTooltip>
+              <GripVertical size={18} />
+            </div>
 
             <input
               value={field.name}
@@ -929,21 +965,19 @@ const FieldRowComponent: React.FC<{
               }}
               className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors"
               placeholder="Field Name"
-              autoFocus={!field.name}
               spellCheck={false}
               data-ms-editor="true"
             />
 
-            {/* Custom Dropdown */}
-            <div className="relative w-32 flex-shrink-0" ref={dropdownRef}>
+            <div className="relative w-28 flex-shrink-0" ref={dropdownRef}>
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full h-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
+                className="w-full bg-panel border border-outline rounded-lg px-2 py-2 text-xs focus:border-accent outline-none transition-colors flex items-center justify-between gap-1"
               >
-                <span className="capitalize truncate">
-                  {field.type === "ab" ? "A/B" : field.type === "tf" ? "True/False" : field.type}
+                <span className="capitalize truncate font-medium">
+                  {field.type === "ab" ? "A/B" : field.type === "tf" ? "T/F" : field.type}
                 </span>
-                <ChevronDown size={12} className="opacity-50 flex-shrink-0" />
+                <ChevronDown size={10} className="opacity-50 flex-shrink-0" />
               </button>
 
               {isDropdownOpen && (
@@ -965,7 +999,7 @@ const FieldRowComponent: React.FC<{
                         setIsDropdownOpen(false);
                       }}
                       className={clsx(
-                        "w-full text-left px-4 py-2 text-sm hover:bg-panel-2 transition-colors",
+                        "w-full text-left px-3 py-2 text-xs hover:bg-panel-2 transition-colors",
                         field.type === opt.val
                           ? "text-accent font-bold bg-accent/5"
                           : "text-text",
@@ -977,16 +1011,11 @@ const FieldRowComponent: React.FC<{
                 </div>
               )}
             </div>
-
-            <button
-              onClick={() => remove(index)}
-              className="p-2 text-muted hover:text-red transition-colors"
-            >
-              <X size={16} />
-            </button>
           </div>
+
+          {/* A/B options row */}
           {field.type === "ab" && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 pl-7 mt-2">
               <input
                 value={field.options?.a || ""}
                 onChange={(e) =>
@@ -995,7 +1024,7 @@ const FieldRowComponent: React.FC<{
                   })
                 }
                 placeholder="Option A"
-                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
+                className="flex-1 bg-panel border border-outline/50 rounded px-2 py-1.5 text-xs focus:border-accent outline-none transition-colors"
               />
               <input
                 value={field.options?.b || ""}
@@ -1005,8 +1034,7 @@ const FieldRowComponent: React.FC<{
                   })
                 }
                 placeholder="Option B"
-                className="flex-1 bg-panel border-b border-outline/50 bg-transparent px-2 py-1 text-xs focus:border-accent outline-none transition-colors"
-                onFocus={() => setActiveFieldId(`${side}-${index}`)} // Ensure focus triggers specific row
+                className="flex-1 bg-panel border border-outline/50 rounded px-2 py-1.5 text-xs focus:border-accent outline-none transition-colors"
               />
             </div>
           )}
@@ -1082,6 +1110,8 @@ const SetConfigurationModal: React.FC<{
     const [mode, setMode] = useState<"config" | "import">("config");
     const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
     const [isTagDropdownOpen, setIsTagDropdownOpen] = useState(false);
+    // const [isSwapMode, setIsSwapMode] = useState(false); // Removed
+    const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -1097,7 +1127,10 @@ const SetConfigurationModal: React.FC<{
 
     // Reset mode on open
     useEffect(() => {
-      if (isOpen) setMode("config");
+      if (isOpen) {
+        setMode("config");
+        setIsTagDropdownOpen(false);
+      }
     }, [isOpen]);
 
     if (!isOpen) return null;
@@ -1123,7 +1156,7 @@ const SetConfigurationModal: React.FC<{
 
     const addTermField = () => {
       if (termSideFields.length < 4) {
-        setTermSideFields([...termSideFields, { name: "", type: "text" }]);
+        setTermSideFields([...termSideFields, { id: generateId(), name: "", type: "text" }]);
       }
     };
 
@@ -1152,12 +1185,95 @@ const SetConfigurationModal: React.FC<{
 
     const addDefField = () => {
       if (defSideFields.length < 4) {
-        setDefSideFields([...defSideFields, { name: "", type: "text" }]);
+        setDefSideFields([...defSideFields, { id: generateId(), name: "", type: "text" }]);
       }
     };
 
     const deleteDefField = (index: number) => {
       setDefSideFields(defSideFields.filter((_, i) => i !== index));
+    };
+
+    const swapTermField = (index: number) => {
+      if (defSideFields.length >= 4) {
+        alert("Cannot move field. Destination side is full (max 4).");
+        return;
+      }
+      const fieldToMove = termSideFields[index];
+      setTermSideFields(termSideFields.filter((_, i) => i !== index));
+      setDefSideFields([...defSideFields, fieldToMove]);
+    };
+
+    const swapDefField = (index: number) => {
+      if (termSideFields.length >= 4) {
+        alert("Cannot move field. Destination side is full (max 4).");
+        return;
+      }
+      const fieldToMove = defSideFields[index];
+      setDefSideFields(defSideFields.filter((_, i) => i !== index));
+      setTermSideFields([...termSideFields, fieldToMove]);
+    };
+
+    // Drag and Drop Logic
+    const onDragStart = (start: any) => {
+      setDraggingFrom(start.source.droppableId);
+    };
+
+    const onDragEnd = (result: DropResult) => {
+      setDraggingFrom(null);
+      const { source, destination } = result;
+
+      if (!destination) return;
+
+      // Dropped in same spot
+      if (
+        source.droppableId === destination.droppableId &&
+        source.index === destination.index
+      ) {
+        return;
+      }
+
+      const isSameList = source.droppableId === destination.droppableId;
+
+      if (isSameList) {
+        // Reorder within one list
+        const list = source.droppableId === "term" ? [...termSideFields] : [...defSideFields];
+        const setter = source.droppableId === "term" ? setTermSideFields : setDefSideFields;
+        const [moved] = list.splice(source.index, 1);
+        list.splice(destination.index, 0, moved);
+        setter(list);
+      } else {
+        // Move between lists
+        const srcList = source.droppableId === "term" ? [...termSideFields] : [...defSideFields];
+        const dstList = destination.droppableId === "term" ? [...termSideFields] : [...defSideFields];
+
+        if (dstList.length >= 4) return; // capacity guard
+
+        const [moved] = srcList.splice(source.index, 1);
+        dstList.splice(destination.index, 0, moved);
+
+        if (source.droppableId === "term") {
+          setTermSideFields(srcList);
+          setDefSideFields(dstList);
+        } else {
+          setDefSideFields(srcList);
+          setTermSideFields(dstList);
+        }
+      }
+    };
+
+    const handleClose = () => {
+      // Filter out fields with empty names
+      const filteredTerm = termSideFields.filter((f) => f.name.trim() !== "");
+      const filteredDef = defSideFields.filter((f) => f.name.trim() !== "");
+
+      if (filteredTerm.length !== termSideFields.length) {
+        setTermSideFields(filteredTerm);
+      }
+      if (filteredDef.length !== defSideFields.length) {
+        setDefSideFields(filteredDef);
+      }
+
+      onClose();
     };
 
 
@@ -1166,7 +1282,7 @@ const SetConfigurationModal: React.FC<{
       return (
         <div
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
-          onMouseDown={onClose}
+          onMouseDown={handleClose}
         >
           <div
             className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-6xl h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
@@ -1176,7 +1292,7 @@ const SetConfigurationModal: React.FC<{
               onClose={() => setMode('config')}
               onContinue={(cards) => {
                 onImportContinue(cards);
-                onClose();
+                handleClose();
               }}
               rawText={rawText}
               setRawText={setRawText}
@@ -1192,7 +1308,7 @@ const SetConfigurationModal: React.FC<{
     return (
       <div
         className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
-        onMouseDown={onClose}
+        onMouseDown={handleClose}
       >
         <div
           className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar"
@@ -1211,143 +1327,203 @@ const SetConfigurationModal: React.FC<{
             )}
           </div>
           <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
+
           <p className="text-muted mb-8 text-sm leading-relaxed">
             You can tailor your flashcards set by renaming the main fields and
             adding up to 4 custom fields per side. <br /> <br />
             If you're repeating the same type of data in every card, like what category something falls into, this feature allows you to make the entry process for every one of those consistent. Regardless of how many custom fields you specify, leaving them blank or on their neutral option means that card won't ask for or have data for that custom field.
-            <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false.
+            <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false. <strong>You most likely want to put custom fields on the term side.</strong>
           </p>
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* Term Side */}
-            <div className="space-y-4">
-              <div className="uppercase text-xs font-bold text-muted tracking-widest">
-                Terms Side
-              </div>
 
-              <div className="flex items-center gap-2 relative">
-                <HelperTooltip
-                  show={activeLabelSide === "term"}
-                  hideTooltips={settings.hideTooltips}
-                  text={
-                    <span>
-                      When you’re studying <b>Terms</b>, we’ll call the{" "}
-                      <b>Terms</b> side this word. You can put a language here, a
-                      special title, or anything else.
-                    </span>
-                  }
-                />
-                <input
-                  value={termLabel}
-                  onChange={(e) => setTermLabel(e.target.value)}
-                  onFocus={() => setActiveLabelSide("term")}
-                  onBlur={() => setActiveLabelSide(null)}
-                  className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                  placeholder="Term"
-                />
-              </div>
 
-              <div>
-                <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                  Custom Fields
-                  <span className="text-xs font-normal text-muted">
-                    {termSideFields.length}/4
-                  </span>
-                </label>
-                <div className="space-y-1">
-                  {termSideFields.map((field, i) => (
-                    <FieldRowComponent
-                      key={`term-${i}`}
-                      field={field}
-                      index={i}
-                      update={updateTermField}
-                      remove={deleteTermField}
-                      isLast={i === termSideFields.length - 1}
-                      addNext={addTermField}
-                      side="term"
-                      activeFieldId={activeFieldId}
-                      setActiveFieldId={setActiveFieldId}
-                      termLabel={termLabel}
-                      definitionLabel={definitionLabel}
-                      hideTooltips={settings.hideTooltips}
-                    />
-                  ))}
-                  {termSideFields.length < 4 && (
-                    <button
-                      onClick={addTermField}
-                      className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Add Field
-                    </button>
-                  )}
-                </div>
-              </div>
+
+          <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* Term Side */}
+              <Droppable droppableId="term">
+                {(provided, snapshot) => (
+                  <div
+                    className={clsx(
+                      "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
+                      snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+                    )}
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                  >
+                    <div className="uppercase text-xs font-bold text-muted tracking-widest">
+                      Terms Side
+                    </div>
+
+                    <div className="flex items-center gap-2 relative">
+                      <HelperTooltip
+                        show={activeLabelSide === "term"}
+                        hideTooltips={settings.hideTooltips}
+                        text={
+                          <span>
+                            When you’re studying <b>Terms</b>, we’ll call the{" "}
+                            <b>Terms</b> side this word. You can put a language here, a
+                            special title, or anything else.
+                          </span>
+                        }
+                      />
+                      <input
+                        value={termLabel}
+                        onChange={(e) => setTermLabel(e.target.value)}
+                        onFocus={() => setActiveLabelSide("term")}
+                        onBlur={() => setActiveLabelSide(null)}
+                        className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                        placeholder="Term"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+                        Custom Fields
+                        <span className="text-xs font-normal text-muted">
+                          {termSideFields.length}/4
+                        </span>
+                      </label>
+                      <div className="flex flex-col gap-1 min-h-[50px]">
+                        {termSideFields.map((field, i) => (
+                          <Draggable
+                            key={field.id || `term-${i}`}
+                            draggableId={field.id || `term-${i}`}
+                            index={i}
+                          >
+                            {(provided, snapshot) => (
+                              <div className="group/field-row">
+                                <FieldRowComponent
+                                  field={field}
+                                  index={i}
+                                  update={updateTermField}
+                                  remove={deleteTermField}
+                                  isLast={i === termSideFields.length - 1}
+                                  addNext={addTermField}
+                                  side="term"
+                                  activeFieldId={activeFieldId}
+                                  setActiveFieldId={setActiveFieldId}
+                                  termLabel={termLabel}
+                                  definitionLabel={definitionLabel}
+                                  hideTooltips={settings.hideTooltips}
+                                  onSwap={() => swapTermField(i)}
+                                  innerRef={provided.innerRef}
+                                  draggableProps={provided.draggableProps}
+                                  dragHandleProps={provided.dragHandleProps}
+                                  isDragging={snapshot.isDragging}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        {termSideFields.length < 4 && (
+                          <button
+                            onClick={addTermField}
+                            className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Plus size={14} /> Add Field
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Droppable>
+
+              {/* Definition Side */}
+              <Droppable droppableId="def">
+                {(provided, snapshot) => (
+                  <div
+                    className={clsx(
+                      "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
+                      snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+                    )}
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                  >
+                    <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
+                      Definitions Side
+                    </div>
+
+                    <div className="flex items-center gap-2 relative">
+                      <HelperTooltip
+                        show={activeLabelSide === "def"}
+                        hideTooltips={settings.hideTooltips}
+                        text={
+                          <span>
+                            When you’re studying <b>Definitions</b>, we’ll call the{" "}
+                            <b>Definitions</b> side this word. You can put a language
+                            here, a special title, or anything else.
+                          </span>
+                        }
+                      />
+                      <input
+                        value={definitionLabel}
+                        onChange={(e) => setDefinitionLabel(e.target.value)}
+                        onFocus={() => setActiveLabelSide("def")}
+                        onBlur={() => setActiveLabelSide(null)}
+                        className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                        placeholder="Definition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+                        Custom Fields
+                        <span className="text-xs font-normal text-muted">
+                          {defSideFields.length}/4
+                        </span>
+                      </label>
+                      <div className="flex flex-col gap-1 min-h-[50px]">
+                        {defSideFields.map((field, i) => (
+                          <Draggable
+                            key={field.id || `def-${i}`}
+                            draggableId={field.id || `def-${i}`}
+                            index={i}
+                          >
+                            {(provided, snapshot) => (
+                              <div className="group/field-row">
+                                <FieldRowComponent
+                                  field={field}
+                                  index={i}
+                                  update={updateDefField}
+                                  remove={deleteDefField}
+                                  isLast={i === defSideFields.length - 1}
+                                  addNext={addDefField}
+                                  side="def"
+                                  activeFieldId={activeFieldId}
+                                  setActiveFieldId={setActiveFieldId}
+                                  termLabel={termLabel}
+                                  definitionLabel={definitionLabel}
+                                  hideTooltips={settings.hideTooltips}
+                                  onSwap={() => swapDefField(i)}
+                                  innerRef={provided.innerRef}
+                                  draggableProps={provided.draggableProps}
+                                  dragHandleProps={provided.dragHandleProps}
+                                  isDragging={snapshot.isDragging}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        {defSideFields.length < 4 && (
+                          <button
+                            onClick={addDefField}
+                            className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Plus size={14} /> Add Field
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </Droppable>
             </div>
+          </DragDropContext>
 
-            {/* Definition Side */}
-            <div className="space-y-4">
-              <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
-                Definitions Side
-              </div>
 
-              <div className="flex items-center gap-2 relative">
-                <HelperTooltip
-                  show={activeLabelSide === "def"}
-                  hideTooltips={settings.hideTooltips}
-                  text={
-                    <span>
-                      When you’re studying <b>Definitions</b>, we’ll call the{" "}
-                      <b>Definitions</b> side this word. You can put a language
-                      here, a special title, or anything else.
-                    </span>
-                  }
-                />
-                <input
-                  value={definitionLabel}
-                  onChange={(e) => setDefinitionLabel(e.target.value)}
-                  onFocus={() => setActiveLabelSide("def")}
-                  onBlur={() => setActiveLabelSide(null)}
-                  className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                  placeholder="Definition"
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                  Custom Fields
-                  <span className="text-xs font-normal text-muted">
-                    {defSideFields.length}/4
-                  </span>
-                </label>
-                <div className="space-y-1">
-                  {defSideFields.map((field, i) => (
-                    <FieldRowComponent
-                      key={`def-${i}`}
-                      field={field}
-                      index={i}
-                      update={updateDefField}
-                      remove={deleteDefField}
-                      isLast={i === defSideFields.length - 1}
-                      addNext={addDefField}
-                      side="def"
-                      activeFieldId={activeFieldId}
-                      setActiveFieldId={setActiveFieldId}
-                      termLabel={termLabel}
-                      definitionLabel={definitionLabel}
-                      hideTooltips={settings.hideTooltips}
-                    />
-                  ))}
-                  {defSideFields.length < 4 && (
-                    <button
-                      onClick={addDefField}
-                      className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
-                    >
-                      <Plus size={14} /> Add Field
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Tags Section */}
           <div className="mt-8 pt-6 border-t border-outline/50">
@@ -2158,6 +2334,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onOpenSettings,
 }) => {
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showAddSetModal, setShowAddSetModal] = useState(false);
   const [importAppend, setImportAppend] = useState(true);
   const [importOverride, setImportOverride] = useState<'keep' | 'duplicate' | 'override'>('keep');
@@ -2202,6 +2379,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [noStarredModalSet, setNoStarredModalSet] = useState<CardSet | null>(
     null,
   );
+  const [moveToLocalModal, setMoveToLocalModal] = useState<{
+    setId: string;
+    setName: string;
+    toLocal: boolean;
+  } | null>(null);
 
 
 
@@ -2373,6 +2555,145 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
   const [moveToMenuOpen, setMoveToMenuOpen] = useState(false);
 
+  // === AUTOSAVE STATE ===
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'saved_faded'>('idle');
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveFadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showDraftRecoveryBanner, setShowDraftRecoveryBanner] = useState(false);
+  const draftRecoveryDataRef = useRef<AutosaveDraft | null>(null);
+
+  // Autosave: save draft to localStorage (debounced - 2s after last change)
+  useEffect(() => {
+    // Only autosave when in builder or raw-text view
+    if (view !== "builder" && view !== "raw-text") return;
+
+    // Check if there's actually content worth saving
+    const hasContent = builderRows.some((r) => r.term.trim() || r.def.trim()) || rawText.trim().length > 0;
+    if (!hasContent && !setName.trim()) return;
+
+    if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+
+    autosaveTimeoutRef.current = setTimeout(() => {
+      const draft: AutosaveDraft = {
+        builderRows,
+        setName,
+        termLabel,
+        definitionLabel,
+        termSideFields,
+        defSideFields,
+        showYear,
+        enableTermCards,
+        editingSetId,
+        appliedTags,
+        rawText,
+        builderMode,
+        savedAt: Date.now(),
+      };
+      try {
+        localStorage.setItem(AUTOSAVE_DRAFT_KEY, JSON.stringify(draft));
+        setAutosaveStatus('saved');
+
+        // Fade after 3 seconds
+        if (autosaveFadeTimeoutRef.current) clearTimeout(autosaveFadeTimeoutRef.current);
+        autosaveFadeTimeoutRef.current = setTimeout(() => setAutosaveStatus('saved_faded'), 3000);
+      } catch (e) {
+        console.warn('[Autosave] Failed to save draft:', e);
+      }
+    }, 2000);
+
+    // Show "saving" indicator immediately on change
+    setAutosaveStatus('saving');
+
+    return () => {
+      if (autosaveTimeoutRef.current) clearTimeout(autosaveTimeoutRef.current);
+    };
+  }, [view, builderRows, setName, termLabel, definitionLabel, termSideFields, defSideFields, showYear, enableTermCards, editingSetId, appliedTags, rawText, builderMode]);
+
+  // Autosave: immediate save on beforeunload (safety net for tab close / battery die)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (view !== "builder" && view !== "raw-text") return;
+      const hasContent = builderRows.some((r) => r.term.trim() || r.def.trim()) || rawText.trim().length > 0;
+      if (!hasContent && !setName.trim()) return;
+
+      const draft: AutosaveDraft = {
+        builderRows,
+        setName,
+        termLabel,
+        definitionLabel,
+        termSideFields,
+        defSideFields,
+        showYear,
+        enableTermCards,
+        editingSetId,
+        appliedTags,
+        rawText,
+        builderMode,
+        savedAt: Date.now(),
+      };
+      try {
+        localStorage.setItem(AUTOSAVE_DRAFT_KEY, JSON.stringify(draft));
+      } catch (e) {
+        // Best effort
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [view, builderRows, setName, termLabel, definitionLabel, termSideFields, defSideFields, showYear, enableTermCards, editingSetId, appliedTags, rawText, builderMode]);
+
+  // Autosave: check for recoverable draft on component mount
+  useEffect(() => {
+    try {
+      const savedDraft = localStorage.getItem(AUTOSAVE_DRAFT_KEY);
+      if (savedDraft) {
+        const draft: AutosaveDraft = JSON.parse(savedDraft);
+        // Only offer recovery if draft has actual content and is less than 7 days old
+        const hasContent = draft.builderRows?.some((r) => r.term?.trim() || r.def?.trim()) || draft.rawText?.trim()?.length > 0;
+        const isRecent = Date.now() - draft.savedAt < 7 * 24 * 60 * 60 * 1000;
+        if (hasContent && isRecent) {
+          draftRecoveryDataRef.current = draft;
+          setShowDraftRecoveryBanner(true);
+        } else {
+          // Old or empty draft, clean up
+          localStorage.removeItem(AUTOSAVE_DRAFT_KEY);
+        }
+      }
+    } catch (e) {
+      console.warn('[Autosave] Failed to parse draft:', e);
+      localStorage.removeItem(AUTOSAVE_DRAFT_KEY);
+    }
+  }, []);
+
+  // Autosave helper: clear the saved draft
+  const clearAutosaveDraft = useCallback(() => {
+    localStorage.removeItem(AUTOSAVE_DRAFT_KEY);
+    setAutosaveStatus('idle');
+    setShowDraftRecoveryBanner(false);
+    draftRecoveryDataRef.current = null;
+  }, []);
+
+  // Autosave: recover draft into builder
+  const recoverDraft = useCallback(() => {
+    const draft = draftRecoveryDataRef.current;
+    if (!draft) return;
+
+    setBuilderRows(draft.builderRows || []);
+    setSetName(draft.setName || "");
+    setTermLabel(draft.termLabel || "Term");
+    setDefinitionLabel(draft.definitionLabel || "Definition");
+    setTermSideFields(draft.termSideFields || []);
+    setDefSideFields(draft.defSideFields || []);
+    setShowYear(draft.showYear || false);
+    setEnableTermCards(draft.enableTermCards || false);
+    setEditingSetId(draft.editingSetId || null);
+    setAppliedTags(draft.appliedTags || []);
+    setRawText(draft.rawText || "");
+    setBuilderMode(draft.builderMode || "visual");
+    setView("builder");
+    setShowDraftRecoveryBanner(false);
+  }, [setAppliedTags]);
+
   // Loading State for "Load Everything" strategy
   const [isBuilderReady, setIsBuilderReady] = useState(false);
 
@@ -2414,9 +2735,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   // If at root, show root sets (no folderId) AND folders.
   // Multistudy sets are always at root in their own section.
 
-  const displayedSets = currentFolderId
-    ? librarySets.filter((s) => s.folderId === currentFolderId)
-    : librarySets.filter((s) => !s.isMultistudy && !s.folderId);
+  // Separate local and cloud sets
+  const cloudSets = currentFolderId
+    ? librarySets.filter((s) => s.folderId === currentFolderId && !s.isLocalOnly)
+    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && !s.isLocalOnly);
+
+  const localSets = currentFolderId
+    ? librarySets.filter((s) => s.folderId === currentFolderId && s.isLocalOnly)
+    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && s.isLocalOnly);
+
+  // For compatibility, displayedSets shows cloud sets by default
+  const displayedSets = cloudSets;
 
   const displayedFolders = currentFolderId ? [] : folders;
 
@@ -2765,6 +3094,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setSetName(defaultName);
     setView("builder");
     setBuilderMode("visual");
+    clearAutosaveDraft();
   };
 
   const startRawImport = () => {
@@ -2880,6 +3210,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setSetName("");
     setBuilderRows([]); // Reset handled by next enter
     setRawText("");
+    clearAutosaveDraft();
   };
 
   const handleSaveAndExit = () => {
@@ -2966,7 +3297,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     // Find new fields that appeared in raw text but aren't in config
     const newFields = Array.from(allNames)
       .filter((name) => !currentFieldNames.has(name))
-      .map((name) => ({ name, type: "text" } as CustomFieldDefinition));
+      .map((name) => ({ id: generateId(), name, type: "text" } as CustomFieldDefinition));
 
     // If there are new fields, add them to defSideFields (default location)
     if (newFields.length > 0) {
@@ -3036,9 +3367,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       const mapFields = (fields: any[]): CustomFieldDefinition[] => {
         if (!fields || fields.length === 0) return [];
         if (typeof fields[0] === "string") {
-          return fields.map((name) => ({ name, type: "text" }));
+          return fields.map((name) => ({ id: generateId(), name, type: "text" }));
         }
-        return fields;
+        return fields.map((f: any) => ({ ...f, id: f.id || generateId() }));
       };
 
       setTermSideFields(mapFields(set.termSideFields || []));
@@ -3055,7 +3386,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
       setTermSideFields([]);
       setDefSideFields(
-        Array.from(allNames).map((name) => ({ name, type: "text" })),
+        Array.from(allNames).map((name) => ({ id: generateId(), name, type: "text" })),
       ); // Default to def side text
     }
 
@@ -3073,6 +3404,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
+      setIsProcessingFile(true);
       try {
         const text = await e.target.files[0].text();
         // Basic validation: if text is empty or binary-looking (though text() cleans up some)
@@ -3110,7 +3442,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             const mapJsonFields = (fields: any[]) => {
               if (!fields) return [];
               return fields.map((f: any) =>
-                typeof f === "string" ? { name: f, type: "text" } : f,
+                typeof f === "string" ? { id: generateId(), name: f, type: "text" } : { ...f, id: f.id || generateId() },
               );
             };
 
@@ -3125,6 +3457,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             setTermSideFields([]);
             setDefSideFields(
               json.customFieldNames.map((name: string) => ({
+                id: generateId(),
                 name,
                 type: "text",
               })),
@@ -3174,6 +3507,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         console.error("Upload failed", error);
         setShowInvalidFileModal(true);
         if (fileInputRef.current) fileInputRef.current.value = "";
+      } finally {
+        setIsProcessingFile(false);
       }
     }
   };
@@ -3395,6 +3730,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setEditingSetId(null);
     setView("menu");
     setShowUnsavedModal(false);
+    clearAutosaveDraft();
   };
 
   const handleDownloadFlashcards = () => {
@@ -3635,6 +3971,42 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     onResumeSession(set);
   };
 
+  const handleMoveToLocal = (setId: string, toLocal: boolean) => {
+    const set = librarySets.find(s => s.id === setId);
+    if (!set) return;
+
+    setMoveToLocalModal({
+      setId,
+      setName: set.name,
+      toLocal
+    });
+  };
+
+  const confirmMoveToLocal = async () => {
+    if (!moveToLocalModal) return;
+
+    const { setId, toLocal } = moveToLocalModal;
+    const set = librarySets.find(s => s.id === setId);
+    if (!set) return;
+
+    // Update the set's isLocalOnly flag
+    const updatedSet = { ...set, isLocalOnly: toLocal };
+
+    // If moving to cloud, we need to ensure it gets uploaded
+    // If moving to local, we need to delete from cloud
+    if (!toLocal) {
+      // Moving to cloud - the writeFlashcardSet will handle upload
+      onSaveToLibrary(updatedSet);
+    } else {
+      // Moving to local - need to delete from cloud and update locally
+      const { deleteSetFromCloud } = await import('../storageV2');
+      await deleteSetFromCloud(setId);
+      onSaveToLibrary(updatedSet);
+    }
+
+    setMoveToLocalModal(null);
+  };
+
   return (
     <div className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700">
       <SetConfigurationModal
@@ -3745,6 +4117,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         isOpen={showMarkdownHelp}
         onClose={() => setShowMarkdownHelp(false)}
       />
+
+      <WarningModal
+        isOpen={!!moveToLocalModal}
+        onClose={() => setMoveToLocalModal(null)}
+        onConfirm={confirmMoveToLocal}
+        message={
+          moveToLocalModal?.toLocal
+            ? `Move "${moveToLocalModal.setName}" to Local Storage? This will remove it from your Google Drive and it will only be accessible on this device.`
+            : `Move "${moveToLocalModal?.setName}" to Cloud Storage? This will upload it to your Google Drive and make it accessible from other devices.`
+        }
+      />
+
       <input
         ref={fileInputRef}
         type="file"
@@ -3787,17 +4171,44 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             </p>
           </>
         ) : (
-          <>
-            <h1
-              className="text-4xl text-text tracking-tight mb-2"
-              style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
-            >
-              List Builder
-            </h1>
-            <p className="text-accent font-bold text-2xl animate-in slide-in-from-left-2 fade-in duration-500">
-              {view === "raw-text" ? "Import Raw Text" : "Visual Editor"}
-            </p>
-          </>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1
+                className="text-4xl text-text tracking-tight mb-2"
+                style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+              >
+                List Builder
+              </h1>
+              <p className="text-accent font-bold text-2xl animate-in slide-in-from-left-2 fade-in duration-500">
+                {view === "raw-text" ? "Import Raw Text" : "Visual Editor"}
+              </p>
+            </div>
+
+            {/* Autosave Indicator */}
+            {autosaveStatus !== 'idle' && (
+              <div
+                className={clsx(
+                  "flex items-center gap-2 px-3 py-1.5 bg-panel-2 border border-outline rounded-lg text-xs font-bold transition-all duration-500 select-none mt-1 shadow-sm",
+                  autosaveStatus === 'saving' && "text-amber-400 border-amber-400/30",
+                  autosaveStatus === 'saved' && "text-emerald-400 border-emerald-400/30",
+                  autosaveStatus === 'saved_faded' && "text-muted opacity-50",
+                )}
+                title="Autosave saves your draft locally on this device. It is not synced to the cloud. Drafts expire after 7 days."
+              >
+                {autosaveStatus === 'saving' && (
+                  <RotateCw size={14} className="animate-spin" />
+                )}
+                {(autosaveStatus === 'saved' || autosaveStatus === 'saved_faded') && (
+                  <CheckCircle2 size={14} />
+                )}
+                <span>
+                  {autosaveStatus === 'saving' ? 'Saving...' : 'Draft saved'}
+                </span>
+                <div className="w-px h-3 bg-outline mx-0.5"></div>
+                <HardDrive size={12} className="opacity-60" />
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -3814,6 +4225,49 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               }
             }}
           >
+            {/* AUTOSAVE DRAFT RECOVERY BANNER */}
+            {showDraftRecoveryBanner && draftRecoveryDataRef.current && (
+              <div className="mb-6 bg-panel border border-amber-500/30 rounded-2xl p-5 shadow-lg animate-in slide-in-from-top-2 fade-in duration-500">
+                <div className="flex items-start gap-4">
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 mt-0.5">
+                    <HardDrive size={20} className="text-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-text text-sm mb-1">Unsaved Draft Found</h4>
+                    <p className="text-muted text-xs leading-relaxed">
+                      You have an unsaved draft
+                      {draftRecoveryDataRef.current.setName ? ` "${draftRecoveryDataRef.current.setName}"` : ''} from{' '}
+                      {(() => {
+                        const age = Date.now() - draftRecoveryDataRef.current!.savedAt;
+                        const mins = Math.floor(age / 60000);
+                        const hours = Math.floor(age / 3600000);
+                        const days = Math.floor(age / 86400000);
+                        if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+                        if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+                        if (mins > 0) return `${mins} minute${mins > 1 ? 's' : ''} ago`;
+                        return 'just now';
+                      })()}
+                      . Would you like to restore it?
+                    </p>
+                    <div className="flex items-center gap-2 mt-3">
+                      <button
+                        onClick={recoverDraft}
+                        className="px-4 py-1.5 bg-amber-500 text-bg font-bold text-xs rounded-lg hover:bg-amber-400 transition-colors"
+                      >
+                        Restore Draft
+                      </button>
+                      <button
+                        onClick={clearAutosaveDraft}
+                        className="px-4 py-1.5 text-muted hover:text-text text-xs font-bold transition-colors"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ONGOING SESSIONS */}
             {ongoingSessions.length > 0 && (
               <div className="mb-8">
@@ -4020,7 +4474,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
 
               {librarySets.length === 0 ? (
-                isCloudLoading ? (
+                isCloudLoading || isProcessingFile ? (
                   <BreathingLoader />
                 ) : (
                   <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
@@ -4163,10 +4617,34 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               <div className="font-bold text-lg text-text group-hover:text-accent transition-colors">
                                 {set.name}
                               </div>
-                              <div className="text-xs text-muted font-mono">
-                                {set.cards.length} card
-                                {set.cards.length === 1 ? "" : "s"}
+                              <div className="text-muted text-xs font-mono group-hover:text-accent/80 transition-colors">
+                                {set.cards.length} card{set.cards.length === 1 ? "" : "s"}
                               </div>
+
+                              {/* Tags */}
+                              {set.tags && set.tags.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {set.tags.map(tagId => {
+                                    const tag = tags.find(t => t.id === tagId);
+                                    if (!tag) return null;
+                                    const color = getTagColor(tag.color);
+                                    return (
+                                      <div
+                                        key={tagId}
+                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors"
+                                        style={{
+                                          backgroundColor: `${color}15`,
+                                          borderColor: `${color}30`,
+                                          color: color
+                                        }}
+                                      >
+                                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                                        {tag.name}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-1">
                               {selectedSetIds.size === 0 && (
@@ -4189,6 +4667,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                     title="Edit"
                                   >
                                     <Pencil size={16} />
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleMoveToLocal(set.id, !set.isLocalOnly)}
+                                    className={clsx(
+                                      "p-1.5 rounded hover:bg-panel-2 transition-all",
+                                      set.isLocalOnly ? "text-blue hover:text-blue" : "text-muted hover:text-text"
+                                    )}
+                                    title={set.isLocalOnly ? "Move to Cloud Storage" : "Move to Local Storage"}
+                                  >
+                                    {set.isLocalOnly ? (
+                                      <Upload size={16} />
+                                    ) : (
+                                      <ArrowLeftRight size={16} />
+                                    )}
                                   </button>
 
                                   <button
@@ -4251,6 +4744,162 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       </div>
                     ))}
                   </div>
+
+                  {/* Local Sets Section */}
+                  {localSets.length > 0 && !currentFolderId && (
+                    <div className="mt-10">
+                      <h4 className="text-xs font-bold text-muted uppercase tracking-widest pl-2 mb-4 flex items-center gap-2">
+                        <Download size={14} />
+                        Local Storage Only
+                      </h4>
+                      <div className="space-y-3">
+                        {localSets.map((set) => (
+                          <div key={set.id} className="relative group/row">
+                            <div className="absolute -left-12 top-1/2 -translate-y-1/2 w-12 flex justify-center">
+                              <div
+                                onClick={() => handleToggleSelect(set.id)}
+                                className={clsx(
+                                  "w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-all",
+                                  selectedSetIds.has(set.id)
+                                    ? "bg-accent border-accent"
+                                    : "border-outline hover:border-accent",
+                                )}
+                              >
+                                {selectedSetIds.has(set.id) && (
+                                  <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="group bg-panel border border-blue/30 p-5 rounded-2xl hover:border-blue transition-all shadow-sm flex flex-col justify-between h-full">
+                              <div className="flex justify-between items-start mb-4">
+                                <div>
+                                  <div className="font-bold text-lg text-text group-hover:text-accent transition-colors flex items-center gap-2">
+                                    {set.name}
+                                    <span className="text-[9px] font-mono text-blue border border-blue/30 px-1.5 py-0.5 rounded bg-blue/10">LOCAL</span>
+                                  </div>
+                                  <div className="text-muted text-xs font-mono group-hover:text-accent/80 transition-colors">
+                                    {set.cards.length} card{set.cards.length === 1 ? "" : "s"}
+                                  </div>
+
+                                  {set.tags && set.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {set.tags.map(tagId => {
+                                        const tag = tags.find(t => t.id === tagId);
+                                        if (!tag) return null;
+                                        const color = getTagColor(tag.color);
+                                        return (
+                                          <div
+                                            key={tagId}
+                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors"
+                                            style={{
+                                              backgroundColor: `${color}15`,
+                                              borderColor: `${color}30`,
+                                              color: color
+                                            }}
+                                          >
+                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                                            {tag.name}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {selectedSetIds.size === 0 && (
+                                    <>
+                                      <button
+                                        onClick={() => setMovingSetId(set.id)}
+                                        className={clsx(
+                                          "p-1.5 rounded hover:bg-panel-2 transition-all",
+                                          movingSetId === set.id
+                                            ? "text-accent animate-pulse"
+                                            : "text-muted hover:text-text",
+                                        )}
+                                        title="Move to Folder"
+                                      >
+                                        <FolderOpen size={16} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleLoadSetToBuilder(set)}
+                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                        title="Edit"
+                                      >
+                                        <Pencil size={16} />
+                                      </button>
+
+                                      <button
+                                        onClick={() => handleMoveToLocal(set.id, false)}
+                                        className="p-1.5 text-blue hover:text-blue rounded hover:bg-panel-2 transition-all"
+                                        title="Move to Cloud Storage"
+                                      >
+                                        <Upload size={16} />
+                                      </button>
+
+                                      <button
+                                        onClick={() =>
+                                          downloadFile(
+                                            set.name + ".flashcards",
+                                            JSON.stringify(set, null, 2),
+                                            "json",
+                                          )
+                                        }
+                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                        title="Export JSON"
+                                      >
+                                        <Download size={16} />
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          onDuplicateLibrarySet(set.id)
+                                        }
+                                        className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                        title="Duplicate Set"
+                                      >
+                                        <Copy size={16} />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteClick(set.id, "library");
+                                        }}
+                                        className={clsx(
+                                          "p-1.5 rounded transition-all flex items-center justify-center",
+                                          deleteConfirmId === set.id
+                                            ? "bg-red text-bg w-12"
+                                            : "text-muted hover:text-red hover:border-red",
+                                        )}
+                                        title="Delete Set"
+                                      >
+                                        {deleteConfirmId === set.id ? (
+                                          <span className="text-[10px] font-bold uppercase">
+                                            Sure?
+                                          </span>
+                                        ) : (
+                                          <Trash2 size={16} />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="pt-2 mt-2 flex gap-2 relative z-10">
+                                <button
+                                  onClick={() => onOpenSet(set)}
+                                  className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
+                                >
+                                  <ExternalLink size={14} /> Open
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Floating Action Bar */}
                   {selectedSetIds.size > 0 && (
                     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-panel border border-outline shadow-2xl p-2 rounded-2xl animate-in slide-in-from-bottom-4">

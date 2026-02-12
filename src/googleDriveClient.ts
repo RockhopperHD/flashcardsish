@@ -36,8 +36,8 @@ class GoogleDriveClient {
     async init(): Promise<void> {
         if (this.gapiInitialized && this.gisInitialized) return;
 
-        console.log('[GoogleDrive] Starting initialization...');
-        
+        // console.log('[GoogleDrive] Starting initialization...');
+
         // 1. Try to restore session from localStorage first
         this.restoreSession();
 
@@ -50,7 +50,7 @@ class GoogleDriveClient {
             await this.fetchUserInfo();
         }
 
-        console.log('[GoogleDrive] ✅ Initialization complete');
+        // console.log('[GoogleDrive] ✅ Initialization complete');
     }
 
     private restoreSession(): void {
@@ -62,17 +62,17 @@ class GoogleDriveClient {
             const now = Date.now();
             if (now < parseInt(expiry)) {
                 this.accessToken = token;
-                console.log('[GoogleDrive] Restored token from storage');
-                
+                // console.log('[GoogleDrive] Restored token from storage');
+
                 if (userJson) {
                     try {
                         this.currentUser = JSON.parse(userJson);
                         // Trigger callbacks early for smoother UI transition
                         this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             } else {
-                console.log('[GoogleDrive] Stored token expired');
+                console.warn('[GoogleDrive] Stored token expired');
                 this.clearStorage();
             }
         }
@@ -104,7 +104,7 @@ class GoogleDriveClient {
                         discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
                     });
                     this.gapiInitialized = true;
-                    console.log('[GoogleDrive] ✅ GAPI initialized');
+                    // console.log('[GoogleDrive] ✅ GAPI initialized');
                     resolve();
                 } catch (error) {
                     console.error('[GoogleDrive] ❌ GAPI init failed:', error);
@@ -131,26 +131,26 @@ class GoogleDriveClient {
                 client_id: CLIENT_ID,
                 scope: SCOPES,
                 callback: (response: any) => {
-                    console.log('[GoogleDrive] Token response received');
+                    // console.log('[GoogleDrive] Token response received');
                     if (response.error) {
                         console.error('[GoogleDrive] ❌ Token error:', response.error);
                         return;
                     }
                     this.accessToken = response.access_token;
-                    
+
                     // Save to storage with expiry (response.expires_in is in seconds)
                     localStorage.setItem(TOKEN_KEY, this.accessToken!);
                     const expiryTime = Date.now() + (response.expires_in * 1000) - (60 * 1000); // 1 minute buffer
                     localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
 
-                    console.log('[GoogleDrive] ✅ Access token obtained');
+                    // console.log('[GoogleDrive] ✅ Access token obtained');
                     this.setAuthToken();
                     this.fetchUserInfo();
                 },
             });
 
             this.gisInitialized = true;
-            console.log('[GoogleDrive] ✅ GIS initialized');
+            // console.log('[GoogleDrive] ✅ GIS initialized');
             resolve();
         });
     }
@@ -158,7 +158,7 @@ class GoogleDriveClient {
     private setAuthToken(): void {
         if (this.accessToken) {
             window.gapi.client.setToken({ access_token: this.accessToken });
-            console.log('[GoogleDrive] Auth token set in GAPI client');
+            // console.log('[GoogleDrive] Auth token set in GAPI client');
         }
     }
 
@@ -181,11 +181,11 @@ class GoogleDriveClient {
                     name: data.name,
                     picture: data.picture,
                 };
-                
+
                 // Save user info to persistence
                 localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser));
-                
-                console.log('[GoogleDrive] ✅ User info fetched:', this.currentUser.email);
+
+                // console.log('[GoogleDrive] ✅ User info fetched:', this.currentUser.email);
                 this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
             } else {
                 if (response.status === 401) {
@@ -202,7 +202,7 @@ class GoogleDriveClient {
     }
 
     async signIn(): Promise<GoogleDriveUser> {
-        console.log('[GoogleDrive] Sign-in requested...');
+        // console.log('[GoogleDrive] Sign-in requested...');
         await this.init();
 
         return new Promise((resolve, reject) => {
@@ -219,7 +219,7 @@ class GoogleDriveClient {
                     console.error('[GoogleDrive] ❌ Sign-in failed:', response.error);
                     reject(new Error(response.error));
                 } else if (this.currentUser) {
-                    console.log('[GoogleDrive] ✅ Sign-in successful:', this.currentUser.email);
+                    // console.log('[GoogleDrive] ✅ Sign-in successful:', this.currentUser.email);
                     resolve(this.currentUser);
                 }
             };
@@ -229,26 +229,26 @@ class GoogleDriveClient {
     }
 
     async signOut(): Promise<void> {
-        console.log('[GoogleDrive] Sign-out requested...');
+        // console.log('[GoogleDrive] Sign-out requested...');
 
         if (this.accessToken) {
             try {
                 window.google.accounts.oauth2.revoke(this.accessToken, () => {
-                    console.log('[GoogleDrive] ✅ Token revoked');
+                    // console.log('[GoogleDrive] ✅ Token revoked');
                 });
-            } catch (e) {}
+            } catch (e) { }
         }
 
         this.accessToken = null;
         this.currentUser = null;
         this.clearStorage();
-        
+
         if (this.gapiInitialized) {
             window.gapi.client.setToken(null);
         }
-        
+
         this.authChangeCallbacks.forEach(cb => cb(null));
-        console.log('[GoogleDrive] ✅ Signed out');
+        // console.log('[GoogleDrive] ✅ Signed out');
     }
 
     getCurrentUser(): GoogleDriveUser | null {
@@ -281,7 +281,7 @@ class GoogleDriveClient {
         if (folderId) {
             try {
                 await window.gapi.client.drive.files.get({ fileId: folderId });
-                console.log('[GoogleDrive] Using existing folder:', folderId);
+                // console.log('[GoogleDrive] Using existing folder:', folderId);
                 return folderId;
             } catch {
                 console.warn('[GoogleDrive] Stored folder no longer exists');
@@ -297,7 +297,7 @@ class GoogleDriveClient {
 
         if (response.result.files && response.result.files.length > 0) {
             const id = response.result.files[0].id!;
-            console.log('[GoogleDrive] Found existing folder:', id);
+            // console.log('[GoogleDrive] Found existing folder:', id);
             return id;
         }
 
@@ -313,7 +313,7 @@ class GoogleDriveClient {
         });
 
         const id = folder.result.id!;
-        console.log('[GoogleDrive] ✅ Created new folder:', id);
+        // console.log('[GoogleDrive] ✅ Created new folder:', id);
         return id;
     }
 
@@ -327,7 +327,7 @@ class GoogleDriveClient {
             throw new Error('Not authenticated');
         }
 
-        console.log('[GoogleDrive] Reading data file from folder:', folderId);
+        // console.log('[GoogleDrive] Reading data file from folder:', folderId);
 
         // Search for the data file
         const response = await window.gapi.client.drive.files.list({
@@ -337,7 +337,7 @@ class GoogleDriveClient {
         });
 
         if (!response.result.files || response.result.files.length === 0) {
-            console.log('[GoogleDrive] No data file found');
+            // console.log('[GoogleDrive] No data file found');
             return null;
         }
 
@@ -347,7 +347,7 @@ class GoogleDriveClient {
             alt: 'media',
         });
 
-        console.log('[GoogleDrive] ✅ Data file loaded');
+        // console.log('[GoogleDrive] ✅ Data file loaded');
         return JSON.parse(fileResponse.body);
     }
 
@@ -361,7 +361,7 @@ class GoogleDriveClient {
             throw new Error('Not authenticated');
         }
 
-        console.log('[GoogleDrive] Writing data file to folder:', folderId);
+        // console.log('[GoogleDrive] Writing data file to folder:', folderId);
 
         const content = JSON.stringify(data, null, 2);
         const blob = new Blob([content], { type: 'application/json' });
@@ -377,7 +377,7 @@ class GoogleDriveClient {
             // Update existing file
             const fileId = response.result.files[0].id!;
             await this.uploadFileContent(fileId, blob);
-            console.log('[GoogleDrive] ✅ Data file updated');
+            // console.log('[GoogleDrive] ✅ Data file updated');
         } else {
             // Create new file
             const metadata = {
@@ -386,7 +386,7 @@ class GoogleDriveClient {
                 parents: [folderId],
             };
             await this.createFile(metadata, blob);
-            console.log('[GoogleDrive] ✅ Data file created');
+            // console.log('[GoogleDrive] ✅ Data file created');
         }
     }
 
@@ -400,7 +400,7 @@ class GoogleDriveClient {
             throw new Error('Not authenticated');
         }
 
-        console.log('[GoogleDrive] Uploading image:', filename);
+        // console.log('[GoogleDrive] Uploading image:', filename);
 
         const metadata = {
             name: filename,
@@ -409,7 +409,7 @@ class GoogleDriveClient {
         };
 
         const file = await this.createFile(metadata, blob);
-        console.log('[GoogleDrive] ✅ Image uploaded:', file.id);
+        // console.log('[GoogleDrive] ✅ Image uploaded:', file.id);
         return file.id!;
     }
 
@@ -519,7 +519,7 @@ class GoogleDriveClient {
             fields: 'id',
         });
 
-        console.log(`[GoogleDrive] ✅ Created subfolder '${folderName}':`, folder.result.id);
+        // console.log(`[GoogleDrive] ✅ Created subfolder '${folderName}':`, folder.result.id);
         return folder.result.id!;
     }
 
@@ -610,7 +610,7 @@ class GoogleDriveClient {
         if (response.result.files && response.result.files.length > 0) {
             const fileId = response.result.files[0].id!;
             await window.gapi.client.drive.files.delete({ fileId });
-            console.log(`[GoogleDrive] ✅ Deleted file: ${filename}`);
+            // console.log(`[GoogleDrive] ✅ Deleted file: ${filename}`);
         }
     }
 
@@ -665,7 +665,7 @@ class GoogleDriveClient {
                 fileId,
                 resource: { name: newFilename },
             });
-            console.log(`[GoogleDrive] ✅ Renamed file: ${oldFilename} -> ${newFilename}`);
+            // console.log(`[GoogleDrive] ✅ Renamed file: ${oldFilename} -> ${newFilename}`);
         }
     }
 
@@ -689,7 +689,7 @@ class GoogleDriveClient {
             }
         }
 
-        console.log(`[GoogleDrive] ✅ Deleted ${files.length} files from folder`);
+        // console.log(`[GoogleDrive] ✅ Deleted ${files.length} files from folder`);
     }
 }
 

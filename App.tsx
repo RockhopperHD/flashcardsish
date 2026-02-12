@@ -10,7 +10,8 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, Terminal, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { KeybindsModal } from './components/KeybindsModal';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, Terminal, RefreshCw, CheckCircle2, XCircle, Keyboard } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
@@ -168,6 +169,8 @@ const SettingsModal: React.FC<{
    const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; error?: string } | null>(null);
    const [isTestingApiKey, setIsTestingApiKey] = useState(false);
    const [isAiSetupOpen, setIsAiSetupOpen] = useState(false);
+   const [deleteConfirmTagId, setDeleteConfirmTagId] = useState<string | null>(null);
+   const [isKeybindsOpen, setIsKeybindsOpen] = useState(false);
 
    const TAG_COLORS: string[] = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'slate', 'gray', 'zinc', 'neutral', 'stone'];
 
@@ -208,6 +211,11 @@ const SettingsModal: React.FC<{
       importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
       importOverride: "Choose how Flashcardsish handles duplicates when pasting raw text. If a card in your raw text matches the term or definition of one already in the set…\n\n• Keep Old: …the one already in the set will be kept and the one in the raw text will be ignored.\n• Add Duplicate: …the new one in the raw text will be added anyway, creating a duplicate card.\n• Override Old: …the new card in the raw text will replace the old card that already exists.",
       autoCloseImageWindow: "When enabled, pasting any text in the image URL space instantly closes the window and attempts to use that image. If it fails, it will upload a broken image, but you can always re-attempt the upload.",
+      learnModeLeftKey1: "Primary key for Option A / True.",
+      learnModeLeftKey2: "Secondary key for Option A / True.",
+      learnModeRightKey1: "Primary key for Option B / False.",
+      learnModeRightKey2: "Secondary key for Option B / False.",
+      autoAdvanceOnAnswer: "If enabled, selecting an A / B or True / False option will automatically advance to the next field or the Submit button. If disabled, you must press Tab or Enter to continue."
    };
 
 
@@ -383,6 +391,108 @@ const SettingsModal: React.FC<{
                <div className="flex-1 p-6 overflow-y-auto overflow-x-visible">
                   {activeTab === 'set' && (
                      <div className="space-y-4">
+
+                        {/* ── General ─────────────────────────── */}
+                        <h4 className="text-xs font-bold text-muted uppercase tracking-widest pt-1">General</h4>
+
+                        {/* Answer With Toggle */}
+                        <TooltipWrapper id="answerWithDefinition" tooltip={tooltips.answerWithDefinition} settings={settings}>
+                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                              <span className="font-medium text-text block mb-3">Answer With</span>
+                              <div className="grid grid-cols-2 gap-2">
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: false })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
+                                       !settings.answerWithDefinition
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <File size={16} /> Term
+                                 </button>
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: true })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
+                                       settings.answerWithDefinition
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <FileText size={16} /> Definition
+                                 </button>
+                              </div>
+                           </div>
+                        </TooltipWrapper>
+
+                        {/* Shuffle Cards */}
+                        <SettingRow id="shuffleCards" label="Shuffle Cards" settingKey="shuffleCards" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+
+                        {/* Study Starred Only */}
+                        <SettingRow id="starredOnly" label="Study Starred Only" settingKey="starredOnly" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+
+                        {/* Keybinds */}
+                        <div
+                           onClick={() => setIsKeybindsOpen(true)}
+                           className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
+                        >
+                           <span className="font-medium text-text">Keybinds</span>
+                           <button
+                              className="flex items-center gap-2 px-3 py-1.5 text-sm font-bold text-muted hover:text-text bg-panel border border-outline rounded-lg transition-all hover:border-accent/50"
+                           >
+                              <Keyboard size={14} />
+                              Open
+                           </button>
+                        </div>
+
+                        {/* ── Learn Mode ──────────────────────── */}
+                        <h4 className="text-xs font-bold text-muted uppercase tracking-widest pt-3">Learn Mode</h4>
+
+                        {/* Answer Style (was: Learn Mode Style) */}
+                        <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode} settings={settings}>
+                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                              <span className="font-medium text-text block mb-3">Answer Style</span>
+                              <div className={clsx("grid gap-2", settings.aiEnabled && isApiKeyLocked ? "grid-cols-3" : "grid-cols-2")}>
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, mode: 'standard' })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
+                                       settings.mode === 'standard'
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <Type size={16} /> Standard
+                                 </button>
+                                 <button
+                                    onClick={() => onUpdate({ ...settings, mode: 'multiple_choice' })}
+                                    className={clsx(
+                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
+                                       settings.mode === 'multiple_choice'
+                                          ? "bg-accent text-bg border-accent"
+                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                    )}
+                                 >
+                                    <LayoutGrid size={16} /> Multiple Choice
+                                 </button>
+                                 {settings.aiEnabled && isApiKeyLocked && (
+                                    <button
+                                       onClick={() => onUpdate({ ...settings, mode: 'ai_random_choice' })}
+                                       className={clsx(
+                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
+                                          settings.mode === 'ai_random_choice'
+                                             ? "bg-accent text-bg border-accent"
+                                             : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
+                                       )}
+                                    >
+                                       <Terminal size={16} /> Random Choice
+                                    </button>
+                                 )}
+                              </div>
+                           </div>
+                        </TooltipWrapper>
+
                         {/* Forgive Spelling Errors & Sub-options */}
                         <div className="bg-panel-2/50 rounded-xl overflow-hidden border border-transparent transition-all hover:border-outline/50">
                            <SettingRow
@@ -452,83 +562,11 @@ const SettingsModal: React.FC<{
                            )}
                         </div>
 
+                        {/* Retype Mistakes */}
                         <SettingRow id="retypeOnMistake" label="Retype Mistakes" settingKey="retypeOnMistake" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
-                        <SettingRow id="starredOnly" label="Study Starred Only" settingKey="starredOnly" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
-                        {/* Answer With Toggle */}
-                        <TooltipWrapper id="answerWithDefinition" tooltip={tooltips.answerWithDefinition} settings={settings}>
-                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
-                              <span className="font-medium text-text block mb-3">Answer With</span>
-                              <div className="grid grid-cols-2 gap-2">
-                                 <button
-                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: false })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       !settings.answerWithDefinition
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
-                                 >
-                                    <File size={16} /> Term
-                                 </button>
-                                 <button
-                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: true })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       settings.answerWithDefinition
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
-                                 >
-                                    <FileText size={16} /> Definition
-                                 </button>
-                              </div>
-                           </div>
-                        </TooltipWrapper>
-
-                        {/* Learn Mode Style */}
-                        <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode} settings={settings}>
-                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
-                              <span className="font-medium text-text block mb-3">Learn Mode Style</span>
-                              <div className={clsx("grid gap-2", settings.aiEnabled && isApiKeyLocked ? "grid-cols-3" : "grid-cols-2")}>
-                                 <button
-                                    onClick={() => onUpdate({ ...settings, mode: 'standard' })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       settings.mode === 'standard'
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
-                                 >
-                                    <Type size={16} /> Standard
-                                 </button>
-                                 <button
-                                    onClick={() => onUpdate({ ...settings, mode: 'multiple_choice' })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       settings.mode === 'multiple_choice'
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
-                                 >
-                                    <LayoutGrid size={16} /> Multiple Choice
-                                 </button>
-                                 {settings.aiEnabled && isApiKeyLocked && (
-                                    <button
-                                       onClick={() => onUpdate({ ...settings, mode: 'ai_random_choice' })}
-                                       className={clsx(
-                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                          settings.mode === 'ai_random_choice'
-                                             ? "bg-accent text-bg border-accent"
-                                             : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                       )}
-                                    >
-                                       <Terminal size={16} /> Random Choice
-                                    </button>
-                                 )}
-                              </div>
-                           </div>
-                        </TooltipWrapper>
+                        {/* Auto Advance */}
+                        <SettingRow id="autoAdvanceOnAnswer" label="Auto-Advance on Answer" settingKey="autoAdvanceOnAnswer" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
                         {/* Batch Length */}
                         <TooltipWrapper id="batchLength" tooltip={tooltips.batchLength} settings={settings}>
@@ -552,13 +590,19 @@ const SettingsModal: React.FC<{
                            </div>
                         </TooltipWrapper>
 
-                        {/* Shuffle Cards */}
-                        <SettingRow id="shuffleCards" label="Shuffle Cards" settingKey="shuffleCards" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
-
                         {/* Brutal Mode */}
                         <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+
                      </div>
                   )}
+
+                  {/* Keybinds Modal */}
+                  <KeybindsModal
+                     isOpen={isKeybindsOpen}
+                     onClose={() => setIsKeybindsOpen(false)}
+                     settings={settings}
+                     onUpdate={onUpdate}
+                  />
 
                   {activeTab === 'builder' && (
                      <div className="space-y-4">
@@ -756,18 +800,33 @@ const SettingsModal: React.FC<{
                                     <input
                                        value={tag.name}
                                        onChange={(e) => onUpdateTags(tags.map(t => t.id === tag.id ? { ...t, name: e.target.value } : t))}
-                                       className="flex-1 bg-transparent border-none focus:outline-none font-medium text-text"
+                                       className="flex-1 bg-transparent border border-transparent rounded px-2 hover:border-outline focus:border-accent focus:bg-panel focus:outline-none font-medium text-text transition-all"
+                                       placeholder="Tag Name"
                                     />
 
                                     <button
                                        onClick={() => {
-                                          if (confirm(`Delete tag "${tag.name}"?`)) {
+                                          if (deleteConfirmTagId === tag.id) {
                                              onUpdateTags(tags.filter(t => t.id !== tag.id));
+                                             setDeleteConfirmTagId(null);
+                                          } else {
+                                             setDeleteConfirmTagId(tag.id);
+                                             setTimeout(() => setDeleteConfirmTagId(null), 3000);
                                           }
                                        }}
-                                       className="text-muted hover:text-red p-2 rounded-lg hover:bg-red/10 transition-colors opacity-0 group-hover:opacity-100"
+                                       className={clsx(
+                                          "p-2 rounded-lg transition-all flex items-center justify-center",
+                                          deleteConfirmTagId === tag.id
+                                             ? "bg-red text-bg w-16 opacity-100" // Visible and red when confirming
+                                             : "text-muted hover:text-red hover:bg-red/10 opacity-0 group-hover:opacity-100" // Hidden otherwise
+                                       )}
+                                       title="Delete Tag"
                                     >
-                                       <Trash2 size={16} />
+                                       {deleteConfirmTagId === tag.id ? (
+                                          <span className="text-[10px] font-bold uppercase">Sure?</span>
+                                       ) : (
+                                          <Trash2 size={16} />
+                                       )}
                                     </button>
                                  </div>
                               );
@@ -1127,8 +1186,8 @@ const App: React.FC = () => {
    // Corruption Reports (from V2 storage)
    const [corruptionReports, setCorruptionReports] = useState<CorruptionReport[]>([]);
 
-   // Cloud sync status: 'idle' | 'saving' | 'saved' | 'error'
-   const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+   // Cloud sync status: 'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'
+   const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'>('idle');
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
    // Cloud loading state (pulling sets from Drive)
@@ -1381,6 +1440,20 @@ const App: React.FC = () => {
       return () => unsubscribe();
    }, []);
 
+   // Browser closing protection
+   useEffect(() => {
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+         if (cloudSyncStatus === 'saving') {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+         }
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+   }, [cloudSyncStatus]);
+
 
 
 
@@ -1484,9 +1557,9 @@ const App: React.FC = () => {
          saveLibrary(librarySets).then(result => {
             if (result.savedToCloud) {
                setCloudSyncStatus('saved');
-               // Reset to idle after 3 seconds
+               // Transition to faded after 3 seconds, but DO NOT disappear (don't set to idle)
                if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
-               cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 3000);
+               cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
             } else if (result.error) {
                setCloudSyncStatus('error');
                // Reset to idle after 5 seconds
@@ -1902,33 +1975,61 @@ const App: React.FC = () => {
                   </button>
                </div>
 
-               <div className="w-1/3 flex justify-center">
-                  {gameState === GameState.PLAYING && activeSession ? (
-                     isRenaming ? (
-                        <input
-                           autoFocus
-                           defaultValue={activeSession.name}
-                           onBlur={(e) => handleRenameSession(e.target.value)}
-                           onKeyDown={(e) => e.key === 'Enter' && handleRenameSession(e.currentTarget.value)}
-                           className="bg-transparent border-b border-accent text-center font-bold text-text focus:outline-none pb-1 min-w-[200px]"
-                        />
-                     ) : (
-                        <span
-                           onClick={() => setIsRenaming(true)}
-                           className="font-bold text-text opacity-50 hover:opacity-100 cursor-pointer hover:text-accent transition-all truncate max-w-[250px]"
-                           title="Click to rename"
-                        >
-                           {activeSession.name}
-                        </span>
-                     )
-                  ) : (
-                     <div
-                        className="text-lg tracking-tight text-text opacity-80"
-                        style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+               <div className="w-1/3 flex flex-col items-center justify-center relative h-14">
+                  {/* Flashcardsish Title - Always rendered but animated */}
+                  <button
+                     onClick={handleBackToMenu}
+                     className={clsx(
+                        "transition-all duration-500 ease-in-out cursor-pointer hover:text-accent font-extrabold tracking-tight flex flex-col items-center justify-center z-10",
+                        gameState === GameState.PLAYING && activeSession
+                           ? "text-[10px] transform -translate-y-3 opacity-60"
+                           : "text-lg transform translate-y-0 opacity-80"
+                     )}
+                     style={{ fontFamily: "'Red Hat Display', sans-serif" }}
+                     title="Go to Home"
+                  >
+                     <span>Flashcardsish</span>
+                     <span
+                        className={clsx(
+                           "italic transition-all duration-300 origin-top",
+                           gameState === GameState.PLAYING && activeSession
+                              ? "opacity-0 scale-0 h-0 overflow-hidden"
+                              : "opacity-70 scale-100 h-auto text-[10px] animate-pop-in mt-[-2px]"
+                        )}
                      >
-                        Flashcardsish<sup className="italic text-xs ml-1 opacity-70">alpha</sup>
-                     </div>
-                  )}
+                        alpha
+                     </span>
+                  </button>
+
+                  {/* Session Name Area - Only visible when playing */}
+                  <div
+                     className={clsx(
+                        "absolute transition-all duration-500 ease-in-out flex items-center justify-center w-full",
+                        gameState === GameState.PLAYING && activeSession
+                           ? "opacity-100 transform translate-y-2 scale-100 pointer-events-auto"
+                           : "opacity-0 transform translate-y-6 scale-95 pointer-events-none"
+                     )}
+                  >
+                     {activeSession && (
+                        isRenaming ? (
+                           <input
+                              autoFocus
+                              defaultValue={activeSession.name}
+                              onBlur={(e) => handleRenameSession(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && handleRenameSession(e.currentTarget.value)}
+                              className="bg-transparent border-b border-accent text-center font-bold text-text focus:outline-none pb-1 min-w-[200px]"
+                           />
+                        ) : (
+                           <span
+                              onClick={() => setIsRenaming(true)}
+                              className="font-bold text-text opacity-50 hover:opacity-100 cursor-pointer hover:text-accent transition-all truncate max-w-[250px]"
+                              title="Click to rename"
+                           >
+                              {activeSession.name}
+                           </span>
+                        )
+                     )}
+                  </div>
                </div>
 
                <div className="flex justify-end w-1/3 items-center gap-4">
@@ -1971,13 +2072,16 @@ const App: React.FC = () => {
                   {/* Cloud Sync Status Indicator */}
                   {user && cloudSyncStatus !== 'idle' && (
                      <div
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all ${cloudSyncStatus === 'saving' ? 'text-amber-400' :
-                           cloudSyncStatus === 'saved' ? 'text-emerald-400' :
-                              'text-red-400'
-                           }`}
+                        className={clsx(
+                           "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
+                           cloudSyncStatus === 'saving' && "text-amber-400",
+                           cloudSyncStatus === 'saved' && "text-emerald-400",
+                           cloudSyncStatus === 'saved_faded' && "text-muted",
+                           cloudSyncStatus === 'error' && "text-red-400"
+                        )}
                         title={
-                           cloudSyncStatus === 'saving' ? 'Saving to cloud...' :
-                              cloudSyncStatus === 'saved' ? 'Saved to cloud' :
+                           cloudSyncStatus === 'saving' ? 'Flashcardsish is currently syncing your data with Google Drive.' :
+                              (cloudSyncStatus === 'saved' || cloudSyncStatus === 'saved_faded') ? 'Flashcardsish has finished syncing your data with Google Drive.' :
                                  'Failed to save to cloud'
                         }
                      >
@@ -1985,7 +2089,7 @@ const App: React.FC = () => {
                         {cloudSyncStatus === 'saving' && (
                            <RefreshCw size={14} className="animate-spin" />
                         )}
-                        {cloudSyncStatus === 'saved' && (
+                        {(cloudSyncStatus === 'saved' || cloudSyncStatus === 'saved_faded') && (
                            <CheckCircle2 size={14} />
                         )}
                         {cloudSyncStatus === 'error' && (
@@ -2013,7 +2117,7 @@ const App: React.FC = () => {
          <main className="flex-grow p-6 md:p-8 max-w-5xl mx-auto w-full">
             {gameState === GameState.MENU && (
                <StartMenu
-                  isCloudLoading={isCloudLoading}
+                  isCloudLoading={isCloudLoading || !isLibraryLoaded}
                   librarySets={librarySets}
                   setLibrarySets={setLibrarySets}
                   folders={folders}

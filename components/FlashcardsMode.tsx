@@ -83,12 +83,23 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
     const [sortCompleted, setSortCompleted] = useState(false);
     const [isRoundFinished, setIsRoundFinished] = useState(false);
 
-    // Reset deck when base cards change
+    // Reset deck when base cards change or shuffle setting changes
     useEffect(() => {
-        setDeck(baseCards);
+        let newDeck = [...baseCards];
+
+        if (settings.shuffleCards) {
+            // Fisher-Yates shuffle
+            for (let i = newDeck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
+            }
+        }
+
+        setDeck(newDeck);
         setCurrentIndex(0);
         setIsFlipped(false);
-    }, [baseCards]);
+        setShuffled(settings.shuffleCards);
+    }, [baseCards, settings.shuffleCards]);
 
     // Current card
     const currentCard = deck[currentIndex] || null;
