@@ -78,7 +78,7 @@ const markdownToHtml = (text: string): string => {
 
     while (remaining.length > 0) {
         // Regex search
-        const tokenRegex = /(<h=[rbgpy]>)|(<\/h>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)|(<\/u>)/;
+        const tokenRegex = /(\[\[)|(<h=[rbgpy]>)|(<\/h>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)|(<\/u>)/;
         const match = remaining.match(tokenRegex);
 
         if (!match) {
@@ -95,7 +95,18 @@ const markdownToHtml = (text: string): string => {
 
         const rest = remaining.substring(idx + token.length);
 
-        if (token.startsWith('<h=')) {
+        if (token === '[[') {
+            // Lead block opener
+            const end = rest.indexOf(']]');
+            if (end !== -1) {
+                const content = rest.substring(0, end);
+                html += `<span data-md-start="[[" data-md-end="]]" class="inline-flex items-center px-2 py-0.5 rounded border border-[var(--outline)] bg-[var(--panel-2)] text-[var(--text)] text-[0.95em] font-medium" contenteditable="false">${content}</span>`;
+                remaining = rest.substring(end + 2);
+            } else {
+                html += token;
+                remaining = rest;
+            }
+        } else if (token.startsWith('<h=')) {
             // Highlight opener
             const color = token.charAt(3);
             const tag = `hl-${color}`;

@@ -208,7 +208,7 @@ export const checkAnswer = (
   customFieldDefs?: CustomFieldDefinition[]
 ) => {
   const strip = (s: string) => {
-    // Strip markdown: **, *, __, `, <h=...>
+    // Strip markdown: **, *, __, `, <h=...>, [[lead]]
     let clean = s
       .replace(/<h=[^>]+>/g, '')
       .replace(/<\/h>/g, '')
@@ -218,7 +218,8 @@ export const checkAnswer = (
       .replace(/__/g, '')
       .replace(/`/g, '')
       .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '');
+      .replace(/<\/u>/g, '')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1'); // Strip lead markers but keep content
     // Normalize and remove diacritics
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -294,7 +295,7 @@ export const checkDefinitionAnswer = (
   customFieldDefs?: CustomFieldDefinition[]
 ) => {
   const strip = (s: string) => {
-    // Strip markdown: **, *, __, `, <h=...>
+    // Strip markdown: **, *, __, `, <h=...>, [[lead]]
     let clean = s
       .replace(/<h=[^>]+>/g, '')
       .replace(/<\/h>/g, '')
@@ -306,7 +307,8 @@ export const checkDefinitionAnswer = (
       .replace(/<u>/g, '')
       .replace(/<\/u>/g, '')
       .replace(/<p>/gi, ' ')
-      .replace(/- /g, ' ');
+      .replace(/- /g, ' ')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1'); // Strip lead markers but keep content
     // Normalize and remove diacritics
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -388,7 +390,8 @@ export const findMixup = (
       .replace(/<u>/g, '')
       .replace(/<\/u>/g, '')
       .replace(/<p>/gi, ' ')
-      .replace(/- /g, ' ');
+      .replace(/- /g, ' ')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1'); // Strip lead markers but keep content
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
   };
@@ -631,6 +634,31 @@ export const parseInput = (text: string): Partial<Card>[] => {
 
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
+// Extract lead block content from a term string
+// [[Cultural Identity:]] core elements => { lead: "Cultural Identity:", rest: "core elements", leadPosition: 'start' }
+// world [[hello]] => { lead: "hello", rest: "world", leadPosition: 'end' }
+// hello [[world]] friends => { lead: "world", rest: "hello  friends", leadPosition: 'middle' }
+export const extractLead = (text: string): { lead: string | null; rest: string; leadPosition: 'start' | 'end' | 'middle' | null; fullText: string } => {
+  const match = text.match(/\[\[([^\]]+)\]\]/);
+  if (!match) return { lead: null, rest: text, leadPosition: null, fullText: text };
+
+  const lead = match[1];
+  const idx = match.index!;
+  const before = text.substring(0, idx).trim();
+  const after = text.substring(idx + match[0].length).trim();
+
+  let leadPosition: 'start' | 'end' | 'middle' = 'start';
+  if (before && after) leadPosition = 'middle';
+  else if (before && !after) leadPosition = 'end';
+  else leadPosition = 'start';
+
+  const rest = (before + ' ' + after).trim();
+  // fullText is the complete answer including lead content, for answer checking
+  const fullText = (before ? before + ' ' : '') + lead + (after ? ' ' + after : '');
+
+  return { lead, rest, leadPosition, fullText: fullText.trim() };
+};
+
 export const downloadFile = (filename: string, content: string, type: 'text' | 'json') => {
   const mime = type === 'json' ? 'application/json' : 'text/plain';
   const element = document.createElement('a');
@@ -871,7 +899,7 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
   while (remaining.length > 0) {
     // Scan for next token
     // Note: Regex order matters (longest match first usually desirable for *** vs **)
-    const tokenRegex = /(<h=[rbgpy]>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)/;
+    const tokenRegex = /(\[\[)|(<h=[rbgpy]>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)/;
     const match = remaining.match(tokenRegex);
 
     if (!match) {
@@ -933,6 +961,19 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
         }, renderInline(content, `${keyPrefix}-${cursor}-hl`, true)));
 
         consumedLength = endIdx;
+        handled = true;
+      }
+    }
+    // 1b. Lead block [[...]] 
+    else if (token === '[[') {
+      const end = currentRest.indexOf(']]', 2);
+      if (end !== -1) {
+        const content = currentRest.substring(2, end);
+        nodes.push(React.createElement('span', {
+          key: `${keyPrefix}-${cursor}-lead`,
+          className: "inline-flex items-center px-2 py-0.5 rounded border border-outline/60 bg-panel-2/80 text-text/80 text-[0.95em] font-medium select-none"
+        }, content));
+        consumedLength = end + 2;
         handled = true;
       }
     }

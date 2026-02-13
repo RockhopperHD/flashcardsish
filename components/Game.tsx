@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
-import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat } from '../utils';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat, extractLead } from '../utils';
 import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { generateIncorrectAnswers, isAiAvailable } from '../src/aiService';
@@ -467,9 +467,42 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const handleAttempt = () => {
       if (!currentCard) return;
+
+      // Extract lead info for current card's expected term
+      const isAnsweringWithDef = settings.answerWithDefinition;
+      const expectedAnswer = isAnsweringWithDef ? currentCard.content : (currentCard.term[0] || '');
+      const leadInfo = extractLead(expectedAnswer);
+
+      // Reconstruct full input by combining lead + user input
+      let fullInputTerm = inputTerm;
+      if (leadInfo.lead && !isAnsweringWithDef) {
+         // Reconstruct based on lead position in the original term
+         if (leadInfo.leadPosition === 'start') {
+            fullInputTerm = leadInfo.lead + ' ' + inputTerm;
+         } else if (leadInfo.leadPosition === 'end') {
+            fullInputTerm = inputTerm + ' ' + leadInfo.lead;
+         } else if (leadInfo.leadPosition === 'middle') {
+            // For middle, the lead occupies a spot in the string
+            // The user input goes around it: before-lead + lead + after-lead
+            // But user only types the non-lead part, so we reconstruct: input + lead suffix or similar
+            // Actually for simplicity, we just reconstruct as the full text
+            fullInputTerm = inputTerm; // User types everything except the lead which is in the middle
+            // We need to insert the lead at the right spot
+            const beforeLead = expectedAnswer.substring(0, expectedAnswer.indexOf('[['));
+            const afterLead = expectedAnswer.substring(expectedAnswer.indexOf(']]') + 2);
+            fullInputTerm = inputTerm; // User types before + after, we insert lead
+            // Split user input at the expected split point
+            const beforeLen = beforeLead.trim().length;
+            const userBefore = inputTerm.substring(0, beforeLen);
+            const userAfter = inputTerm.substring(beforeLen).trim();
+            fullInputTerm = userBefore + ' ' + leadInfo.lead + ' ' + userAfter;
+         }
+         fullInputTerm = fullInputTerm.trim();
+      }
+
       // Check if any input is provided
       const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
-      if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
+      if (!fullInputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
 
       // Determine active definitions
       const activeFieldDefs = set.version && set.version >= 2
@@ -480,8 +513,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
       // Use appropriate check function based on answerWithDefinition setting
       const result = settings.answerWithDefinition
-         ? checkDefinitionAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors, activeFieldDefs)
-         : checkAnswer(inputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors, activeFieldDefs);
+         ? checkDefinitionAnswer(fullInputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors, activeFieldDefs)
+         : checkAnswer(fullInputTerm, inputYear, inputCustom, currentCard, !settings.forgiveSpellingErrors, activeFieldDefs);
 
       // Normalize result - in definition mode, isDefinitionMatch maps to isTermMatch conceptually
       const isMainAnswerMatch = settings.answerWithDefinition
@@ -611,7 +644,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                : set.customFieldNames?.map(name => ({ name, type: 'text' as const }));
 
             const mixupItems = findMixup(
-               inputTerm,
+               fullInputTerm,
                inputYear,
                inputCustom,
                currentCard,
@@ -1560,7 +1593,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            customClasses = activeCustomFields.map((_, i) => i === 0 ? "md:col-span-3" : "md:col-span-6");
                         }
 
-                        const renderTerm = () => (
+                        const renderTerm = () => {
+                            // Extract lead block info from expected answer
+                            const expectedAnswer = isAnsweringWithDef ? currentCard.content : (currentCard.term[0] || '');
+                            const leadInfo = extractLead(expectedAnswer);
+                            const hasLead = !!leadInfo.lead && !isAnsweringWithDef;
+
+                            return (
                            <div key="term" className={clsx("relative flex flex-col", termClass)}>
                               {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
                                  <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
@@ -1569,12 +1608,56 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                        : currentCard.term[0]}
                                  </div>
                               )}
+                              {hasLead ? (
+                                 <div
+                                    className={clsx(
+                                       "w-full h-full bg-panel-2 border rounded-xl px-6 py-5 flex items-center gap-0 transition-colors",
+                                       "focus-within:border-accent",
+                                       feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red" : "border-outline",
+                                       feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green bg-green/5"
+                                    )}
+                                    onClick={() => termInputRef.current?.focus()}
+                                 >
+                                    {(leadInfo.leadPosition === 'start' || leadInfo.leadPosition === 'middle') && (
+                                       <span className="inline-flex items-center px-2.5 py-1 rounded-lg border border-outline/70 bg-bg/60 text-text/80 text-xl font-medium select-none shrink-0 mr-2">
+                                          {leadInfo.lead}
+                                       </span>
+                                    )}
+                                    <input
+                                       ref={termInputRef}
+                                       type="text"
+                                       value={inputTerm}
+                                       onChange={(e) => setInputTerm(e.target.value)}
+                                       disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
+                                       placeholder={feedback.type === 'retype_needed'
+                                          ? `Retype ${inputLabel.toLowerCase()}...`
+                                          : `Type the ${inputLabel.toLowerCase()}...`}
+                                       className={clsx(
+                                          "flex-1 min-w-0 bg-transparent text-xl focus:outline-none disabled:opacity-50 placeholder-text/20",
+                                          feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "text-red" : "text-text",
+                                          feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "text-green"
+                                       )}
+                                       autoComplete="off"
+                                       onKeyDown={(e) => {
+                                          handleInputKeyDown(e);
+                                       }}
+                                    />
+                                    {leadInfo.leadPosition === 'end' && (
+                                       <span className="inline-flex items-center px-2.5 py-1 rounded-lg border border-outline/70 bg-bg/60 text-text/80 text-xl font-medium select-none shrink-0 ml-2">
+                                          {leadInfo.lead}
+                                       </span>
+                                    )}
+                                 </div>
+                              ) : (
                               <input
                                  ref={termInputRef}
                                  type="text"
                                  value={inputTerm}
                                  onChange={(e) => setInputTerm(e.target.value)}
+<<<<<<< Updated upstream
                                  onKeyDown={handleInputKeyDown}
+=======
+>>>>>>> Stashed changes
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
                                  placeholder={feedback.type === 'retype_needed'
                                     ? `Retype ${inputLabel.toLowerCase()}...`
@@ -1586,8 +1669,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  )}
                                  autoComplete="off"
                               />
+                              )}
                            </div>
                         );
+                        };
 
                         const renderYear = () => (
                            <div key="year" className={clsx("relative flex flex-col", yearClass)}>
