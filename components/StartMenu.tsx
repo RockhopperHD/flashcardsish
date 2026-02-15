@@ -1730,6 +1730,7 @@ const BuilderRowItem: React.FC<{
   dragHandleProps?: DraggableProvided["dragHandleProps"];
   innerRef?: (element: HTMLElement | null) => void;
   wysiwyg: boolean;
+  saveHistory: () => void;
 }> = React.memo(
   ({
     row,
@@ -1751,7 +1752,8 @@ const BuilderRowItem: React.FC<{
     draggableProps,
     dragHandleProps,
     innerRef,
-    wysiwyg, // New prop
+    wysiwyg,
+    saveHistory, // New prop
   }) => {
     const termData = useMemo(() => extractCategory(row.term), [row.term]);
     const defData = useMemo(() => extractCategory(row.def), [row.def]);
@@ -1772,31 +1774,40 @@ const BuilderRowItem: React.FC<{
 
     const termInputRef = useRef<RichInputRef>(null);
     const defInputRef = useRef<RichInputRef>(null);
-    const handleMouseUp = (
-      e: React.MouseEvent,
+    const handleSelectionChange = (
+      e: React.SyntheticEvent,
       field: "term" | "def",
     ) => {
-      // For ContentEditable, we use Window Selection
-      const selection = window.getSelection();
-      if (selection && !selection.isCollapsed) {
+      // Use timeout to ensure selection is fully updated by the browser
+      setTimeout(() => {
+        // For ContentEditable, we use Window Selection
+        const selection = window.getSelection();
 
-        // Ensure the selection is actually inside OUR input
-        // Just verify event target context
-        activeToolbarRef.current = { field };
+        if (selection && !selection.isCollapsed) {
+          // Check if selection is inside the correct element
+          // We can check if the anchorNode is inside our field ref
+          // const ref = field === 'term' ? termInputRef.current : defInputRef.current;
 
-        // Calculate position based on selection range
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
+          activeToolbarRef.current = { field };
 
-        setToolbarPos({
-          top: rect.top - 20, // Relative to viewport, fixed toolbar uses fixed pos
-          left: rect.left + (rect.width / 2),
-        });
-        setToolbarVisible(true);
-      } else {
-        activeToolbarRef.current = null;
-        setToolbarVisible(false);
-      }
+          // Calculate position based on selection range
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+
+          // Ensure we don't position if rect is zero (invisible)
+          if (rect.width === 0 && rect.height === 0) return;
+
+          setToolbarPos({
+            top: rect.top - 10, // Slightly higher
+            left: rect.left + (rect.width / 2),
+          });
+          setToolbarVisible(true);
+        } else {
+          // If selection is collapsed, hide toolbar
+          activeToolbarRef.current = null;
+          setToolbarVisible(false);
+        }
+      }, 0);
     };
 
 
@@ -1812,6 +1823,40 @@ const BuilderRowItem: React.FC<{
       return () => window.removeEventListener('scroll', handleScroll, true);
     }, [toolbarVisible]);
 
+    // Global Mouse Up Listener for external releases (e.g. drag selection ending outside input)
+    useEffect(() => {
+      if (!isEditingTerm && !isEditingDef) return;
+
+      const handleGlobalMouseUp = (e: MouseEvent) => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) return;
+
+        const anchor = selection.anchorNode;
+        if (!anchor) return;
+
+        // Check Term
+        if (termInputRef.current) {
+          const container = termInputRef.current.getContainer();
+          if (container && container.contains(anchor)) {
+            handleSelectionChange(e as any, "term");
+            return;
+          }
+        }
+
+        // Check Def
+        if (defInputRef.current) {
+          const container = defInputRef.current.getContainer();
+          if (container && container.contains(anchor)) {
+            handleSelectionChange(e as any, "def");
+            return;
+          }
+        }
+      };
+
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+    }, [isEditingTerm, isEditingDef]);
+
     const applyFormat = (type: string, value?: string) => {
       if (!activeToolbarRef.current) return;
 
@@ -1819,11 +1864,12 @@ const BuilderRowItem: React.FC<{
       const ref = field === 'term' ? termInputRef.current : defInputRef.current;
 
       if (ref) {
+        saveHistory(); // Save before formatting
         ref.applyFormat(type, value);
       }
 
-      activeToolbarRef.current = null;
-      setToolbarVisible(false);
+      // Keep toolbar open to allow multiple formats or color switching
+      // It will close automatically when selection changes (collapse) or user types
     };
 
     // Auto-focus textarea when entering edit mode
@@ -2008,7 +2054,8 @@ const BuilderRowItem: React.FC<{
                       setToolbarVisible(false);
                       setIsEditingTerm(false);
                     }}
-                    onMouseUp={(e) => handleMouseUp(e, "term")}
+                    onMouseUp={(e) => handleSelectionChange(e, "term")}
+                    onKeyUp={(e) => handleSelectionChange(e, "term")}
                     onKeyDown={handleTermKeyDown}
                     className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-bold text-text h-full"
                     placeholder="Enter term..."
@@ -2017,7 +2064,10 @@ const BuilderRowItem: React.FC<{
               ) : (
                 <div
                   tabIndex={0}
-                  onFocus={() => setIsEditingTerm(true)}
+                  onFocus={() => {
+                    saveHistory();
+                    setIsEditingTerm(true);
+                  }}
                   onClick={() => setIsEditingTerm(true)}
                   className={clsx(
                     "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium flex-1 h-full",
@@ -2080,7 +2130,8 @@ const BuilderRowItem: React.FC<{
                       setToolbarVisible(false);
                       setIsEditingDef(false);
                     }}
-                    onMouseUp={(e) => handleMouseUp(e, "def")}
+                    onMouseUp={(e) => handleSelectionChange(e, "def")}
+                    onKeyUp={(e) => handleSelectionChange(e, "def")}
                     onKeyDown={handleDefKeyDown}
                     className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-medium text-text h-full"
                     placeholder="Enter definition..."
@@ -2089,7 +2140,10 @@ const BuilderRowItem: React.FC<{
               ) : (
                 <div
                   tabIndex={0}
-                  onFocus={() => setIsEditingDef(true)}
+                  onFocus={() => {
+                    saveHistory();
+                    setIsEditingDef(true);
+                  }}
                   onClick={() => setIsEditingDef(true)}
                   className={clsx(
                     "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium text-text flex-1 h-full",
@@ -2466,6 +2520,91 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       ];
     }
   });
+
+  // Undo/Redo System
+  const [past, setPast] = useState<BuilderRow[][]>([]);
+  const [future, setFuture] = useState<BuilderRow[][]>([]);
+  const builderRowsRef = useRef(builderRows);
+
+  useEffect(() => {
+    builderRowsRef.current = builderRows;
+  }, [builderRows]);
+
+  const saveToHistory = useCallback(() => {
+    setPast((prev) => {
+      // Dedup check: if current state is same as last saved state, don't save
+      if (prev.length > 0) {
+        const lastState = prev[prev.length - 1];
+        if (JSON.stringify(lastState) === JSON.stringify(builderRowsRef.current)) {
+          return prev;
+        }
+      }
+
+      const newHistory = [...prev, builderRowsRef.current];
+      // Cap history at 30
+      if (newHistory.length > 30) {
+        return newHistory.slice(newHistory.length - 30);
+      }
+      return newHistory;
+    });
+    setFuture([]);
+  }, []);
+
+  const undo = useCallback(() => {
+    setPast((prev) => {
+      if (prev.length === 0) return prev;
+      const newPast = [...prev];
+      const previous = newPast.pop();
+      if (previous) {
+        setFuture((f) => [builderRowsRef.current, ...f]);
+        setBuilderRows(previous);
+      }
+      return newPast;
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    setFuture((prev) => {
+      if (prev.length === 0) return prev;
+      const newFuture = [...prev];
+      const next = newFuture.shift();
+      if (next) {
+        setPast((p) => [...p, builderRowsRef.current]);
+        setBuilderRows(next);
+      }
+      return newFuture;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (view !== "builder") return;
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+        const isInput = (e.target as HTMLElement).matches(
+          'input, textarea, [contenteditable="true"]',
+        );
+        if (isInput) return;
+
+        e.preventDefault();
+        if (e.shiftKey) {
+          redo();
+        } else {
+          undo();
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) {
+        const isInput = (e.target as HTMLElement).matches(
+          'input, textarea, [contenteditable="true"]',
+        );
+        if (isInput) return;
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [view, undo, redo]);
   const [rawText, setRawText] = useState("");
   const [setName, setSetName] = useState("");
 
@@ -2499,6 +2638,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const [reorderedItem] = items.splice(result.source.index, 1);
     items.splice(result.destination.index, 0, reorderedItem);
 
+    saveToHistory();
     setBuilderRows(items);
   };
 
@@ -3095,6 +3235,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setView("builder");
     setBuilderMode("visual");
     clearAutosaveDraft();
+    setPast([]);
+    setFuture([]);
   };
 
   const startRawImport = () => {
@@ -3398,6 +3540,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setBuilderRows(rows);
     setView("builder");
     setBuilderMode("visual");
+    setPast([]);
+    setFuture([]);
   };
 
   // --- ACTIONS ---
@@ -3829,6 +3973,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   // --- HELPER FOR VISUAL BUILDER ---
 
   const addRow = useCallback(() => {
+    saveToHistory();
     setBuilderRows((prev) => [
       ...prev,
       {
@@ -3855,6 +4000,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   );
 
   const duplicateRow = (id: string) => {
+    saveToHistory();
     setBuilderRows((prev) => {
       const index = prev.findIndex((r) => r.id === id);
       if (index === -1) return prev;
@@ -3872,6 +4018,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const removeRow = useCallback((id: string) => {
+    saveToHistory();
     setBuilderRows((prev) => {
       if (prev.length <= 1) {
         // Don't delete last row, just clear it
@@ -3891,7 +4038,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
       return prev.filter((r) => r.id !== id);
     });
-  }, []);
+  }, [saveToHistory]);
 
   const openImageModal = useCallback((rowId: string, field: 'image' | 'termImage' = 'image') => {
     setEditingImageRowId(rowId);
@@ -3900,6 +4047,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   }, []);
 
   const swapRow = useCallback((id: string) => {
+    saveToHistory();
     setBuilderRows((prev) =>
       prev.map((r) => {
         if (r.id === id) {
@@ -5118,6 +5266,25 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </label>
                   </CursorTooltip>
 
+                  <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1 mr-2 h-[38px]">
+                    <button
+                      onClick={undo}
+                      disabled={past.length === 0}
+                      className="w-8 h-full flex items-center justify-center rounded hover:bg-panel-3 disabled:opacity-30 disabled:hover:bg-transparent text-text transition-colors"
+                      title="Undo (Ctrl+Z)"
+                    >
+                      <RotateCcw size={16} />
+                    </button>
+                    <div className="w-px h-4 bg-outline mx-1" />
+                    <button
+                      onClick={redo}
+                      disabled={future.length === 0}
+                      className="w-8 h-full flex items-center justify-center rounded hover:bg-panel-3 disabled:opacity-30 disabled:hover:bg-transparent text-text transition-colors"
+                      title="Redo (Ctrl+Shift+Z)"
+                    >
+                      <RotateCw size={16} />
+                    </button>
+                  </div>
                   <button
                     onClick={() => setIsConfigModalOpen(true)}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
@@ -5193,6 +5360,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       dragHandleProps={provided.dragHandleProps}
                                       innerRef={provided.innerRef}
                                       wysiwyg={wysiwyg}
+                                      saveHistory={saveToHistory}
                                     />
                                   )}
                                 </Draggable>

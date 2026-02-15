@@ -955,7 +955,7 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
     else if (token === '***') {
       const end = currentRest.indexOf('***', 3);
       if (end !== -1) {
-        nodes.push(React.createElement('strong', { key: `${keyPrefix}-${cursor}-bi`, className: "font-bold text-accent italic" },
+        nodes.push(React.createElement('strong', { key: `${keyPrefix}-${cursor}-bi`, className: "font-bold italic" },
           renderInline(currentRest.substring(3, end), `${keyPrefix}-${cursor}-bi`, isHighlighted)
         ));
         consumedLength = end + 3;
@@ -965,7 +965,7 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
     else if (token === '**') {
       const end = currentRest.indexOf('**', 2);
       if (end !== -1) {
-        const className = `font-extrabold ${isHighlighted ? 'text-current' : 'text-accent'}`;
+        const className = `font-extrabold`;
         nodes.push(React.createElement('strong', { key: `${keyPrefix}-${cursor}-b`, className },
           renderInline(currentRest.substring(2, end), `${keyPrefix}-${cursor}-b`, isHighlighted)
         ));
@@ -977,7 +977,7 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
       const end = currentRest.indexOf('*', 1);
       // Ensure no space after start * and no space before end * ideally, but simplifying
       if (end !== -1) {
-        nodes.push(React.createElement('em', { key: `${keyPrefix}-${cursor}-i`, className: "italic text-muted/90" },
+        nodes.push(React.createElement('em', { key: `${keyPrefix}-${cursor}-i`, className: "italic" },
           renderInline(currentRest.substring(1, end), `${keyPrefix}-${cursor}-i`, isHighlighted)
         ));
         consumedLength = end + 1;

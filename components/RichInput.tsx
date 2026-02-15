@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
 import clsx from 'clsx';
 
 interface RichInputProps {
@@ -9,6 +9,7 @@ interface RichInputProps {
     onBlur?: () => void;
     onFocus?: () => void;
     onKeyDown?: (e: React.KeyboardEvent) => void;
+    onKeyUp?: (e: React.KeyboardEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
 }
@@ -16,12 +17,13 @@ interface RichInputProps {
 export interface RichInputRef {
     applyFormat: (type: string, value?: string) => void;
     focus: () => void;
+    getContainer: () => HTMLDivElement | null;
 }
 
 // Map styles to markdown tags
 const TAGS: Record<string, { start: string; end: string; className: string; tag?: string }> = {
-    bold: { start: '**', end: '**', className: 'font-bold text-accent' },
-    italic: { start: '*', end: '*', className: 'italic text-accent' },
+    bold: { start: '**', end: '**', className: 'font-bold' },
+    italic: { start: '*', end: '*', className: 'italic' },
     underline: { start: '__', end: '__', className: 'underline decoration-accent underline-offset-4' },
     code: { start: '`', end: '`', className: 'bg-panel-2 border border-outline px-1 rounded text-sm font-mono text-accent' },
     'hl-r': { start: '<h=r>', end: '</h>', className: 'bg-red/20 text-red px-1 rounded' },
@@ -182,6 +184,13 @@ const markdownToHtmlInline = (text: string): string => {
                 html += token; // Unmatched
                 remaining = rest;
             }
+        } else if (token === '***') {
+            // Bold + Italic
+            const end = rest.indexOf('***');
+            if (end !== -1) {
+                html += `<span data-md-start="***" data-md-end="***" class="font-bold italic">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
+                remaining = rest.substring(end + 3);
+            } else { html += token; remaining = rest; }
         } else if (token === '**') {
             // Bold
             const end = rest.indexOf('**');
@@ -228,11 +237,14 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     onBlur,
     onFocus,
     onKeyDown,
+    onKeyUp,
     onMouseUp,
     onContextMenu
 }, ref) => {
     const contentEditableRef = useRef<HTMLDivElement>(null);
     const isTyping = useRef(false);
+    const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastSyncedValue = useRef<string>(value);
 
     const getMarkdownFromContent = () => {
         if (!contentEditableRef.current) return '';
@@ -296,6 +308,88 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         }
     };
 
+    // Force sync: re-render the markdown → HTML in the contentEditable
+    // Preserves full selection range (not just collapsed caret)
+    const forceSync = useCallback(() => {
+        if (!contentEditableRef.current) return;
+        const hasFocus = document.activeElement === contentEditableRef.current;
+
+        // Capture FULL selection range (start + end) before re-rendering
+        let startPos = 0;
+        let endPos = 0;
+        if (hasFocus) {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) {
+                const range = sel.getRangeAt(0);
+
+                const startRange = range.cloneRange();
+                startRange.selectNodeContents(contentEditableRef.current);
+                startRange.setEnd(range.startContainer, range.startOffset);
+                startPos = startRange.toString().length;
+
+                const endRange = range.cloneRange();
+                endRange.selectNodeContents(contentEditableRef.current);
+                endRange.setEnd(range.endContainer, range.endOffset);
+                endPos = endRange.toString().length;
+            }
+        }
+
+        const currentMd = getMarkdownFromContent();
+        contentEditableRef.current.innerHTML = markdownToHtml(currentMd);
+        lastSyncedValue.current = currentMd;
+
+        // Restore full selection range
+        if (hasFocus) {
+            const restoreRange = document.createRange();
+            let charIndex = 0;
+            let startNode: Node | null = null;
+            let startOffset = 0;
+            let endNode: Node | null = null;
+            let endOffset = 0;
+
+            const walk = (node: Node) => {
+                if (startNode && endNode) return;
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const len = node.textContent?.length || 0;
+                    if (!startNode && charIndex + len >= startPos) {
+                        startNode = node;
+                        startOffset = startPos - charIndex;
+                    }
+                    if (!endNode && charIndex + len >= endPos) {
+                        endNode = node;
+                        endOffset = endPos - charIndex;
+                    }
+                    charIndex += len;
+                } else {
+                    for (let i = 0; i < node.childNodes.length; i++) {
+                        walk(node.childNodes[i]);
+                        if (startNode && endNode) return;
+                    }
+                }
+            };
+
+            walk(contentEditableRef.current);
+
+            if (startNode && endNode) {
+                restoreRange.setStart(startNode, startOffset);
+                restoreRange.setEnd(endNode, endOffset);
+                const sel = window.getSelection();
+                if (sel) {
+                    sel.removeAllRanges();
+                    sel.addRange(restoreRange);
+                }
+            } else if (startNode) {
+                restoreRange.setStart(startNode, startOffset);
+                restoreRange.collapse(true);
+                const sel = window.getSelection();
+                if (sel) {
+                    sel.removeAllRanges();
+                    sel.addRange(restoreRange);
+                }
+            }
+        }
+    }, []);
+
     // Sync value to HTML (only when not typing to avoid cursor jumps / loops)
     useEffect(() => {
         if (isTyping.current) return;
@@ -306,6 +400,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
                 const caretPos = getCaretIndex(contentEditableRef.current);
 
                 contentEditableRef.current.innerHTML = markdownToHtml(value);
+                lastSyncedValue.current = value;
 
                 // Restore cursor if we had focus
                 if (document.activeElement === contentEditableRef.current) {
@@ -317,11 +412,63 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
 
     const handleInput = () => {
         if (contentEditableRef.current) {
+            // Fix "Ghost Highlights": Remove empty highlight spans that might remain after deletion
+            const highlights = contentEditableRef.current.querySelectorAll('span[data-md-start^="<h="]');
+            highlights.forEach(el => {
+                if (!el.textContent && el.childNodes.length === 0) {
+                    el.remove();
+                } else if (el.textContent === '' && el.childNodes.length === 1 && el.firstChild?.nodeName === 'BR') {
+                    // Empty line with just BR? If we want to allow highlighted empty lines, keep it.
+                    // Usually users don't want ghost empty lines highlighted.
+                    // But if it's a block, maybe. Span is inline.
+                    el.remove();
+                    // Recover the BR?
+                    // contentEditableRef.current?.appendChild(document.createElement('br'));
+                    // Complex. Let's strictly remove empty text text content.
+                }
+            });
+
             isTyping.current = true;
             const md = getMarkdownFromContent();
             onChange(md);
-            setTimeout(() => isTyping.current = false, 50);
+            // Reset isTyping after a short delay so external value syncs can work
+            if (syncTimeoutRef.current) {
+                clearTimeout(syncTimeoutRef.current);
+            }
+            syncTimeoutRef.current = setTimeout(() => {
+                isTyping.current = false;
+            }, 50);
         }
+    };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+        };
+    }, []);
+
+    // Helper: find closest ancestor highlight span
+    const findHighlightAncestor = (from: Node): HTMLElement | null => {
+        let n: Node | null = from;
+        while (n && n !== contentEditableRef.current) {
+            if (n.nodeType === Node.ELEMENT_NODE) {
+                const el = n as HTMLElement;
+                if (el.dataset.mdStart && el.dataset.mdStart.startsWith('<h=')) {
+                    return el;
+                }
+            }
+            n = n.parentNode;
+        }
+        return null;
+    };
+
+    // Helper: emit markdown without triggering DOM-replacing sync
+    const emitMarkdown = () => {
+        const md = getMarkdownFromContent();
+        isTyping.current = true;
+        onChange(md);
+        setTimeout(() => { isTyping.current = false; }, 50);
     };
 
     const applyFormat = (type: string, val?: string) => {
@@ -331,36 +478,228 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         const range = selection.getRangeAt(0);
         if (!contentEditableRef.current?.contains(range.commonAncestorContainer)) return;
 
-        // Removing Highlight logic
-        if (type === 'highlight' && !val) {
-            // This is a naive implementation that attempts to unwrap if check passes
-            // Currently complex due to DOM nesting, but 'none' was requested as a button.
-            // For proper unwrapping we'd need to walk up from current selection.
-            // Given constraint, we might skip complex unwrap now or implement simple
-            // unwrap if the strict parent is the span.
-            const parent = range.commonAncestorContainer.parentElement;
-            if (parent && parent.dataset.mdStart && parent.dataset.mdStart.startsWith('<h=')) {
-                // Unwrap
-                const docFrag = document.createDocumentFragment();
-                while (parent.firstChild) {
-                    docFrag.appendChild(parent.firstChild);
+        // ── HIGHLIGHT LOGIC ──────────────────────────────────────────────
+        if (type === 'highlight') {
+            // Find any existing highlight ancestor
+            const existingHighlight = findHighlightAncestor(range.commonAncestorContainer);
+            const newDef = val ? TAGS[`hl-${val}`] : undefined;
+
+            if (existingHighlight) {
+                const currentStart = existingHighlight.dataset.mdStart;
+
+                const isToggleOff = newDef && currentStart === newDef.start;
+                const isRemove = !val;
+                const isSwap = newDef && !isToggleOff;
+
+                const selText = range.toString();
+                const spanText = existingHighlight.textContent || '';
+                const isFull = selText === spanText || range.collapsed || selText.length >= spanText.length;
+
+                if (isFull) {
+                    if (isSwap) {
+                        // Fast path: just update attributes
+                        existingHighlight.className = newDef.className;
+                        existingHighlight.dataset.mdStart = newDef.start;
+                        existingHighlight.dataset.mdEnd = newDef.end;
+                    } else {
+                        // Remove/Toggle: Unwrap
+                        const docFrag = document.createDocumentFragment();
+                        while (existingHighlight.firstChild) {
+                            docFrag.appendChild(existingHighlight.firstChild);
+                        }
+                        existingHighlight.parentNode?.replaceChild(docFrag, existingHighlight);
+                    }
+                } else {
+                    // Partial Split
+                    const beforeRange = document.createRange();
+                    beforeRange.setStart(existingHighlight, 0);
+                    beforeRange.setEnd(range.startContainer, range.startOffset);
+
+                    const afterRange = document.createRange();
+                    afterRange.setStart(range.endContainer, range.endOffset);
+                    afterRange.setEnd(existingHighlight, existingHighlight.childNodes.length);
+
+                    const beforeContent = beforeRange.cloneContents();
+                    const selectedContent = range.cloneContents();
+                    const afterContent = afterRange.cloneContents();
+
+                    const frag = document.createDocumentFragment();
+
+                    // 1. Before Part (Keep Old Color)
+                    if (beforeContent.textContent) {
+                        const s = document.createElement('span');
+                        s.className = existingHighlight.className;
+                        s.dataset.mdStart = existingHighlight.dataset.mdStart;
+                        s.dataset.mdEnd = existingHighlight.dataset.mdEnd;
+                        s.appendChild(beforeContent);
+                        frag.appendChild(s);
+                    }
+
+                    // 2. Middle Part (New Color or Bare)
+                    if (isSwap) {
+                        const s = document.createElement('span');
+                        s.className = newDef.className;
+                        s.dataset.mdStart = newDef.start;
+                        s.dataset.mdEnd = newDef.end;
+                        s.appendChild(selectedContent);
+                        frag.appendChild(s);
+                    } else {
+                        frag.appendChild(selectedContent);
+                    }
+
+                    // 3. After Part (Keep Old Color)
+                    if (afterContent.textContent) {
+                        const s = document.createElement('span');
+                        s.className = existingHighlight.className;
+                        s.dataset.mdStart = existingHighlight.dataset.mdStart;
+                        s.dataset.mdEnd = existingHighlight.dataset.mdEnd;
+                        s.appendChild(afterContent);
+                        frag.appendChild(s);
+                    }
+
+                    existingHighlight.parentNode?.replaceChild(frag, existingHighlight);
                 }
-                parent.parentNode?.replaceChild(docFrag, parent);
-                handleInput();
+                emitMarkdown();
                 return;
+            }
+
+            // If we are removing (val is undefined) but didn't find a common ancestor highlight
+            if (!val) {
+                // Try to remove nested highlights in the selection
+                try {
+                    const content = range.extractContents();
+                    const spans = content.querySelectorAll('span');
+                    let modified = false;
+                    spans.forEach(s => {
+                        const el = s as HTMLElement;
+                        if (el.dataset.mdStart && el.dataset.mdStart.startsWith('<h=')) {
+                            while (el.firstChild) el.parentNode?.insertBefore(el.firstChild, el);
+                            el.parentNode?.removeChild(el);
+                            modified = true;
+                        }
+                    });
+                    range.insertNode(content);
+                    if (modified) emitMarkdown();
+                } catch (e) {
+                    console.error("Remove highlight failed", e);
+                }
+                return;
+            }
+
+            // No existing highlight — wrap selection in new highlight
+            if (!newDef) return; // Cannot highlight without a color definition
+            if (range.collapsed) return; // Nothing to highlight
+
+            const span = document.createElement('span');
+            span.className = newDef.className;
+            span.dataset.mdStart = newDef.start;
+            span.dataset.mdEnd = newDef.end;
+
+            try {
+                const content = range.extractContents();
+
+                // Cleanup nested highlights to enforce override (for mixed selections)
+                const existingSpans = content.querySelectorAll('span');
+                existingSpans.forEach(s => {
+                    const el = s as HTMLElement;
+                    if (el.dataset.mdStart && el.dataset.mdStart.startsWith('<h=')) {
+                        while (el.firstChild) el.parentNode?.insertBefore(el.firstChild, el);
+                        el.parentNode?.removeChild(el);
+                    }
+                });
+
+                span.appendChild(content);
+                range.insertNode(span);
+
+                selection.removeAllRanges();
+                const newRange = document.createRange();
+                newRange.selectNodeContents(span);
+                selection.addRange(newRange);
+
+                emitMarkdown();
+            } catch (e) {
+                console.error("Highlight failed", e);
             }
             return;
         }
 
-        // Apply Formatting
-        let def: any;
-        if (type === 'highlight' && val) {
-            def = TAGS[`hl-${val}`];
-        } else {
-            def = TAGS[type];
+        // ── NON-HIGHLIGHT FORMATTING ─────────────────────────────────────
+        const def = TAGS[type];
+        if (!def) return;
+
+        // Check if the selection is entirely within an existing format span of the same type
+        const ancestor = range.commonAncestorContainer;
+        let formatParent: HTMLElement | null = null;
+        let node: Node | null = ancestor;
+
+        while (node && node !== contentEditableRef.current) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const el = node as HTMLElement;
+                if (el.dataset.mdStart === def.start && el.dataset.mdEnd === def.end) {
+                    formatParent = el;
+                    break;
+                }
+            }
+            node = node.parentNode;
         }
 
-        if (!def) return;
+        if (formatParent) {
+            // Toggle OFF: unwrap the formatting span
+            const selText = range.toString();
+            const spanText = formatParent.textContent || '';
+
+            if (selText === spanText || range.collapsed || selText.length >= spanText.length) {
+                // Full unwrap
+                const docFrag = document.createDocumentFragment();
+                while (formatParent.firstChild) {
+                    docFrag.appendChild(formatParent.firstChild);
+                }
+                formatParent.parentNode?.replaceChild(docFrag, formatParent);
+            } else {
+                // Partial unwrap: split the span around the selection
+                const beforeRange = document.createRange();
+                beforeRange.setStart(formatParent, 0);
+                beforeRange.setEnd(range.startContainer, range.startOffset);
+
+                const afterRange = document.createRange();
+                afterRange.setStart(range.endContainer, range.endOffset);
+                afterRange.setEnd(formatParent, formatParent.childNodes.length);
+
+                const beforeContent = beforeRange.cloneContents();
+                const selectedContent = range.cloneContents();
+                const afterContent = afterRange.cloneContents();
+
+                const frag = document.createDocumentFragment();
+
+                if (beforeContent.textContent) {
+                    const beforeSpan = document.createElement('span');
+                    beforeSpan.className = def.className;
+                    beforeSpan.dataset.mdStart = def.start;
+                    beforeSpan.dataset.mdEnd = def.end;
+                    beforeSpan.appendChild(beforeContent);
+                    frag.appendChild(beforeSpan);
+                }
+
+                frag.appendChild(selectedContent);
+
+                if (afterContent.textContent) {
+                    const afterSpan = document.createElement('span');
+                    afterSpan.className = def.className;
+                    afterSpan.dataset.mdStart = def.start;
+                    afterSpan.dataset.mdEnd = def.end;
+                    afterSpan.appendChild(afterContent);
+                    frag.appendChild(afterSpan);
+                }
+
+                formatParent.parentNode?.replaceChild(frag, formatParent);
+            }
+
+            emitMarkdown();
+            return;
+        }
+
+        // Apply Formatting (wrap)
+        if (range.collapsed) return; // Nothing to format
 
         const span = document.createElement('span');
         span.className = def.className;
@@ -372,12 +711,13 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             span.appendChild(content);
             range.insertNode(span);
 
+            // Keep the text selected after formatting
             selection.removeAllRanges();
             const newRange = document.createRange();
             newRange.selectNodeContents(span);
             selection.addRange(newRange);
 
-            handleInput();
+            emitMarkdown();
         } catch (e) {
             console.error("Formatting failed", e);
         }
@@ -399,7 +739,8 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
                 }
             }
         },
-        applyFormat
+        applyFormat,
+        getContainer: () => contentEditableRef.current
     }));
 
     const handleKeyDownInternal = (e: React.KeyboardEvent) => {
@@ -505,7 +846,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             }
         }
 
-        // Keyboard Shortcuts
+        // Keyboard Shortcuts (Ctrl/Cmd)
         if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
             const key = e.key.toLowerCase();
             if (key === 'b') {
@@ -532,9 +873,19 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             contentEditable
             className={clsx("outline-none whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className)}
             onInput={handleInput}
-            onBlur={onBlur}
+            onBlur={() => {
+                // On blur, force a sync so the user sees formatted content
+                if (syncTimeoutRef.current) {
+                    clearTimeout(syncTimeoutRef.current);
+                    syncTimeoutRef.current = null;
+                }
+                isTyping.current = false;
+                forceSync();
+                if (onBlur) onBlur();
+            }}
             onFocus={onFocus}
             onKeyDown={handleKeyDownInternal}
+            onKeyUp={onKeyUp}
             onMouseUp={onMouseUp}
             onContextMenu={onContextMenu}
             data-placeholder={placeholder}
