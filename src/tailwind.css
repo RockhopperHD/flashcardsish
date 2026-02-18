@@ -65,6 +65,58 @@
     }
 }
 
+@keyframes signInOutline {
+    0% {
+        stroke-dashoffset: 320;
+        stroke-opacity: 0;
+        stroke-width: 2;
+    }
+    18% {
+        stroke-opacity: 1;
+    }
+    38% {
+        stroke-dashoffset: 0;
+        stroke-opacity: 1;
+        stroke-width: 2;
+    }
+    55% {
+        stroke-opacity: 1;
+        stroke-width: 3.5;
+    }
+    70% {
+        stroke-opacity: 0.6;
+        stroke-width: 2;
+    }
+    100% {
+        stroke-dashoffset: 0;
+        stroke-opacity: 0;
+        stroke-width: 2;
+    }
+}
+
+.signin-cta {
+    isolation: isolate;
+}
+
+.signin-cta-outline {
+    position: absolute;
+    inset: -4px;
+    width: calc(100% + 8px);
+    height: calc(100% + 8px);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.signin-cta-outline rect {
+    fill: none;
+    stroke: var(--yellow);
+    stroke-width: 2;
+    stroke-dasharray: 320;
+    stroke-dashoffset: 320;
+    vector-effect: non-scaling-stroke;
+    animation: signInOutline 4.5s ease-in-out infinite;
+}
+
 [contentEditable]:empty:before {
     content: attr(data-placeholder);
     color: var(--color-muted);

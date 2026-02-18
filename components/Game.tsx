@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import { generateIncorrectAnswers, isAiAvailable } from '../src/aiService';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
+import { CardTagPill } from './CardTagPill';
 
 interface GameProps {
    set: CardSet;
@@ -338,6 +339,18 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    // Mixup Modal
    const [isMixupModalOpen, setIsMixupModalOpen] = useState(false);
+
+   useEffect(() => {
+      if (!isMixupModalOpen) return;
+      const handleKeyDown = (e: KeyboardEvent) => {
+         if (e.key === 'Escape') {
+            e.preventDefault();
+            setIsMixupModalOpen(false);
+         }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+   }, [isMixupModalOpen]);
 
    // Streak state needs to track if it's "pending break"
    const [streak, setStreak] = useState(0);
@@ -1567,13 +1580,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
                      </svg>
                   </button>
-                  {/* Tags */}
+                  {/* Cues */}
                   {currentCard.tags && currentCard.tags.length > 0 && (
                      <div className="flex gap-1 ml-2">
                         {currentCard.tags.map(tag => (
-                           <span key={tag} className="px-2 py-0.5 bg-accent/10 border border-accent rounded-full text-xs font-bold text-accent uppercase tracking-wider">
-                              {tag}
-                           </span>
+                           <CardTagPill key={tag} label={tag} />
                         ))}
                      </div>
                   )}
@@ -2156,7 +2167,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
                      <button
                         onClick={() => setIsEditOpen(false)}
-                        className="w-full py-4 bg-accent text-bg rounded-xl font-bold mt-8 hover:scale-[1.01] active:scale-[0.99] transition-all shadow-lg text-lg"
+                        className="w-full py-4 bg-accent text-bg rounded-xl font-bold mt-8 hover:bg-accent/90 transition-colors duration-150 shadow-lg text-lg"
                      >
                         Save Changes
                      </button>
@@ -2175,18 +2186,28 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      You are editing a card in a Multistudy session. This will update the card in the <span className="text-accent font-bold">original set</span> as well.
                   </p>
 
-                  <div className="flex items-center gap-2 mb-6">
+                  <label className="flex items-center gap-2 mb-6 cursor-pointer select-none group">
                      <input
                         type="checkbox"
-                        id="suppress"
-                        className="rounded border-outline bg-panel-2 text-accent focus:ring-accent"
+                        checked={suppressEditWarning}
                         onChange={(e) => {
                            if (e.target.checked) setSuppressEditWarning(true);
                            else setSuppressEditWarning(false);
                         }}
+                        className="hidden"
                      />
-                     <label htmlFor="suppress" className="text-xs text-muted cursor-pointer select-none">Don't warn me again this session</label>
-                  </div>
+                     <div
+                        className={suppressEditWarning
+                           ? "w-5 h-5 rounded border-2 flex items-center justify-center transition-all bg-accent border-accent"
+                           : "w-5 h-5 rounded border-2 flex items-center justify-center transition-all border-outline group-hover:border-accent"
+                        }
+                     >
+                        {suppressEditWarning && (
+                           <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                        )}
+                     </div>
+                     <span className="text-xs text-muted">Don't warn me again this session</span>
+                  </label>
 
                   <div className="flex gap-3">
                      <button
@@ -2200,7 +2221,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            setShowEditWarning(false);
                            setIsEditOpen(true);
                         }}
-                        className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-accent text-bg hover:scale-105 transition-transform"
+                        className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-accent text-bg hover:bg-accent/90 transition-colors duration-150"
                      >
                         Edit Anyway
                      </button>
@@ -2213,10 +2234,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsMixupModalOpen(false)}>
                <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-2xl shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-between items-center mb-6 border-b border-outline pb-4">
-                     <h2 className="text-xl font-bold text-accent flex items-center gap-2">
-                        <Info size={24} />
-                        Mixup Detected
-                     </h2>
+                     <h2 className="text-xl font-bold text-accent">Mixup Detected</h2>
                      <button onClick={() => setIsMixupModalOpen(false)}><X size={24} className="text-muted hover:text-text" /></button>
                   </div>
 
@@ -2233,7 +2251,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         {currentCard.content && (
                            <div>
                               <div className="text-xs text-muted mb-1 uppercase">Definition</div>
-                              <div className="text-sm text-text/80 line-clamp-4">{currentCard.content}</div>
+                              <div className="text-sm text-text line-clamp-4">{currentCard.content}</div>
                            </div>
                         )}
                         {currentCard.year && (
@@ -2261,7 +2279,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  {matchedCard.content && (
                                     <div>
                                        <div className="text-xs text-muted mb-1 uppercase">Definition</div>
-                                       <div className="text-sm text-text/80 line-clamp-4">{matchedCard.content}</div>
+                                       <div className="text-sm text-text line-clamp-4">{matchedCard.content}</div>
                                     </div>
                                  )}
                                  {matchedCard.year && (
@@ -2278,7 +2296,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
                   <button
                      onClick={() => setIsMixupModalOpen(false)}
-                     className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:scale-[1.02] transition-transform shadow-lg"
+                     className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:bg-accent/90 transition-colors duration-150 shadow-lg"
                   >
                      OK
                   </button>

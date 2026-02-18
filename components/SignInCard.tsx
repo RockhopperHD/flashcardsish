@@ -2,11 +2,13 @@ import React from 'react';
 
 
 interface SignInCardProps {
-    onLogin: () => void;
+    onLogin: (keepSignedIn: boolean) => void;
     privacyPolicyUrl?: string; // Optional if we want to pass it
 }
 
 export const SignInCard: React.FC<SignInCardProps> = ({ onLogin }) => {
+    const [keepSignedIn, setKeepSignedIn] = React.useState(true);
+
     return (
         <div className="flex flex-col items-center text-left w-full">
             {/* Header */}
@@ -54,10 +56,29 @@ export const SignInCard: React.FC<SignInCardProps> = ({ onLogin }) => {
             </div>
 
             {/* Action Button */}
-            <div className="w-full mt-8">
+            <div className="w-full mt-8 space-y-4">
+                <label className="flex items-center gap-3 text-sm text-muted font-medium cursor-pointer select-none group">
+                    <input
+                        type="checkbox"
+                        checked={keepSignedIn}
+                        onChange={(e) => setKeepSignedIn(e.target.checked)}
+                        className="hidden"
+                    />
+                    <div
+                        className={keepSignedIn
+                            ? "w-5 h-5 rounded border-2 flex items-center justify-center transition-all bg-accent border-accent"
+                            : "w-5 h-5 rounded border-2 flex items-center justify-center transition-all border-outline group-hover:border-accent"
+                        }
+                    >
+                        {keepSignedIn && (
+                            <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                        )}
+                    </div>
+                    Keep me signed in
+                </label>
                 <button
-                    onClick={onLogin}
-                    className="w-full py-4 bg-text text-bg rounded-xl font-bold text-lg hover:opacity-90 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 active:scale-[0.98]"
+                    onClick={() => onLogin(keepSignedIn)}
+                    className="w-full py-5 bg-text text-bg rounded-xl font-bold text-xl hover:opacity-90 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 active:scale-[0.98]"
                 >
                     Sign in
                 </button>

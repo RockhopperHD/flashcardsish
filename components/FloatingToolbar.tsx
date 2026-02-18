@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bold, Italic, Underline, Code, Highlighter } from 'lucide-react';
 import clsx from 'clsx';
+import { getModifierKeyLabel } from '../utils';
 
 export const FloatingToolbar: React.FC<{
     position: { top: number; left: number } | null;
@@ -9,6 +10,7 @@ export const FloatingToolbar: React.FC<{
     anchor?: 'top' | 'bottom';
 }> = ({ position, onFormat, visible, anchor = 'bottom' }) => {
     if (!visible || !position) return null;
+    const modKey = getModifierKeyLabel();
 
     return (
         <div
@@ -23,10 +25,10 @@ export const FloatingToolbar: React.FC<{
             onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => e.stopPropagation()}
         >
-            <MenuButton icon={<Bold size={16} />} label="Bold" onClick={() => onFormat('bold')} shortcut="Ctrl+B" />
-            <MenuButton icon={<Italic size={16} />} label="Italic" onClick={() => onFormat('italic')} shortcut="Ctrl+I" />
-            <MenuButton icon={<Underline size={16} />} label="Underline" onClick={() => onFormat('underline')} shortcut="Ctrl+U" />
-            <MenuButton icon={<Code size={16} />} label="Code" onClick={() => onFormat('code')} shortcut="Ctrl+`" />
+            <MenuButton icon={<Bold size={16} />} label="Bold" onClick={() => onFormat('bold')} shortcut={`${modKey}+B`} />
+            <MenuButton icon={<Italic size={16} />} label="Italic" onClick={() => onFormat('italic')} shortcut={`${modKey}+I`} />
+            <MenuButton icon={<Underline size={16} />} label="Underline" onClick={() => onFormat('underline')} shortcut={`${modKey}+U`} />
+            <MenuButton icon={<Code size={16} />} label="Code" onClick={() => onFormat('code')} shortcut={`${modKey}+\``} />
 
             <div className="h-px bg-outline my-2 mx-1" />
 

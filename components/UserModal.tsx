@@ -11,7 +11,7 @@ interface UserModalProps {
     onClose: () => void;
     user: GoogleDriveUser | null;
     lifetimeCorrect: number;
-    onLogin: () => void;
+    onLogin: (keepSignedIn: boolean) => void;
     onLogout: () => void;
     librarySets: CardSet[];
     onOpenSettings: () => void;
@@ -27,6 +27,18 @@ export const UserModal: React.FC<UserModalProps> = ({
     librarySets,
     onOpenSettings
 }) => {
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
@@ -35,7 +47,8 @@ export const UserModal: React.FC<UserModalProps> = ({
                 className="bg-panel border border-outline rounded-2xl shadow-2xl animate-in zoom-in-95 w-full max-w-4xl p-6 relative overflow-hidden flex flex-col"
                 onMouseDown={(e) => e.stopPropagation()}
             >
-                <div className="flex justify-end mb-4">
+                <div className="flex items-center justify-between mb-4 pb-4 border-b border-outline">
+                    <h2 className="text-2xl font-bold text-text">Account</h2>
                     <button
                         onClick={onClose}
                         className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
@@ -64,7 +77,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                             </button>
                         </div>
 
-                        <div className="text-center text-xs text-muted">
+                        <div className="text-center text-xs text-text">
                             You can manage your account data in <button onClick={onOpenSettings} className="underline hover:text-text font-bold">Global Settings</button>.
                         </div>
                     </div>

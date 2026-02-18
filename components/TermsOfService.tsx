@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, FileText } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface TermsOfServiceModalProps {
     isOpen: boolean;
@@ -7,22 +7,38 @@ interface TermsOfServiceModalProps {
 }
 
 export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen, onClose }) => {
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
             <div className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-3xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh]" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="p-6 border-b border-outline flex justify-between items-center bg-panel-2 rounded-t-2xl">
-                    <div className="flex items-center gap-3">
-                        <FileText size={24} className="text-accent" />
-                        <div>
-                            <h2 className="text-xl font-bold text-text">Terms of Service</h2>
-                            <div className="text-sm text-muted">Last updated: February 9, 2026</div>
-                        </div>
+                <div className="p-6 border-b border-outline bg-panel-2 rounded-t-2xl">
+                    <div className="flex items-center justify-between gap-4">
+                        <h2
+                            className="text-3xl text-text"
+                            style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                        >
+                            Terms of Service
+                        </h2>
+                        <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
+                            <X size={20} />
+                        </button>
                     </div>
-                    <button onClick={onClose}><X size={20} className="text-muted hover:text-text" /></button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text/90">
+                <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
+                    <p className="text-sm text-muted">Last updated: February 9, 2026</p>
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Acceptance of Terms</h3>
                         <p>By accessing or using Flashcardsish, you agree to be bound by these Terms of Service and the Privacy Policy. If you do not agree, do not use the Service.</p>

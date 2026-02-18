@@ -79,12 +79,12 @@ export const checkAndMigrate = async (): Promise<{
 
             if (result.success) {
                 localStorage.setItem(MIGRATION_DONE_KEY, 'true');
-                // console.log('[Storage] ✅ Migration to V2 complete');
+                // console.log('[Storage] Migration to V2 complete');
                 migrationCheckDone = true;
                 migrationInProgress = false;
                 return { migrated: true };
             } else {
-                console.error('[Storage] ❌ Migration failed:', result.error);
+                console.error('[Storage] Migration failed:', result.error);
                 migrationInProgress = false;
                 return { migrated: false, error: result.error };
             }
@@ -164,11 +164,11 @@ export const saveLibrary = async (sets: CardSet[]): Promise<{ success: boolean; 
         structure.folders = newFolders;
 
         await storageV2.writeStructure(structure);
-        // console.log(`[Storage] ✅ Successfully saved ${cloudSets.length} sets to Google Drive`);
+        // console.log(`[Storage] Successfully saved ${cloudSets.length} sets to Google Drive`);
         return { success: true, savedToCloud: true };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
-        console.error('[Storage] ❌ Failed to save library to Google Drive:', msg);
+        console.error('[Storage] Failed to save library to Google Drive:', msg);
         return { success: true, savedToCloud: false, error: msg };
     }
 };
@@ -578,7 +578,7 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
             }
         }
 
-        // console.log(`[Storage] ✅ Loaded ${allSets.length} sets from cloud`);
+        // console.log(`[Storage] Loaded ${allSets.length} sets from cloud`);
 
         // Cache all loaded sets in IndexedDB
         if (allSets.length > 0) {

@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from '../storage';
 import { X, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { CursorTooltip } from './CursorTooltip';
+import { isMacPlatform } from '../utils';
 
 interface KeybindsModalProps {
     isOpen: boolean;
@@ -13,10 +14,18 @@ interface KeybindsModalProps {
 }
 
 // A keybind row definition
+interface KeybindKey {
+    settingKey?: keyof Settings;
+    label: string;
+    locked?: boolean;
+    lockedTooltip?: string;
+    displayValue?: string;
+}
+
 interface KeybindAction {
     id: string;
     label: string;
-    keys: { settingKey: keyof Settings; label: string; locked?: boolean; lockedTooltip?: string }[];
+    keys: KeybindKey[];
 }
 
 const getDisplayValue = (key: string | undefined) => {
@@ -57,6 +66,7 @@ const keyToSelector = (key: string, keyCode?: number): string | null => {
         91: '[data-key="91"]', // Meta (Left)
         93: '[data-key="93-R"]', // Meta (Right)
         20: '[data-key="20"]', // Caps
+        191: '[data-key="191"]', // / ?
     };
 
     if (keyCode && codeMap[keyCode]) return codeMap[keyCode];
@@ -77,6 +87,8 @@ const keyToSelector = (key: string, keyCode?: number): string | null => {
         'Alt': '[data-key="18"]',
         'Meta': '[data-key="91"]',
         'CapsLock': '[data-key="20"]',
+        '/': '[data-key="191"]',
+        '?': '[data-key="191"]',
     };
     if (stringMap[key]) return stringMap[key];
 
@@ -103,9 +115,11 @@ const ACTION_COLORS: Record<string, string> = {
     flipCard: '#a855f7',   // purple
     submitAnswer: '#10b981', // emerald
     nextField: '#64748b',  // slate/gray
+    openKeybinds: '#d0a45e', // accent
 };
 
 export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, settings, onUpdate }) => {
+    const isMac = isMacPlatform();
     // Draft state: work on a copy so Cancel discards changes
     const [draft, setDraft] = useState<Settings>({ ...settings });
     const [activeInput, setActiveInput] = useState<string | null>(null); // settingKey being captured
@@ -125,6 +139,15 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
     // Track physical key presses for visual feedback
     useEffect(() => {
         if (!isOpen) return;
+
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+            }
+        };
+
+        window.addEventListener('keydown', handleEscape, true);
 
         const handleKeyDown = (e: KeyboardEvent) => {
             // Identify selector for this key
@@ -152,10 +175,11 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
         window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
         return () => {
+            window.removeEventListener('keydown', handleEscape, true);
             window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
-    }, [isOpen]);
+    }, [isOpen, onClose]);
 
     const actions: KeybindAction[] = [
         {
@@ -196,6 +220,13 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                 { settingKey: 'nextFieldKey1', label: 'Primary', locked: true, lockedTooltip: 'Tab is always used for field navigation and cannot be changed.' },
             ]
         },
+        {
+            id: 'openKeybinds',
+            label: 'Open Keybinds',
+            keys: [
+                { label: 'Shortcut', locked: true, displayValue: 'Cmd + ? / Ctrl + ?', lockedTooltip: 'This shortcut is fixed and works from any screen.' },
+            ]
+        },
     ];
 
     // Collect all currently bound keys for highlight
@@ -203,6 +234,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
         const result: { key: string; actionId: string }[] = [];
         for (const action of actions) {
             for (const k of action.keys) {
+                if (!k.settingKey) continue;
                 const val = draft[k.settingKey] as string | undefined;
                 if (val) {
                     result.push({ key: val, actionId: action.id });
@@ -323,6 +355,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
         const boundKeys: Record<string, { label: string, actionId: string }[]> = {};
         actions.forEach(action => {
             action.keys.forEach(k => {
+                if (!k.settingKey) return;
                 const val = draft[k.settingKey] as string;
                 if (val) {
                     if (!boundKeys[val]) boundKeys[val] = [];
@@ -359,8 +392,8 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                 {/* Header */}
                 <div className="flex justify-between items-center p-6 border-b border-outline shrink-0">
                     <h3
-                        className="text-2xl text-text"
-                        style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 700 }}
+                        className="text-3xl text-text"
+                        style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
                     >
                         Keybinds
                     </h3>
@@ -371,7 +404,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
 
                 {/* Fixed Top Section: Instructions + Keyboard */}
                 <div className="p-6 pb-0 border-b border-outline/50 bg-panel z-10 shrink-0">
-                    <p className="text-muted leading-relaxed mb-6">
+                    <p className="text-text leading-relaxed mb-6">
                         Flashcardsish is designed with keyboards in mind, including however you use it. Click any slot below to rebind it, then press your desired key. Right-click a slot to clear it.
                     </p>
 
@@ -471,7 +504,9 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                             </div>
                             {/* Row 6: Bottom row */}
                             <div className="kb-row kb-row--bottom justify-center">
-                                <div className="kb-key kb-key--word kb-key--w1" data-key="17"><span>ctrl</span></div>
+                                <div className="kb-key kb-key--word kb-key--w1" data-key={isMac ? "91" : "17"}>
+                                    <span>{isMac ? "⌘" : "ctrl"}</span>
+                                </div>
                                 <div className="kb-key kb-key--word kb-key--w1" data-key="18"><span>alt</span></div>
                                 <div className="kb-key kb-key--space flex-grow max-w-[200px]" data-key="32" data-char=" ">&nbsp;</div>
                                 <div className="kb-key kb-key--word kb-key--w1" data-key="18-R"><span>alt</span></div>
@@ -511,21 +546,23 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                                 </div>
                                 <div className="flex gap-3 ml-7">
                                     {action.keys.map(k => {
-                                        const val = draft[k.settingKey] as string | undefined;
-                                        const isActive = activeInput === k.settingKey;
-                                        const isLocked = k.locked;
+                                        const keySetting = k.settingKey;
+                                        const val = keySetting ? (draft[keySetting] as string | undefined) : undefined;
+                                        const isActive = keySetting ? activeInput === keySetting : false;
+                                        const isLocked = k.locked || !keySetting;
+                                        const displayValue = k.displayValue ?? getDisplayValue(val);
 
                                         const button = (
                                             <button
-                                                key={k.settingKey}
+                                                key={keySetting ?? `${action.id}-${k.label}`}
                                                 onClick={() => {
-                                                    if (isLocked) return;
-                                                    setActiveInput(isActive ? null : k.settingKey);
+                                                    if (isLocked || !keySetting) return;
+                                                    setActiveInput(isActive ? null : keySetting);
                                                 }}
                                                 onContextMenu={(e) => {
                                                     e.preventDefault();
-                                                    if (isLocked) return;
-                                                    handleClearKey(k.settingKey);
+                                                    if (isLocked || !keySetting) return;
+                                                    handleClearKey(keySetting);
                                                 }}
                                                 className={clsx(
                                                     "px-4 py-2 rounded-lg text-base font-bold border transition-all select-none min-w-[80px]",
@@ -537,7 +574,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                                                 )}
                                             >
                                                 <span className="text-xs text-muted block mb-1 uppercase tracking-wider">{k.label}</span>
-                                                {isActive ? '...' : getDisplayValue(val)}
+                                                {isActive ? '...' : displayValue}
                                             </button>
                                         );
 
@@ -566,7 +603,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                 <div className="flex items-center justify-between p-6 border-t border-outline shrink-0 bg-panel-2/50">
                     <button
                         onClick={handleResetAll}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-muted hover:text-text bg-panel hover:bg-panel-3 border border-outline rounded-lg transition-all"
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-muted hover:text-text bg-panel hover:bg-panel-3 border border-outline rounded-lg transition-colors duration-150"
                     >
                         <RotateCcw size={16} />
                         Reset All
@@ -574,13 +611,13 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                     <div className="flex gap-3">
                         <button
                             onClick={handleCancel}
-                            className="px-6 py-2.5 text-base font-bold text-muted hover:text-text bg-panel hover:bg-panel-3 border border-outline rounded-lg transition-all"
+                            className="px-6 py-2.5 text-base font-bold text-muted hover:text-text bg-panel hover:bg-panel-3 border border-outline rounded-lg transition-colors duration-150"
                         >
                             Cancel
                         </button>
                         <button
                             onClick={handleOk}
-                            className="px-6 py-2.5 text-base font-bold text-bg bg-accent hover:bg-accent/90 rounded-lg transition-all shadow-lg shadow-accent/20 hover:shadow-accent/30 hover:-translate-y-0.5"
+                            className="px-6 py-2.5 text-base font-bold text-bg bg-accent hover:bg-accent/90 rounded-lg transition-colors duration-150 shadow-lg shadow-accent/20"
                         >
                             Save Changes
                         </button>

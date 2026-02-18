@@ -74,7 +74,7 @@ export const CorruptionNotification: React.FC<CorruptionNotificationProps> = ({
                             className="flex items-start gap-2 text-sm"
                         >
                             <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${report.type === 'set' && report.recoveredCards === 0 ? 'bg-red' :
-                                    report.recoveredCards ? 'bg-yellow' : 'bg-blue'
+                                report.recoveredCards ? 'bg-yellow' : 'bg-blue'
                                 }`} />
 
                             <div>
@@ -85,7 +85,7 @@ export const CorruptionNotification: React.FC<CorruptionNotificationProps> = ({
                                 </span>
 
                                 {report.recoveredCards !== undefined && (
-                                    <span className="text-muted ml-2">
+                                    <span className="text-text ml-2">
                                         {report.recoveredCards === 0 ? (
                                             `(${report.totalCards} cards lost)`
                                         ) : (
@@ -95,7 +95,7 @@ export const CorruptionNotification: React.FC<CorruptionNotificationProps> = ({
                                 )}
 
                                 {report.error && !report.recoveredCards && (
-                                    <span className="text-muted ml-2">— {report.error}</span>
+                                    <span className="text-text ml-2">— {report.error}</span>
                                 )}
                             </div>
                         </div>
@@ -104,7 +104,7 @@ export const CorruptionNotification: React.FC<CorruptionNotificationProps> = ({
 
                 {/* Footer Tip */}
                 <div className="px-4 py-2 bg-panel-2 border-t border-outline">
-                    <p className="text-xs text-muted">
+                    <p className="text-xs text-text">
                         {hasTotalLoss ?
                             'Some data could not be recovered. This may be due to file corruption.' :
                             hasRecoveredCards ?
@@ -128,44 +128,45 @@ export const CorruptionPopup: React.FC<{
     if (!isOpen || reports.length === 0) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="bg-panel rounded-2xl border border-outline shadow-2xl max-w-md w-full mx-4">
-                <div className="p-6">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="w-12 h-12 rounded-full bg-yellow/20 flex items-center justify-center">
-                            <AlertTriangle className="w-6 h-6 text-yellow" />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-bold text-text">Data Recovery Notice</h2>
-                            <p className="text-sm text-muted">Some files required recovery</p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2 mb-6">
-                        {reports.map((report, index) => (
-                            <div
-                                key={index}
-                                className="p-3 bg-panel-2 rounded-lg border border-outline"
-                            >
-                                <div className="font-medium text-text text-sm">
-                                    {report.type === 'config' ? '⚙️ Settings' :
-                                        report.type === 'structure' ? '📁 Folder Structure' :
-                                            `📝 ${report.fileName.replace('.flashcards', '')}`}
-                                </div>
-                                <div className="text-xs text-muted mt-1">
-                                    {report.error || 'File was corrupted and has been reset'}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
+            <div
+                className="bg-panel rounded-2xl border border-outline shadow-2xl max-w-md w-full mx-4 animate-in zoom-in-95 p-6 relative"
+                onMouseDown={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-2xl font-bold text-text">Data Recovery Notice</h2>
                     <button
                         onClick={onClose}
-                        className="w-full py-3 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors"
+                        className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
                     >
-                        I Understand
+                        <X size={24} />
                     </button>
                 </div>
+
+                <div className="space-y-2 mb-6">
+                    {reports.map((report, index) => (
+                        <div
+                            key={index}
+                            className="p-3 bg-panel-2 rounded-lg border border-outline"
+                        >
+                            <div className="font-medium text-text">
+                                {report.type === 'config' ? 'Settings' :
+                                    report.type === 'structure' ? 'Folder Structure' :
+                                        report.fileName.replace('.flashcards', '')}
+                            </div>
+                            <div className="text-sm text-text mt-1">
+                                {report.error || 'File was corrupted and has been reset'}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                <button
+                    onClick={onClose}
+                    className="w-full py-3 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
+                >
+                    I Understand
+                </button>
             </div>
         </div>
     );

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, BookOpen, Sparkles, PlayCircle, FileText, FolderOpen, Layers, User, Code, Heart, Mail, ChevronRight, Star, Check, X, Github, Calendar, Download, Cloud, Palette, ChevronDown, Pencil, Copy, Trash2, Upload, ExternalLink, Monitor, Smartphone, LayoutTemplate, ArrowDown, LayoutList, Globe } from 'lucide-react';
 import clsx from 'clsx';
+import { CardTagPill } from './CardTagPill';
 
 interface DocumentationProps {
     onBack: () => void;
@@ -727,10 +728,10 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                     </td>
                                 </tr>
                                 <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">(Tag) Text</td>
+                                    <td className="px-4 py-3 font-mono text-muted">(Cue) Text</td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex flex-col items-end gap-1">
-                                            <span className="inline-block bg-accent/10 text-accent px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide">Tag</span>
+                                            <CardTagPill label="Cue" />
                                             <span>Text</span>
                                         </div>
                                     </td>
@@ -779,7 +780,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     <h3 className="text-xl font-bold mt-8 mb-4">Raw Text Mode</h3>
                     <p className="text-muted mb-4">
                         You can import sets from other apps or write your own in a text editor.
-                        Just click "Import Raw Text" in the Set Builder.
+                        Just click "Raw Text Import" in the Set Builder.
                     </p>
                     <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted">
                         <div>Term / Definition</div>

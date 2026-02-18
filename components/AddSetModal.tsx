@@ -1,6 +1,5 @@
 import React from 'react';
-import { FilePlus, FileText, Upload, Plus } from 'lucide-react';
-import clsx from 'clsx';
+import { FilePlus, FileText, X } from 'lucide-react';
 
 interface AddSetModalProps {
     isOpen: boolean;
@@ -17,6 +16,18 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
     onStartRaw,
     onImportFile,
 }) => {
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     return (
@@ -25,11 +36,19 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
             onMouseDown={onClose}
         >
             <div
-                className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-3xl shadow-2xl animate-in zoom-in-95 flex flex-col items-center text-center relative"
+                className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-3xl shadow-2xl animate-in zoom-in-95 flex flex-col relative"
                 onMouseDown={(e) => e.stopPropagation()}
             >
-                <h2 className="text-3xl font-bold text-text mb-2">Add New Set</h2>
-                <p className="text-muted text-lg mb-8 max-w-lg">
+                <div className="relative w-full mb-4">
+                    <h2 className="text-3xl font-bold text-text text-center">Add New Set</h2>
+                    <button
+                        onClick={onClose}
+                        className="absolute right-0 top-1/2 -translate-y-1/2 text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
+                    >
+                        <X size={22} />
+                    </button>
+                </div>
+                <p className="text-text text-lg mb-8 max-w-lg mx-auto text-center">
                     Choose how you want to start creating your set
                 </p>
 
@@ -42,11 +61,11 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                         }}
                         className="group flex flex-col items-center justify-center p-8 bg-panel-2 border border-outline rounded-2xl hover:border-accent hover:bg-accent/5 transition-all outline-none"
                     >
-                        <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mb-4">
                             <FilePlus size={32} className="text-accent" />
                         </div>
                         <h3 className="text-xl font-bold text-text mb-2">Start from Scratch</h3>
-                        <p className="text-sm text-muted max-w-[200px] leading-relaxed min-h-[60px]">
+                        <p className="text-sm text-text max-w-[200px] leading-relaxed min-h-[60px]">
                             Start with a clean slate and use the Set Builder in Flashcardsish to create cards.
                         </p>
                     </button>
@@ -59,17 +78,17 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                         }}
                         className="group flex flex-col items-center justify-center p-8 bg-panel-2 border border-outline rounded-2xl hover:border-accent hover:bg-accent/5 transition-all outline-none"
                     >
-                        <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mb-4">
                             <FileText size={32} className="text-accent" />
                         </div>
-                        <h3 className="text-xl font-bold text-text mb-2">Start with Raw Text</h3>
-                        <p className="text-sm text-muted max-w-[200px] leading-relaxed min-h-[60px]">
+                        <h3 className="text-xl font-bold text-text mb-2">Raw Text Import</h3>
+                        <p className="text-sm text-text max-w-[200px] leading-relaxed min-h-[60px]">
                             Start by pasting in a list of terms of definitions, either from another flashcards app or from a text editor.
                         </p>
                     </button>
                 </div>
 
-                <div className="mt-8 text-muted/60 text-base font-bold">
+                <div className="mt-8 text-text text-base font-bold text-center">
                     ...or{' '}
                     <button
                         onClick={onImportFile}

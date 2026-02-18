@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useImperativeHandle, forwardRef, useCallback } from 'react';
 import clsx from 'clsx';
+import { isMacPlatform } from '../utils';
 
 interface RichInputProps {
     value: string;
@@ -241,6 +242,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     onMouseUp,
     onContextMenu
 }, ref) => {
+    const isMac = isMacPlatform();
     const contentEditableRef = useRef<HTMLDivElement>(null);
     const isTyping = useRef(false);
     const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -847,7 +849,8 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
         }
 
         // Keyboard Shortcuts (Ctrl/Cmd)
-        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+        const modKeyPressed = isMac ? e.metaKey : e.ctrlKey;
+        if (modKeyPressed && !e.shiftKey && !e.altKey) {
             const key = e.key.toLowerCase();
             if (key === 'b') {
                 e.preventDefault();

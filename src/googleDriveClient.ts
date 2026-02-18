@@ -32,6 +32,7 @@ class GoogleDriveClient {
     private gisInitialized = false;
     private authChangeCallbacks: Array<(user: GoogleDriveUser | null) => void> = [];
     private currentUser: GoogleDriveUser | null = null;
+    private rememberSession = true;
 
     async init(): Promise<void> {
         if (this.gapiInitialized && this.gisInitialized) return;
@@ -50,38 +51,53 @@ class GoogleDriveClient {
             await this.fetchUserInfo();
         }
 
-        // console.log('[GoogleDrive] ✅ Initialization complete');
+        // console.log('[GoogleDrive] Initialization complete');
     }
 
     private restoreSession(): void {
-        const token = localStorage.getItem(TOKEN_KEY);
-        const expiry = localStorage.getItem(TOKEN_EXPIRY_KEY);
-        const userJson = localStorage.getItem(USER_KEY);
-
-        if (token && expiry) {
-            const now = Date.now();
-            if (now < parseInt(expiry)) {
-                this.accessToken = token;
-                // console.log('[GoogleDrive] Restored token from storage');
-
-                if (userJson) {
-                    try {
-                        this.currentUser = JSON.parse(userJson);
-                        // Trigger callbacks early for smoother UI transition
-                        this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
-                    } catch (e) { }
-                }
-            } else {
-                console.warn('[GoogleDrive] Stored token expired');
-                this.clearStorage();
-            }
+        const restored = this.restoreFromStorage(localStorage) || this.restoreFromStorage(sessionStorage);
+        if (!restored) {
+            this.clearStorage();
         }
+    }
+
+    private restoreFromStorage(storage: Storage): boolean {
+        const token = storage.getItem(TOKEN_KEY);
+        const expiry = storage.getItem(TOKEN_EXPIRY_KEY);
+        const userJson = storage.getItem(USER_KEY);
+
+        if (!token || !expiry) {
+            return false;
+        }
+
+        const now = Date.now();
+        if (now >= parseInt(expiry)) {
+            console.warn('[GoogleDrive] Stored token expired');
+            storage.removeItem(TOKEN_KEY);
+            storage.removeItem(TOKEN_EXPIRY_KEY);
+            storage.removeItem(USER_KEY);
+            return false;
+        }
+
+        this.accessToken = token;
+        this.rememberSession = storage === localStorage;
+        if (userJson) {
+            try {
+                this.currentUser = JSON.parse(userJson);
+                // Trigger callbacks early for smoother UI transition
+                this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
+            } catch (e) { }
+        }
+        return true;
     }
 
     private clearStorage(): void {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(TOKEN_EXPIRY_KEY);
         localStorage.removeItem(USER_KEY);
+        sessionStorage.removeItem(TOKEN_KEY);
+        sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+        sessionStorage.removeItem(USER_KEY);
     }
 
     private async initGapi(): Promise<void> {
@@ -92,7 +108,7 @@ class GoogleDriveClient {
         return new Promise((resolve, reject) => {
             if (typeof window.gapi === 'undefined') {
                 const error = new Error('GAPI not loaded. Check script tag.');
-                console.error('[GoogleDrive] ❌', error.message);
+                console.error('[GoogleDrive] Error:', error.message);
                 reject(error);
                 return;
             }
@@ -104,10 +120,10 @@ class GoogleDriveClient {
                         discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
                     });
                     this.gapiInitialized = true;
-                    // console.log('[GoogleDrive] ✅ GAPI initialized');
+                    // console.log('[GoogleDrive] GAPI initialized');
                     resolve();
                 } catch (error) {
-                    console.error('[GoogleDrive] ❌ GAPI init failed:', error);
+                    console.error('[GoogleDrive] GAPI init failed:', error);
                     reject(error);
                 }
             });
@@ -121,7 +137,7 @@ class GoogleDriveClient {
 
         return new Promise((resolve) => {
             if (typeof window.google === 'undefined') {
-                console.warn('[GoogleDrive] ⚠️ GIS not loaded yet, will retry...');
+                console.warn('[GoogleDrive] GIS not loaded yet, will retry...');
                 // Retry after a short delay
                 setTimeout(() => this.initGis().then(resolve), 100);
                 return;
@@ -133,24 +149,26 @@ class GoogleDriveClient {
                 callback: (response: any) => {
                     // console.log('[GoogleDrive] Token response received');
                     if (response.error) {
-                        console.error('[GoogleDrive] ❌ Token error:', response.error);
+                        console.error('[GoogleDrive] Token error:', response.error);
                         return;
                     }
                     this.accessToken = response.access_token;
 
-                    // Save to storage with expiry (response.expires_in is in seconds)
-                    localStorage.setItem(TOKEN_KEY, this.accessToken!);
-                    const expiryTime = Date.now() + (response.expires_in * 1000) - (60 * 1000); // 1 minute buffer
-                    localStorage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+                    const storage = this.rememberSession ? localStorage : sessionStorage;
 
-                    // console.log('[GoogleDrive] ✅ Access token obtained');
+                    // Save to storage with expiry (response.expires_in is in seconds)
+                    storage.setItem(TOKEN_KEY, this.accessToken!);
+                    const expiryTime = Date.now() + (response.expires_in * 1000) - (60 * 1000); // 1 minute buffer
+                    storage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+
+                    // console.log('[GoogleDrive] Access token obtained');
                     this.setAuthToken();
                     this.fetchUserInfo();
                 },
             });
 
             this.gisInitialized = true;
-            // console.log('[GoogleDrive] ✅ GIS initialized');
+            // console.log('[GoogleDrive] GIS initialized');
             resolve();
         });
     }
@@ -183,27 +201,34 @@ class GoogleDriveClient {
                 };
 
                 // Save user info to persistence
-                localStorage.setItem(USER_KEY, JSON.stringify(this.currentUser));
+                const storage = this.rememberSession ? localStorage : sessionStorage;
+                storage.setItem(USER_KEY, JSON.stringify(this.currentUser));
 
-                // console.log('[GoogleDrive] ✅ User info fetched:', this.currentUser.email);
+                // console.log('[GoogleDrive] User info fetched:', this.currentUser.email);
                 this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
             } else {
                 if (response.status === 401) {
-                    console.warn('[GoogleDrive] ⚠️ Token invalid or expired, clearing session');
+                    console.warn('[GoogleDrive] Token invalid or expired, clearing session');
                     this.signOut();
                 } else {
                     const errorText = await response.text();
-                    console.error('[GoogleDrive] ❌ User info fetch failed:', errorText);
+                    console.error('[GoogleDrive] User info fetch failed:', errorText);
                 }
             }
         } catch (error) {
-            console.error('[GoogleDrive] ❌ Failed to fetch user info:', error);
+            console.error('[GoogleDrive] Failed to fetch user info:', error);
         }
     }
 
-    async signIn(): Promise<GoogleDriveUser> {
+    async signIn(rememberSession: boolean = true): Promise<GoogleDriveUser> {
         // console.log('[GoogleDrive] Sign-in requested...');
         await this.init();
+        this.rememberSession = rememberSession;
+        if (!rememberSession) {
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(TOKEN_EXPIRY_KEY);
+            localStorage.removeItem(USER_KEY);
+        }
 
         return new Promise((resolve, reject) => {
             if (!this.tokenClient) {
@@ -216,10 +241,10 @@ class GoogleDriveClient {
             this.tokenClient.callback = async (response: any) => {
                 await originalCallback(response);
                 if (response.error) {
-                    console.error('[GoogleDrive] ❌ Sign-in failed:', response.error);
+                    console.error('[GoogleDrive] Sign-in failed:', response.error);
                     reject(new Error(response.error));
                 } else if (this.currentUser) {
-                    // console.log('[GoogleDrive] ✅ Sign-in successful:', this.currentUser.email);
+                    // console.log('[GoogleDrive] Sign-in successful:', this.currentUser.email);
                     resolve(this.currentUser);
                 }
             };
@@ -234,7 +259,7 @@ class GoogleDriveClient {
         if (this.accessToken) {
             try {
                 window.google.accounts.oauth2.revoke(this.accessToken, () => {
-                    // console.log('[GoogleDrive] ✅ Token revoked');
+                    // console.log('[GoogleDrive] Token revoked');
                 });
             } catch (e) { }
         }
@@ -248,7 +273,7 @@ class GoogleDriveClient {
         }
 
         this.authChangeCallbacks.forEach(cb => cb(null));
-        // console.log('[GoogleDrive] ✅ Signed out');
+        // console.log('[GoogleDrive] Signed out');
     }
 
     getCurrentUser(): GoogleDriveUser | null {
@@ -313,7 +338,7 @@ class GoogleDriveClient {
         });
 
         const id = folder.result.id!;
-        // console.log('[GoogleDrive] ✅ Created new folder:', id);
+        // console.log('[GoogleDrive] Created new folder:', id);
         return id;
     }
 
@@ -347,7 +372,7 @@ class GoogleDriveClient {
             alt: 'media',
         });
 
-        // console.log('[GoogleDrive] ✅ Data file loaded');
+        // console.log('[GoogleDrive] Data file loaded');
         return JSON.parse(fileResponse.body);
     }
 
@@ -377,7 +402,7 @@ class GoogleDriveClient {
             // Update existing file
             const fileId = response.result.files[0].id!;
             await this.uploadFileContent(fileId, blob);
-            // console.log('[GoogleDrive] ✅ Data file updated');
+            // console.log('[GoogleDrive] Data file updated');
         } else {
             // Create new file
             const metadata = {
@@ -386,7 +411,7 @@ class GoogleDriveClient {
                 parents: [folderId],
             };
             await this.createFile(metadata, blob);
-            // console.log('[GoogleDrive] ✅ Data file created');
+            // console.log('[GoogleDrive] Data file created');
         }
     }
 
@@ -409,7 +434,7 @@ class GoogleDriveClient {
         };
 
         const file = await this.createFile(metadata, blob);
-        // console.log('[GoogleDrive] ✅ Image uploaded:', file.id);
+        // console.log('[GoogleDrive] Image uploaded:', file.id);
         return file.id!;
     }
 
@@ -519,7 +544,7 @@ class GoogleDriveClient {
             fields: 'id',
         });
 
-        // console.log(`[GoogleDrive] ✅ Created subfolder '${folderName}':`, folder.result.id);
+        // console.log(`[GoogleDrive] Created subfolder '${folderName}':`, folder.result.id);
         return folder.result.id!;
     }
 
@@ -610,7 +635,7 @@ class GoogleDriveClient {
         if (response.result.files && response.result.files.length > 0) {
             const fileId = response.result.files[0].id!;
             await window.gapi.client.drive.files.delete({ fileId });
-            // console.log(`[GoogleDrive] ✅ Deleted file: ${filename}`);
+            // console.log(`[GoogleDrive] Deleted file: ${filename}`);
         }
     }
 
@@ -665,7 +690,7 @@ class GoogleDriveClient {
                 fileId,
                 resource: { name: newFilename },
             });
-            // console.log(`[GoogleDrive] ✅ Renamed file: ${oldFilename} -> ${newFilename}`);
+            // console.log(`[GoogleDrive] Renamed file: ${oldFilename} -> ${newFilename}`);
         }
     }
 
@@ -689,7 +714,7 @@ class GoogleDriveClient {
             }
         }
 
-        // console.log(`[GoogleDrive] ✅ Deleted ${files.length} files from folder`);
+        // console.log(`[GoogleDrive] Deleted ${files.length} files from folder`);
     }
 }
 

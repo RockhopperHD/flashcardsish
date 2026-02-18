@@ -10,7 +10,6 @@ import {
   Upload,
   Plus,
   Copy,
-  AlertCircle,
   ArrowLeft,
   Download,
   FileText,
@@ -64,39 +63,17 @@ import {
   extractCategory,
   isValidImageFile,
   sanitizeImageUrl,
+  getTagColor,
+  getModifierKeyLabel,
+  isMacPlatform,
 } from "../utils";
 import { RichInput, RichInputRef } from "./RichInput";
 import clsx from "clsx";
 import { AddSetModal } from "./AddSetModal";
 import { RawTextImport } from "./RawTextImport";
 import BreathingLoader from "./BreathingLoader";
-
-// Color map for preset tag colors (Tailwind 500 shades)
-const TAG_COLOR_MAP: Record<string, string> = {
-  red: '#ef4444',
-  orange: '#f97316',
-  amber: '#f59e0b',
-  yellow: '#eab308',
-  lime: '#84cc16',
-  green: '#22c55e',
-  emerald: '#10b981',
-  teal: '#14b8a6',
-  cyan: '#06b6d4',
-  sky: '#0ea5e9',
-  blue: '#3b82f6',
-  indigo: '#6366f1',
-  violet: '#8b5cf6',
-  purple: '#a855f7',
-  fuchsia: '#d946ef',
-  pink: '#ec4899',
-  rose: '#f43f5e',
-  slate: '#64748b',
-  gray: '#6b7280',
-  zinc: '#71717a',
-  neutral: '#737373',
-  stone: '#78716c',
-};
-const getTagColor = (color: string) => color.startsWith('#') ? color : (TAG_COLOR_MAP[color] || '#3b82f6');
+import { TagPill } from "./TagPill";
+import { CardTagPill } from "./CardTagPill";
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -122,6 +99,9 @@ interface StartMenuProps {
   setAppliedTags: (tags: string[]) => void;
   onOpenSettings?: () => void;
   isCloudLoading?: boolean;
+  uiAuditRequest?: UiAuditRequest | null;
+  onUiAuditHandled?: () => void;
+  onHomeScreenActiveChange?: (isActive: boolean) => void;
 }
 
 interface BuilderRow {
@@ -137,8 +117,23 @@ interface BuilderRow {
   star: boolean;
 }
 
+export type UiAuditRequest =
+  | { type: "add-set" }
+  | { type: "set-config" }
+  | { type: "raw-import" }
+  | { type: "unsaved-changes" }
+  | { type: "delete-folder" }
+  | { type: "image-modal" }
+  | { type: "warning-modal" }
+  | { type: "invalid-file" }
+  | { type: "no-starred" }
+  | { type: "markdown-help" }
+  | { type: "create-folder" }
+  | { type: "move-to-local" };
+
 const BUILDER_STORAGE_KEY = "flashcard-builder-rows";
 const AUTOSAVE_DRAFT_KEY = "flashcardsish-autosave-draft";
+const UI_AUDIT_ID = "__ui-audit__";
 
 interface AutosaveDraft {
   builderRows: BuilderRow[];
@@ -198,13 +193,13 @@ const UnsavedChangesModal: React.FC<{
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h3 className="text-xl font-bold text-text mb-2">Unsaved Changes</h3>
-        <p className="text-muted mb-6">
+        <p className="text-text mb-6">
           You have unsaved work in the builder. What would you like to do?
         </p>
         <div className="flex flex-col gap-3">
           <button
             onClick={onSave}
-            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-transform"
+            className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:bg-accent/90 transition-colors duration-150"
           >
             Save to Library
           </button>
@@ -216,7 +211,7 @@ const UnsavedChangesModal: React.FC<{
           </button>
           <button
             onClick={onCancel}
-            className="w-full py-3 text-muted hover:text-text font-medium"
+            className="w-full py-3 text-muted hover:text-text font-medium rounded-xl hover:bg-panel-2 transition-colors duration-150"
           >
             Cancel
           </button>
@@ -247,7 +242,7 @@ const DeleteFolderModal: React.FC<{
         <h3 className="text-xl font-bold text-text mb-2">
           Delete "{folderName}"?
         </h3>
-        <p className="text-muted mb-6">
+        <p className="text-text mb-6">
           This folder contains {setCount} set{setCount === 1 ? "" : "s"}. What
           would you like to do with them?
         </p>
@@ -255,7 +250,7 @@ const DeleteFolderModal: React.FC<{
         <div className="flex flex-col gap-3">
           <button
             onClick={() => onConfirm("move")}
-            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-transform"
+            className="w-full py-3 bg-accent text-bg rounded-xl font-bold hover:bg-accent/90 transition-colors duration-150"
           >
             Delete Folder Only
           </button>
@@ -269,7 +264,7 @@ const DeleteFolderModal: React.FC<{
 
           <button
             onClick={onClose}
-            className="w-full py-3 text-muted hover:text-text font-medium"
+            className="w-full py-3 text-muted hover:text-text font-medium rounded-xl hover:bg-panel-2 transition-colors duration-150"
           >
             Cancel
           </button>
@@ -503,6 +498,18 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
   onClose,
 }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
   return (
     <div
@@ -510,17 +517,24 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
       onMouseDown={onClose}
     >
       <div
-        className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-2xl shadow-2xl animate-in zoom-in-95"
+        className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh]"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="font-bold text-2xl text-text">Formatting Guide</h3>
-          <button onClick={onClose}>
-            <X size={24} className="text-muted hover:text-text" />
-          </button>
+        <div className="p-6 border-b border-outline shrink-0 bg-panel-2 rounded-t-2xl">
+          <div className="flex items-center justify-between gap-4">
+            <h2
+              className="text-2xl text-text"
+              style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+            >
+              Formatting Guide
+            </h2>
+            <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
+              <X size={24} />
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-y-auto max-h-[70vh] pr-2 custom-scrollbar space-y-8">
+        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8">
           {/* Markdown Basics */}
           <div>
             <h4 className="text-lg font-bold mb-3 text-text">
@@ -577,13 +591,11 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                   </tr>
                   <tr>
                     <td className="px-4 py-3 font-mono text-muted">
-                      (Tag) Text
+                      (Cue) Text
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex flex-col items-end gap-1">
-                        <span className="inline-block bg-accent/10 text-accent px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide">
-                          Tag
-                        </span>
+                        <CardTagPill label="Cue" />
                         <span className="text-text">Text</span>
                       </div>
                     </td>
@@ -674,13 +686,13 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                 <span className="text-muted font-bold text-accent">
                   Image Link
                 </span>
-                <span className="font-mono text-yellow text-right">
+                <span className="font-mono text-text text-right">
                   ... ||| http://link/image.jpg
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <span className="text-muted font-bold text-accent">Year</span>
-                <span className="font-mono text-yellow text-right">
+                <span className="font-mono text-text text-right">
                   ... /// Year
                 </span>
               </div>
@@ -708,24 +720,23 @@ const WarningModal: React.FC<{
         className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 mb-4 text-yellow">
-          <AlertCircle size={24} />
+        <div className="mb-4">
           <h3 className="text-lg font-bold text-text">Warning</h3>
         </div>
-        <p className="text-muted mb-6">{message}</p>
+        <p className="text-text mb-6">{message}</p>
         <div className="flex flex-col gap-3">
           <button
             onClick={() => {
               onConfirm();
               onClose();
             }}
-            className="w-full py-3 rounded-xl bg-yellow text-bg font-bold transition-transform"
+            className="w-full py-3 rounded-xl bg-yellow text-bg font-bold transition-colors duration-150 hover:bg-yellow/90"
           >
             Confirm
           </button>
           <button
             onClick={onClose}
-            className="w-full py-3 text-muted hover:text-text font-medium"
+            className="w-full py-3 text-muted hover:text-text font-medium rounded-xl hover:bg-panel-2 transition-colors duration-150"
           >
             Cancel
           </button>
@@ -750,11 +761,10 @@ const InvalidFileModal: React.FC<{
         className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 mb-4 text-red">
-          <AlertCircle size={24} />
+        <div className="mb-4">
           <h3 className="text-lg font-bold text-text">Invalid File</h3>
         </div>
-        <p className="text-muted mb-6">
+        <p className="text-text mb-6">
           This file doesn't look like a valid flashcard set. Please check the
           file format and try again.
         </p>
@@ -787,24 +797,23 @@ const NoStarredModal: React.FC<{
         className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 mb-4 text-yellow">
-          <AlertCircle size={24} />
+        <div className="mb-4">
           <h3 className="text-lg font-bold text-text">No Starred Cards</h3>
         </div>
-        <p className="text-muted mb-6">
+        <p className="text-text mb-6">
           You have "Study Starred Only" enabled, but this set has no starred
           cards.
         </p>
         <div className="flex flex-col gap-3">
           <button
             onClick={onDisableAndPlay}
-            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-transform"
+            className="w-full py-3 bg-accent text-bg rounded-xl font-bold transition-colors duration-150 hover:bg-accent/90"
           >
             Disable Filter & Play
           </button>
           <button
             onClick={onClose}
-            className="w-full py-3 text-muted hover:text-text font-medium"
+            className="w-full py-3 text-muted hover:text-text font-medium rounded-xl hover:bg-panel-2 transition-colors duration-150"
           >
             Cancel
           </button>
@@ -1075,6 +1084,7 @@ const SetConfigurationModal: React.FC<{
   appliedTags: string[];
   setAppliedTags: (tags: string[]) => void;
   onManageTags?: () => void;
+  initialMode?: "config" | "import";
 }> = ({
   isOpen,
   onClose,
@@ -1106,6 +1116,7 @@ const SetConfigurationModal: React.FC<{
   appliedTags,
   setAppliedTags,
   onManageTags,
+  initialMode = "config",
 }) => {
     const [mode, setMode] = useState<"config" | "import">("config");
     const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
@@ -1113,6 +1124,18 @@ const SetConfigurationModal: React.FC<{
     // const [isSwapMode, setIsSwapMode] = useState(false); // Removed
     const [draggingFrom, setDraggingFrom] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+      if (!isOpen) return;
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          onClose();
+        }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, onClose]);
 
     useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
@@ -1128,10 +1151,10 @@ const SetConfigurationModal: React.FC<{
     // Reset mode on open
     useEffect(() => {
       if (isOpen) {
-        setMode("config");
+        setMode(initialMode);
         setIsTagDropdownOpen(false);
       }
-    }, [isOpen]);
+    }, [isOpen, initialMode]);
 
     if (!isOpen) return null;
 
@@ -1284,10 +1307,10 @@ const SetConfigurationModal: React.FC<{
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
           onMouseDown={handleClose}
         >
-          <div
-            className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-6xl h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+        <div
+          className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-6xl h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
             <RawTextImport
               onClose={() => setMode('config')}
               onContinue={(cards) => {
@@ -1311,34 +1334,35 @@ const SetConfigurationModal: React.FC<{
         onMouseDown={handleClose}
       >
         <div
-          className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto custom-scrollbar"
+          className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-4xl shadow-2xl animate-in zoom-in-95 max-h-[90vh] flex flex-col"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-2xl font-bold text-text" style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}>Set Configuration</h3>
-            {!hideImportButton && (
-              <button
-                onClick={() => setMode("import")}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel-2 border border-outline hover:border-accent text-xs font-bold text-muted hover:text-text transition-all"
+          <div className="p-6 border-b border-outline shrink-0 bg-panel-2 rounded-t-2xl">
+            <div className="flex items-center justify-between gap-4">
+              <h2
+                className="text-3xl text-text"
+                style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
               >
-                <FileText size={14} />
-                Import Raw Text
+                Set Configuration
+              </h2>
+              <button onClick={handleClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
+                <X size={22} />
               </button>
-            )}
+            </div>
           </div>
-          <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
 
-          <p className="text-muted mb-8 text-sm leading-relaxed">
-            You can tailor your flashcards set by renaming the main fields and
-            adding up to 4 custom fields per side. <br /> <br />
-            If you're repeating the same type of data in every card, like what category something falls into, this feature allows you to make the entry process for every one of those consistent. Regardless of how many custom fields you specify, leaving them blank or on their neutral option means that card won't ask for or have data for that custom field.
-            <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false. <strong>You most likely want to put custom fields on the term side.</strong>
-          </p>
+          <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+            <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
 
+            <p className="text-text mb-8 text-sm leading-relaxed">
+              You can tailor your flashcards set by renaming the main fields and
+              adding up to 4 custom fields per side. <br /> <br />
+              If you're repeating the same type of data in every card, like what category something falls into, this feature allows you to make the entry process for every one of those consistent. Regardless of how many custom fields you specify, leaving them blank or on their neutral option means that card won't ask for or have data for that custom field.
+              <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false. <strong>You most likely want to put custom fields on the term side.</strong>
+            </p>
 
-
-          <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
-            <div className="grid md:grid-cols-2 gap-8">
+            <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
+              <div className="grid md:grid-cols-2 gap-8">
               {/* Term Side */}
               <Droppable droppableId="term">
                 {(provided, snapshot) => (
@@ -1523,11 +1547,9 @@ const SetConfigurationModal: React.FC<{
             </div>
           </DragDropContext>
 
-
-
-          {/* Tags Section */}
+          {/* Set Data Section */}
           <div className="mt-8 pt-6 border-t border-outline/50">
-            <h4 className="text-lg font-bold text-text mb-4">Tags</h4>
+            <h4 className="text-lg font-bold text-text mb-4">Set Data</h4>
             <div className="flex flex-col gap-4">
               {/* Applied Tags List */}
               {appliedTags.length > 0 && (
@@ -1550,63 +1572,75 @@ const SetConfigurationModal: React.FC<{
                 </div>
               )}
 
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
-                >
-                  <Plus size={16} />
-                  Add Tag
-                </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
+                  >
+                    <Plus size={16} />
+                    Add Tag
+                  </button>
 
-                {isTagDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl z-50 animate-in fade-in zoom-in-95 flex flex-col overflow-hidden">
-                    <div className="max-h-60 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                      {tags.length === 0 ? (
-                        <div className="p-4 text-center text-xs text-muted italic">No tags found.</div>
-                      ) : (
-                        tags.map(tag => {
-                          const isSelected = appliedTags.includes(tag.id);
-                          return (
-                            <button
-                              key={tag.id}
-                              onClick={() => {
-                                if (isSelected) {
-                                  setAppliedTags(appliedTags.filter(id => id !== tag.id));
-                                } else {
-                                  setAppliedTags([...appliedTags, tag.id]);
-                                }
-                              }}
-                              className={clsx(
-                                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
-                                isSelected ? "bg-accent/10 text-text" : "hover:bg-panel-2 text-muted hover:text-text"
-                              )}
-                            >
-                              <div
-                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                style={{ backgroundColor: getTagColor(tag.color) }}
-                              />
-                              <span className="flex-1 truncate">{tag.name}</span>
-                              {isSelected && <Check size={14} className="text-accent" />}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
+                  {isTagDropdownOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl z-50 animate-in fade-in zoom-in-95 flex flex-col overflow-hidden">
+                      <div className="max-h-60 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                        {tags.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-muted italic">No tags found.</div>
+                        ) : (
+                          tags.map(tag => {
+                            const isSelected = appliedTags.includes(tag.id);
+                            return (
+                              <button
+                                key={tag.id}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setAppliedTags(appliedTags.filter(id => id !== tag.id));
+                                  } else {
+                                    setAppliedTags([...appliedTags, tag.id]);
+                                  }
+                                }}
+                                className={clsx(
+                                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
+                                  isSelected ? "bg-accent/10 text-text" : "hover:bg-panel-2 text-muted hover:text-text"
+                                )}
+                              >
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ backgroundColor: getTagColor(tag.color) }}
+                                />
+                                <span className="flex-1 truncate">{tag.name}</span>
+                                {isSelected && <Check size={14} className="text-accent" />}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
 
-                    {/* Frozen Footer */}
-                    <div className="p-2 border-t border-outline bg-panel-2">
-                      <button
-                        onClick={() => {
-                          setIsTagDropdownOpen(false);
-                          if (onManageTags) onManageTags();
-                        }}
-                        className="w-full text-center px-3 py-2 text-xs font-bold text-accent hover:underline transition-all"
-                      >
-                        Manage Tags
-                      </button>
+                      {/* Frozen Footer */}
+                      <div className="p-2 border-t border-outline bg-panel-2">
+                        <button
+                          onClick={() => {
+                            setIsTagDropdownOpen(false);
+                            if (onManageTags) onManageTags();
+                          }}
+                          className="w-full text-center px-3 py-2 text-xs font-bold text-accent hover:underline transition-all"
+                        >
+                          Manage Tags
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  )}
+                </div>
+
+                {!hideImportButton && (
+                  <button
+                    onClick={() => setMode("import")}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
+                  >
+                    <FileText size={14} />
+                    Raw Text Import
+                  </button>
                 )}
               </div>
             </div>
@@ -1621,7 +1655,7 @@ const SetConfigurationModal: React.FC<{
                   isEnabled={!settings.hideTooltips}
                   tooltipClassName="w-80 max-w-[90vw]"
                 >
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <label className="flex items-center gap-3 cursor-pointer select-none group">
                     <input
                       type="checkbox"
                       checked={showYear}
@@ -1630,13 +1664,15 @@ const SetConfigurationModal: React.FC<{
                     />
                     <div
                       className={clsx(
-                        "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
                         showYear
-                          ? "bg-accent border-accent text-bg"
-                          : "bg-panel-2 border-outline",
+                          ? "bg-accent border-accent"
+                          : "border-outline group-hover:border-accent",
                       )}
                     >
-                      {showYear && <Check size={14} strokeWidth={4} />}
+                      {showYear && (
+                        <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                      )}
                     </div>
                     <div className="text-sm font-bold text-text">
                       Enable Year Field
@@ -1649,7 +1685,7 @@ const SetConfigurationModal: React.FC<{
                   isEnabled={!settings.hideTooltips}
                   tooltipClassName="w-80 max-w-[90vw]"
                 >
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <label className="flex items-center gap-3 cursor-pointer select-none group">
                     <input
                       type="checkbox"
                       checked={enableTermCards}
@@ -1665,13 +1701,15 @@ const SetConfigurationModal: React.FC<{
                     />
                     <div
                       className={clsx(
-                        "w-5 h-5 rounded border flex items-center justify-center transition-colors",
+                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
                         enableTermCards
-                          ? "bg-accent border-accent text-bg"
-                          : "bg-panel-2 border-outline",
+                          ? "bg-accent border-accent"
+                          : "border-outline group-hover:border-accent",
                       )}
                     >
-                      {enableTermCards && <Check size={14} strokeWidth={4} />}
+                      {enableTermCards && (
+                        <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                      )}
                     </div>
                     <div className="text-sm font-bold text-text">
                       Enable Term Images
@@ -1695,7 +1733,7 @@ const SetConfigurationModal: React.FC<{
 
                   onClose();
                 }}
-                className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:scale-105 transition-transform"
+                className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
               >
                 OK
               </button>
@@ -1703,6 +1741,7 @@ const SetConfigurationModal: React.FC<{
           </div>
         </div>
       </div>
+    </div>
     );
   };
 
@@ -2030,9 +2069,10 @@ const BuilderRowItem: React.FC<{
 
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+          {/* Main Content Grid - Standardized to match CardPreview */}
+          <div className="flex flex-col md:flex-row gap-4 items-stretch">
             {/* Term Column */}
-            <div className="relative group/term flex flex-col gap-3">
+            <div className="relative group/term flex flex-col gap-3 flex-1 min-w-0">
               <div className="flex items-center gap-2 ml-1 min-h-[24px]">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">
                   {termLabel}
@@ -2057,7 +2097,7 @@ const BuilderRowItem: React.FC<{
                     onMouseUp={(e) => handleSelectionChange(e, "term")}
                     onKeyUp={(e) => handleSelectionChange(e, "term")}
                     onKeyDown={handleTermKeyDown}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-bold text-text h-full"
+                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full"
                     placeholder="Enter term..."
                   />
                 </div>
@@ -2070,7 +2110,7 @@ const BuilderRowItem: React.FC<{
                   }}
                   onClick={() => setIsEditingTerm(true)}
                   className={clsx(
-                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium flex-1 h-full",
+                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-normal flex-1 h-full",
                     row.term
                       ? "border-outline"
                       : "border-outline text-muted italic",
@@ -2106,10 +2146,45 @@ const BuilderRowItem: React.FC<{
                   )}
                 </div>
               )}
+
+              {/* Term Side Custom Fields & Year */}
+              {(showYear || termSideFields.length > 0) && (
+                <div className="mt-4 space-y-4">
+                  {showYear && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
+                        Year
+                      </label>
+                      <input
+                        value={row.year}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "" || /^\d+$/.test(val)) {
+                            updateRow(row.id, "year", val);
+                          }
+                        }}
+                        placeholder="Year..."
+                        className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors placeholder:text-muted/50"
+                      />
+                    </div>
+                  )}
+                  {termSideFields.map((field) => (
+                    <CustomFieldInput
+                      key={`term-${field.name}`}
+                      field={field}
+                      row={row}
+                      updateRow={updateRow}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
 
+            {/* Divider (Desktop only) */}
+            <div className="hidden md:block w-px bg-outline self-stretch" />
+
             {/* Definition Column */}
-            <div className="relative group/def flex flex-col gap-3">
+            <div className="relative group/def flex flex-col gap-3 flex-1 min-w-0">
               <div className="flex items-center gap-2 mr-1 justify-end min-h-[24px]">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">
                   {definitionLabel}
@@ -2133,7 +2208,7 @@ const BuilderRowItem: React.FC<{
                     onMouseUp={(e) => handleSelectionChange(e, "def")}
                     onKeyUp={(e) => handleSelectionChange(e, "def")}
                     onKeyDown={handleDefKeyDown}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-medium text-text h-full"
+                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full"
                     placeholder="Enter definition..."
                   />
                 </div>
@@ -2146,7 +2221,7 @@ const BuilderRowItem: React.FC<{
                   }}
                   onClick={() => setIsEditingDef(true)}
                   className={clsx(
-                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-medium text-text flex-1 h-full",
+                    "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-normal text-text flex-1 h-full",
                     row.def
                       ? "border-outline"
                       : "border-outline text-muted italic",
@@ -2184,47 +2259,10 @@ const BuilderRowItem: React.FC<{
                   )}
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Bottom Row: Metadata Grid (Horizontal) */}
-          {(showYear ||
-            termSideFields.length > 0 ||
-            defSideFields.length > 0) && (
-              <div className="mt-6 pt-4 border-t border-outline/50 grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-1">
-                {/* Term Side Fields */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
-                  {/* Year */}
-                  {showYear && (
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
-                        Year
-                      </label>
-                      <input
-                        value={row.year}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === "" || /^\d+$/.test(val)) {
-                            updateRow(row.id, "year", val);
-                          }
-                        }}
-                        placeholder="Year..."
-                        className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent transition-colors placeholder:text-muted/50"
-                      />
-                    </div>
-                  )}
-                  {termSideFields.map((field) => (
-                    <CustomFieldInput
-                      key={`term-${field.name}`}
-                      field={field}
-                      row={row}
-                      updateRow={updateRow}
-                    />
-                  ))}
-                </div>
-
-                {/* Def Side Fields */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 content-start">
+              {/* Def Side Custom Fields */}
+              {defSideFields.length > 0 && (
+                <div className="mt-4 space-y-4">
                   {defSideFields.map((field) => (
                     <CustomFieldInput
                       key={`def-${field.name}`}
@@ -2234,8 +2272,11 @@ const BuilderRowItem: React.FC<{
                     />
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+
+
         </div>
         <FloatingToolbar
           visible={toolbarVisible}
@@ -2386,6 +2427,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   appliedTags,
   setAppliedTags,
   onOpenSettings,
+  uiAuditRequest,
+  onUiAuditHandled,
+  onHomeScreenActiveChange,
 }) => {
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -2396,6 +2440,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [wysiwyg, setWysiwyg] = useState(true);
   const [showWysiwygHelp, setShowWysiwygHelp] = useState(false);
   const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
+  const modKeyLabel = getModifierKeyLabel();
+  const isMac = isMacPlatform();
+
+  useEffect(() => {
+    if (onHomeScreenActiveChange) {
+      onHomeScreenActiveChange(view === "menu");
+    }
+  }, [view, onHomeScreenActiveChange]);
 
   // V2 Set Configuration State
   const [termLabel, setTermLabel] = useState("Term");
@@ -2411,6 +2463,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   // UI State for Config Modal
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [configModalMode, setConfigModalMode] = useState<"config" | "import">("config");
 
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [showInvalidFileModal, setShowInvalidFileModal] = useState(false);
@@ -2438,6 +2491,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setName: string;
     toLocal: boolean;
   } | null>(null);
+
 
 
 
@@ -2580,7 +2634,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (view !== "builder") return;
 
-      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) {
+      const modKeyPressed = isMac ? e.metaKey : e.ctrlKey;
+      if (modKeyPressed && (e.key === "z" || e.key === "Z")) {
         const isInput = (e.target as HTMLElement).matches(
           'input, textarea, [contenteditable="true"]',
         );
@@ -2593,7 +2648,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           undo();
         }
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y")) {
+      if (modKeyPressed && (e.key === "y" || e.key === "Y")) {
         const isInput = (e.target as HTMLElement).matches(
           'input, textarea, [contenteditable="true"]',
         );
@@ -2604,7 +2659,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [view, undo, redo]);
+  }, [view, undo, redo, isMac]);
   const [rawText, setRawText] = useState("");
   const [setName, setSetName] = useState("");
 
@@ -2693,6 +2748,75 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [newFolderColor, setNewFolderColor] =
     useState<Folder["color"]>("brown");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  useEffect(() => {
+    if (!uiAuditRequest) return;
+
+    const sampleSet: CardSet = librarySets[0]
+      ? { ...librarySets[0], id: UI_AUDIT_ID, name: `${librarySets[0].name} (Preview)` }
+      : {
+        id: UI_AUDIT_ID,
+        name: "Sample Set",
+        cards: [],
+        lastPlayed: Date.now(),
+        elapsedTime: 0,
+        topStreak: 0,
+      };
+
+    switch (uiAuditRequest.type) {
+      case "add-set":
+        setShowAddSetModal(true);
+        break;
+      case "set-config":
+        setConfigModalMode("config");
+        setIsConfigModalOpen(true);
+        break;
+      case "raw-import":
+        setConfigModalMode("import");
+        setIsConfigModalOpen(true);
+        break;
+      case "unsaved-changes":
+        setShowUnsavedModal(true);
+        break;
+      case "delete-folder":
+        setDeleteFolderModal({ id: UI_AUDIT_ID, name: "Sample Folder", count: 3 });
+        break;
+      case "image-modal":
+        setEditingImageRowId(null);
+        setEditingImageField("image");
+        setShowImageModal(true);
+        break;
+      case "warning-modal":
+        setWarningModal({
+          isOpen: true,
+          message: "This is a preview of the warning modal. No actions will be taken.",
+          onConfirm: () => setWarningModal((prev) => ({ ...prev, isOpen: false })),
+        });
+        break;
+      case "invalid-file":
+        setShowInvalidFileModal(true);
+        break;
+      case "no-starred":
+        setNoStarredModalSet(sampleSet);
+        break;
+      case "markdown-help":
+        setShowMarkdownHelp(true);
+        break;
+      case "create-folder":
+        setIsCreatingFolder(true);
+        break;
+      case "move-to-local":
+        setMoveToLocalModal({
+          setId: UI_AUDIT_ID,
+          setName: "Sample Set",
+          toLocal: true,
+        });
+        break;
+      default:
+        break;
+    }
+
+    onUiAuditHandled?.();
+  }, [uiAuditRequest, librarySets, onUiAuditHandled]);
   const [moveToMenuOpen, setMoveToMenuOpen] = useState(false);
 
   // === AUTOSAVE STATE ===
@@ -2970,6 +3094,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const confirmDeleteFolder = (action: "move" | "delete") => {
     if (!deleteFolderModal) return;
+    if (deleteFolderModal.id === UI_AUDIT_ID) {
+      setDeleteFolderModal(null);
+      return;
+    }
 
     if (action === "move") {
       // Move sets to library (remove folderId)
@@ -3275,7 +3403,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     // Convert cards to BuilderRows
     const newRows: BuilderRow[] = cards.map((c, i) => {
       let term = c.term?.[0] || "";
-      // Tags handling if needed... (assuming raw text import parses tags? not yet implemented in RawTextImport but let's assume safely)
+      // Cues handling if needed... (assuming raw text import parses cues? not yet implemented in RawTextImport but let's assume safely)
       return {
         id: generateId() + "_imported_" + i,
         term: term,
@@ -3366,9 +3494,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const text = builderRows
       .filter((r) => r.term.trim() || r.def.trim())
       .map((r) => {
-        // Prepend tags to term if they exist (though in visual mode, tags are likely already in term if typed manually)
-        // But if we have tags in r.tags (from loading), we should ensure they are in the raw text.
-        // However, if the user typed "(Tag) Term" in the input, r.term already has it.
+        // Prepend cues to term if they exist (though in visual mode, cues are likely already in term if typed manually)
+        // But if we have cues in r.tags (from loading), we should ensure they are in the raw text.
+        // However, if the user typed "(Cue) Term" in the input, r.term already has it.
         // If we separate them, we need to reconstruct.
         // Let's assume r.term is the source of truth for visual builder.
 
@@ -3385,8 +3513,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           });
         }
 
-        // Tags are now part of the term in markdown, so we don't need %%TAGS%% syntax anymore for export/raw
-        // unless we want to support legacy? No, user said "use markdown to add tags".
+        // Cues are now part of the term in markdown, so we don't need %%TAGS%% syntax anymore for export/raw
+        // unless we want to support legacy? No, user said "use markdown to add cues".
 
         if (r.star) {
           line += ` %%STAR%%`;
@@ -3401,7 +3529,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const syncToRows = () => {
     const parsed = parseInput(rawText);
     const rows: BuilderRow[] = parsed.map((c, i) => {
-      // When syncing to rows, we put the tags back into the term for visual editing
+      // When syncing to rows, we put the cues back into the term for visual editing
       let term = c.term?.[0] || "";
       if (c.tags && c.tags.length > 0) {
         const tagPrefix = c.tags.map((t) => `(${t})`).join(" ");
@@ -3664,7 +3792,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       return builderRows
         .filter((r) => r.term.trim() || r.def.trim())
         .map((r) => {
-          // Parse tags from term string for the Card object
+          // Parse cues from term string for the Card object
           let termRaw = r.term; // Don't trim yet
           let tags: string[] = [];
 
@@ -3689,7 +3817,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             year: r.year.trim() || undefined,
             image: r.image.trim() || undefined,
             customFields: r.customFields,
-            tags: tags, // Use extracted tags
+            tags: tags, // Use extracted cues
             star: r.star,
             mastery: 0,
             originalCardId: r.originalCardId,
@@ -3770,7 +3898,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const cards: Card[] = builderRows
       .filter((row) => row.term.trim() || row.def.trim())
       .map((row) => {
-        // Parse tags from term string
+        // Parse cues from term string
         let termRaw = row.term.trim();
         let tags: string[] = [];
 
@@ -3881,7 +4009,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const cards: Card[] = builderRows
       .filter((row) => row.term.trim() || row.def.trim())
       .map((row) => {
-        // Parse tags from term string
+        // Parse cues from term string
         let termRaw = row.term.trim();
         let tags: string[] = [];
 
@@ -4132,6 +4260,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const confirmMoveToLocal = async () => {
     if (!moveToLocalModal) return;
+    if (moveToLocalModal.setId === UI_AUDIT_ID) {
+      setMoveToLocalModal(null);
+      return;
+    }
 
     const { setId, toLocal } = moveToLocalModal;
     const set = librarySets.find(s => s.id === setId);
@@ -4160,6 +4292,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       <SetConfigurationModal
         isOpen={isConfigModalOpen}
         onClose={() => setIsConfigModalOpen(false)}
+        initialMode={configModalMode}
         termLabel={termLabel}
         setTermLabel={setTermLabel}
         definitionLabel={definitionLabel}
@@ -4238,6 +4371,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         onClose={() => setNoStarredModalSet(null)}
         onDisableAndPlay={() => {
           if (noStarredModalSet) {
+            if (noStarredModalSet.id === UI_AUDIT_ID) {
+              setNoStarredModalSet(null);
+              return;
+            }
             onUpdateSettings({ ...settings, starredOnly: false });
             if (noStarredModalSet.isSessionActive) {
               onResumeSession(noStarredModalSet);
@@ -4328,7 +4465,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 List Builder
               </h1>
               <p className="text-accent font-bold text-2xl animate-in slide-in-from-left-2 fade-in duration-500">
-                {view === "raw-text" ? "Import Raw Text" : "Visual Editor"}
+                {view === "raw-text" ? "Raw Text Import" : "Visual Editor"}
               </p>
             </div>
 
@@ -4775,20 +4912,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                   {set.tags.map(tagId => {
                                     const tag = tags.find(t => t.id === tagId);
                                     if (!tag) return null;
-                                    const color = getTagColor(tag.color);
                                     return (
-                                      <div
-                                        key={tagId}
-                                        className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors"
-                                        style={{
-                                          backgroundColor: `${color}15`,
-                                          borderColor: `${color}30`,
-                                          color: color
-                                        }}
-                                      >
-                                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-                                        {tag.name}
-                                      </div>
+                                      <TagPill key={tagId} tag={tag} />
                                     );
                                   })}
                                 </div>
@@ -4935,20 +5060,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       {set.tags.map(tagId => {
                                         const tag = tags.find(t => t.id === tagId);
                                         if (!tag) return null;
-                                        const color = getTagColor(tag.color);
                                         return (
-                                          <div
-                                            key={tagId}
-                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border transition-colors"
-                                            style={{
-                                              backgroundColor: `${color}15`,
-                                              borderColor: `${color}30`,
-                                              color: color
-                                            }}
-                                          >
-                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-                                            {tag.name}
-                                          </div>
+                                          <TagPill key={tagId} tag={tag} />
                                         );
                                       })}
                                     </div>
@@ -5163,7 +5276,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             if (e.key === "Enter") confirmCreateFolder();
                           }}
                         />
-                        <div className="grid grid-cols-6 gap-2 mb-6">
+                        <div className="grid grid-cols-6 gap-4 mb-6 w-fit mx-auto justify-items-center">
                           {(
                             [
                               "brown",
@@ -5187,24 +5300,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                 color === "purple" && "bg-purple border-purple",
                                 newFolderColor === color
                                   ? "scale-110 ring-2 ring-offset-2 ring-offset-panel ring-text"
-                                  : "opacity-70 hover:opacity-100 hover:scale-105",
+                                  : "opacity-70 hover:opacity-100",
                               )}
                               title={color}
                             />
                           ))}
                         </div>
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => setIsCreatingFolder(false)}
-                            className="px-4 py-2 text-muted hover:text-text"
-                          >
-                            Cancel
-                          </button>
+                        <div className="flex flex-col gap-2">
                           <button
                             onClick={() => confirmCreateFolder(newFolderColor)}
-                            className="px-6 py-2 bg-text text-bg font-bold rounded-lg hover:bg-text/90 transition-colors"
+                            className="w-full py-3 bg-text text-bg font-bold rounded-lg hover:bg-text/90 transition-colors duration-150"
                           >
                             OK
+                          </button>
+                          <button
+                            onClick={() => setIsCreatingFolder(false)}
+                            className="w-full py-3 text-muted hover:text-text rounded-lg hover:bg-panel-2 transition-colors duration-150"
+                          >
+                            Cancel
                           </button>
                         </div>
                       </div>
@@ -5231,7 +5344,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {view === "builder" && (
           <div className="animate-in zoom-in-95 duration-300 space-y-6">
-            <p className="text-sm text-text/60 leading-relaxed max-w-4xl">
+            <p className="text-sm text-text leading-relaxed max-w-4xl">
               Use this menu to build your set. Use markdown to format your cards and buttons on screen to star cards or swap them. You can drag cards using the left-side handles to change their order. Use Set Configuration to adjust and add custom fields.
             </p>
 
@@ -5253,8 +5366,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     isEnabled={!settings.hideTooltips}
                   >
                     <label className="flex items-center gap-2 cursor-pointer select-none group">
-                      <div className={clsx("w-5 h-5 rounded border flex items-center justify-center transition-colors", wysiwyg ? "bg-accent border-accent text-bg" : "bg-panel-2 border-outline group-hover:border-text")}>
-                        {wysiwyg && <Check size={14} strokeWidth={4} />}
+                      <div
+                        className={clsx(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          wysiwyg ? "bg-accent border-accent" : "border-outline group-hover:border-accent",
+                        )}
+                      >
+                        {wysiwyg && (
+                          <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                        )}
                       </div>
                       <input
                         type="checkbox"
@@ -5271,7 +5391,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       onClick={undo}
                       disabled={past.length === 0}
                       className="w-8 h-full flex items-center justify-center rounded hover:bg-panel-3 disabled:opacity-30 disabled:hover:bg-transparent text-text transition-colors"
-                      title="Undo (Ctrl+Z)"
+                      title={`Undo (${modKeyLabel}+Z)`}
                     >
                       <RotateCcw size={16} />
                     </button>
@@ -5280,13 +5400,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       onClick={redo}
                       disabled={future.length === 0}
                       className="w-8 h-full flex items-center justify-center rounded hover:bg-panel-3 disabled:opacity-30 disabled:hover:bg-transparent text-text transition-colors"
-                      title="Redo (Ctrl+Shift+Z)"
+                      title={`Redo (${modKeyLabel}+Shift+Z)`}
                     >
                       <RotateCw size={16} />
                     </button>
                   </div>
                   <button
-                    onClick={() => setIsConfigModalOpen(true)}
+                    onClick={() => {
+                      setConfigModalMode("config");
+                      setIsConfigModalOpen(true);
+                    }}
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
                   >
                     <Settings2 size={16} />

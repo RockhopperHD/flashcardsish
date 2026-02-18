@@ -1,6 +1,15 @@
 import React from 'react';
 import { Card, CardSet, CustomFieldDefinition } from './types';
 
+export const isMacPlatform = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = navigator.userAgent || '';
+  const platform = (navigator as any).userAgentData?.platform || navigator.platform || '';
+  return /Mac|iPhone|iPad|iPod/.test(platform) || /Macintosh|Mac OS X/i.test(userAgent);
+};
+
+export const getModifierKeyLabel = (): '⌘' | 'Ctrl' => (isMacPlatform() ? '⌘' : 'Ctrl');
+
 // --- IMAGE URL SECURITY ---
 
 /**
@@ -112,6 +121,35 @@ export const isValidImageFile = (file: File): boolean => {
 
   return safeTypes.includes(file.type.toLowerCase());
 };
+
+// --- TAG COLORS ---
+export const TAG_COLOR_MAP: Record<string, string> = {
+  red: '#ef4444',
+  orange: '#f97316',
+  amber: '#f59e0b',
+  yellow: '#eab308',
+  lime: '#84cc16',
+  green: '#22c55e',
+  emerald: '#10b981',
+  teal: '#14b8a6',
+  cyan: '#06b6d4',
+  sky: '#0ea5e9',
+  blue: '#3b82f6',
+  indigo: '#6366f1',
+  violet: '#8b5cf6',
+  purple: '#a855f7',
+  fuchsia: '#d946ef',
+  pink: '#ec4899',
+  rose: '#f43f5e',
+  slate: '#64748b',
+  gray: '#6b7280',
+  zinc: '#71717a',
+  neutral: '#737373',
+  stone: '#78716c',
+};
+
+export const getTagColor = (color: string): string =>
+  color?.startsWith('#') ? color : (TAG_COLOR_MAP[color] || '#3b82f6');
 
 // Sanitize a set by removing zombie custom field data from cards
 // This ensures cards only contain data for fields that are actually defined
@@ -668,8 +706,14 @@ export const extractCategory = (content: string): { category: string | null; bod
   return { category: null, body: content };
 };
 
-export const renderMarkdown = (content: string): React.ReactNode => {
+export const renderMarkdown = (
+  content: string,
+  options?: {
+    compact?: boolean;
+  }
+): React.ReactNode => {
   if (!content) return React.createElement('div', { className: "text-muted italic opacity-50" }, "No content");
+  const compact = options?.compact === true;
 
   // 1. Extract Category
   const { category, body } = extractCategory(content);
@@ -698,13 +742,25 @@ export const renderMarkdown = (content: string): React.ReactNode => {
       } else {
         // Flush list if exists
         if (listBuffer.length > 0) {
-          nodes.push(React.createElement('ul', { key: `ul-${blockIdx}-${lineIdx}`, className: "mb-2 pl-4 space-y-1" }, [...listBuffer]));
+          nodes.push(React.createElement(
+            'ul',
+            {
+              key: `ul-${blockIdx}-${lineIdx}`,
+              className: compact ? "mb-1 pl-4 space-y-0.5" : "mb-2 pl-4 space-y-1"
+            },
+            [...listBuffer]
+          ));
           listBuffer = [];
         }
         // Regular text
         if (trimmed) {
           nodes.push(
-            React.createElement('div', { key: `txt-${blockIdx}-${lineIdx}`, className: "mb-1" },
+            React.createElement(
+              'div',
+              {
+                key: `txt-${blockIdx}-${lineIdx}`,
+                className: compact ? "mb-0.5" : "mb-1"
+              },
               renderInline(trimmed, `txt-${blockIdx}-${lineIdx}`)
             )
           );
@@ -714,16 +770,30 @@ export const renderMarkdown = (content: string): React.ReactNode => {
 
     // Flush remaining list
     if (listBuffer.length > 0) {
-      nodes.push(React.createElement('ul', { key: `ul-end-${blockIdx}`, className: "mb-2 pl-4 space-y-1" }, [...listBuffer]));
+      nodes.push(React.createElement(
+        'ul',
+        {
+          key: `ul-end-${blockIdx}`,
+          className: compact ? "mb-1 pl-4 space-y-0.5" : "mb-2 pl-4 space-y-1"
+        },
+        [...listBuffer]
+      ));
     }
 
-    return React.createElement('div', { key: blockIdx, className: "mb-4 last:mb-0" }, nodes);
+    return React.createElement(
+      'div',
+      {
+        key: blockIdx,
+        className: compact ? "mb-2 last:mb-0" : "mb-4 last:mb-0"
+      },
+      nodes
+    );
   });
 
   const children: React.ReactNode[] = [];
   if (category) {
     children.push(
-      React.createElement('div', { key: "cat", className: "inline-block bg-accent/10 border border-accent/20 text-accent px-2 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide mb-2" }, category)
+      React.createElement('div', { key: "cat", className: "inline-block bg-panel-2 border border-outline text-text px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-2" }, category)
     );
   }
   children.push(React.createElement('div', { key: "body" }, renderedBlocks));

@@ -2,9 +2,9 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { generateId } from '../utils';
 import { Card } from '../types';
 import clsx from 'clsx';
-import { ArrowLeft, ArrowRight, AlertCircle, Check } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertCircle, Check, X } from 'lucide-react';
 import { CursorTooltip } from './CursorTooltip';
-import ReactMarkdown from 'react-markdown';
+import { CardPreview } from './CardPreview';
 
 interface RawTextImportProps {
     onClose: () => void; // Modal close logic ("Leave without saving" or just back)
@@ -138,6 +138,18 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
     const [previewIndex, setPreviewIndex] = useState(0);
 
     useEffect(() => {
+        if (!isModal) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isModal, onClose]);
+
+    useEffect(() => {
         // Reset if index out of bounds
         if (parsedCards.length > 0 && previewIndex >= parsedCards.length) {
             setPreviewIndex(0);
@@ -260,17 +272,34 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
             "max-w-6xl mx-auto w-full flex flex-col animate-in fade-in duration-500",
             isModal ? "h-full" : "min-h-[500px]"
         )}>
-            {/* Header (Modal Mode only or always?) */}
-            {/* If Modal, maybe different header? */}
-            {/* User said "doesn't have a back button". But needs to leave. */}
+            {isModal && (
+                <div className="p-6 border-b border-outline shrink-0 bg-panel-2 rounded-t-2xl">
+                    <div className="flex items-center justify-between gap-4">
+                        <h2
+                            className="text-2xl text-text"
+                            style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                        >
+                            Raw Text Import
+                        </h2>
+                        <button
+                            onClick={onClose}
+                            className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
+                            aria-label="Close"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+                </div>
+            )}
 
-            {/* Description Row - Full Width */}
-            <p className="text-sm text-text/60 leading-relaxed mb-6 shrink-0 max-w-4xl">
-                To import a set from another application, export it as text and paste it here. You can also use a text editor like Google Docs to write your cards quickly, then paste them here to import them. After importing as raw text, you can adjust your cards with the Visual Editor.
-            </p>
+            <div className={clsx("flex-1 flex flex-col", isModal && "p-6 overflow-y-auto")}>
+                {/* Description Row - Full Width */}
+                <p className="text-sm text-text leading-relaxed mb-6 shrink-0 max-w-4xl">
+                    To import a set from another application, export it as text and paste it here. You can also use a text editor like Google Docs to write your cards quickly, then paste them here to import them. After importing as raw text, you can adjust your cards with the Visual Editor.
+                </p>
 
-            {/* Main Content Grid */}
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 pb-6">
+                {/* Main Content Grid */}
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-8 pb-6">
 
                 {/* Left Column: Text Input (Span 4) - Narrower */}
                 <div className="lg:col-span-4 flex flex-col min-h-[400px]">
@@ -334,11 +363,15 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                     <CursorTooltip content="Appends lines to previous card as bullets">
                         <div className="bg-panel-2 p-4 rounded-xl border border-outline flex items-center gap-4 shrink-0 justify-start">
                             <label className="flex items-center gap-3 cursor-pointer select-none group">
-                                <div className={clsx(
-                                    "w-5 h-5 rounded border flex items-center justify-center transition-colors shadow-sm",
-                                    useBulletMarker ? "bg-accent border-accent text-bg" : "border-outline text-transparent group-hover:border-text bg-panel"
-                                )}>
-                                    <Check size={14} strokeWidth={3} />
+                                <div
+                                    className={clsx(
+                                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                                        useBulletMarker ? "bg-accent border-accent" : "border-outline group-hover:border-accent"
+                                    )}
+                                >
+                                    {useBulletMarker && (
+                                        <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                                    )}
                                 </div>
                                 <input
                                     type="checkbox"
@@ -378,37 +411,10 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
 
                         {parsedCards.length > 0 ? (
                             <div className="flex-1 flex flex-col justify-center items-center text-center">
-                                <div className="max-w-md w-full p-5 bg-panel border border-outline rounded-xl shadow-sm">
-                                    {/* Card Front (Term) */}
-                                    <div className="text-base font-bold text-text mb-3 pb-3 border-b border-outline/50">
-                                        {previewCard?.term?.[0] || <span className="text-muted italic">Empty Term</span>}
-                                    </div>
-
-                                    {/* Card Back (Def + Year) */}
-                                    <div className="text-sm text-text/80 whitespace-pre-wrap">
-                                        <div className="text-left w-full markdown-preview">
-                                            {previewCard?.content ? (
-                                                <ReactMarkdown
-                                                    components={{
-                                                        ul: ({ children }) => <ul className="list-disc list-inside">{children}</ul>,
-                                                        li: ({ children }) => <li className="pl-1 text-text/80">{children}</li>,
-                                                        p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
-                                                        strong: ({ children }) => <span className="font-bold text-accent">{children}</span>,
-                                                        em: ({ children }) => <span className="italic text-text/70">{children}</span>,
-                                                    }}
-                                                >
-                                                    {previewCard.content}
-                                                </ReactMarkdown>
-                                            ) : (
-                                                <span className="text-muted italic block text-center">Empty Definition</span>
-                                            )}
-                                        </div>
-                                        {enableYear && previewCard?.year && (
-                                            <div className="mt-2 inline-block px-2 py-0.5 rounded bg-accent/10 text-accent text-xs font-bold">
-                                                {previewCard.year}
-                                            </div>
-                                        )}
-                                    </div>
+                                <div className="w-full max-w-4xl px-4">
+                                    {previewCard && (
+                                        <CardPreview card={previewCard} />
+                                    )}
                                 </div>
                                 <div className="mt-4 flex items-center justify-center gap-4">
                                     <button
@@ -431,7 +437,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex-1 flex flex-col items-center justify-center text-muted">
+                            <div className="flex-1 flex flex-col items-center justify-center text-text">
                                 <AlertCircle size={28} className="mb-2 opacity-50" />
                                 <p className="text-sm">No cards detected</p>
                             </div>
@@ -441,7 +447,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                     {/* Info Row & Bottom Action */}
                     <div className="shrink-0 space-y-4">
                         <div className="flex items-center justify-between text-sm px-1">
-                            <div className="text-muted font-medium">
+                            <div className="text-text font-medium">
                                 Current Count: <span className="text-text font-bold">{parsedCards.length} Cards</span>
                             </div>
                         </div>
@@ -465,6 +471,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                             </button>
                         </div>
                     </div>
+                </div>
                 </div>
             </div>
         </div>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder, Tag } from './types';
 import { fmtTime, generateId, sanitizeSet } from './utils';
-import { StartMenu } from './components/StartMenu';
+import { StartMenu, type UiAuditRequest } from './components/StartMenu';
 import { Game } from './components/Game';
 import { SetDetail } from './components/SetDetail';
 import { Confetti } from './components/Confetti';
@@ -11,7 +11,7 @@ import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
 import { KeybindsModal } from './components/KeybindsModal';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Type, Trash2, LogIn, LogOut, Cloud, Download, FileText, File, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, Terminal, RefreshCw, CheckCircle2, XCircle, Keyboard } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
@@ -21,8 +21,10 @@ import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
 import { CursorTooltip } from './components/CursorTooltip';
-import { CorruptionNotification } from './components/CorruptionNotification';
+import { CorruptionNotification, CorruptionPopup } from './components/CorruptionNotification';
 import { AiSetupModal } from './components/AiSetupModal';
+// UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
+// import { UiAuditPanel } from './components/UiAuditPanel';
 
 const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
@@ -145,6 +147,7 @@ const SettingsModal: React.FC<{
    onClose: () => void;
    settings: Settings;
    onUpdate: (s: Settings) => void;
+   onOpenKeybinds: () => void;
    onDeleteData: () => void;
    onExportData: () => void;
    onResetSettings: () => void;
@@ -152,12 +155,13 @@ const SettingsModal: React.FC<{
    // User props for "You" tab
    user: GoogleDriveUser | null;
    lifetimeCorrect: number;
-   onLogin: () => void;
+   onLogin: (keepSignedIn: boolean) => void;
    onLogout: () => void;
    initialTab?: 'set' | 'global' | 'you' | 'tags';
    tags: Tag[];
    onUpdateTags: (tags: Tag[]) => void;
-}> = ({ isOpen, onClose, settings, onUpdate, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags }) => {
+   forceAiSetupOpen?: boolean;
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
@@ -170,7 +174,10 @@ const SettingsModal: React.FC<{
    const [isTestingApiKey, setIsTestingApiKey] = useState(false);
    const [isAiSetupOpen, setIsAiSetupOpen] = useState(false);
    const [deleteConfirmTagId, setDeleteConfirmTagId] = useState<string | null>(null);
-   const [isKeybindsOpen, setIsKeybindsOpen] = useState(false);
+   const [isAnswerWithOpen, setIsAnswerWithOpen] = useState(false);
+   const [isAnswerStyleOpen, setIsAnswerStyleOpen] = useState(false);
+   const answerWithRef = useRef<HTMLDivElement>(null);
+   const answerStyleRef = useRef<HTMLDivElement>(null);
 
    const TAG_COLORS: string[] = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'slate', 'gray', 'zinc', 'neutral', 'stone'];
 
@@ -180,6 +187,38 @@ const SettingsModal: React.FC<{
          setActiveTab(initialTab);
       }
    }, [isOpen, initialTab]);
+
+   React.useEffect(() => {
+      if (isOpen && forceAiSetupOpen) {
+         setIsAiSetupOpen(true);
+      }
+   }, [isOpen, forceAiSetupOpen]);
+
+   React.useEffect(() => {
+      if (!isOpen) return;
+      const handleKeyDown = (e: KeyboardEvent) => {
+         if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+         }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+   }, [isOpen, onClose]);
+
+   React.useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+         if (answerWithRef.current && !answerWithRef.current.contains(event.target as Node)) {
+            setIsAnswerWithOpen(false);
+         }
+         if (answerStyleRef.current && !answerStyleRef.current.contains(event.target as Node)) {
+            setIsAnswerStyleOpen(false);
+         }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+   }, []);
 
    if (!isOpen) return null;
 
@@ -399,29 +438,41 @@ const SettingsModal: React.FC<{
                         <TooltipWrapper id="answerWithDefinition" tooltip={tooltips.answerWithDefinition} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                               <span className="font-medium text-text block mb-3">Answer With</span>
-                              <div className="grid grid-cols-2 gap-2">
+                              <div className="relative" ref={answerWithRef}>
                                  <button
-                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: false })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       !settings.answerWithDefinition
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
+                                    onClick={() => setIsAnswerWithOpen(!isAnswerWithOpen)}
+                                    className="w-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm font-bold focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
                                  >
-                                    <File size={16} /> Term
+                                    <span className="truncate">
+                                       {settings.answerWithDefinition ? "Definition" : "Term"}
+                                    </span>
+                                    <ChevronDown size={14} className="opacity-50 flex-shrink-0" />
                                  </button>
-                                 <button
-                                    onClick={() => onUpdate({ ...settings, answerWithDefinition: true })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       settings.answerWithDefinition
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
-                                 >
-                                    <FileText size={16} /> Definition
-                                 </button>
+
+                                 {isAnswerWithOpen && (
+                                    <div className="absolute top-full left-0 mt-2 w-full bg-panel border border-outline rounded-xl shadow-xl z-50 overflow-hidden animate-in zoom-in-95">
+                                       {[
+                                          { value: false, label: "Term" },
+                                          { value: true, label: "Definition" },
+                                       ].map((opt) => (
+                                          <button
+                                             key={opt.label}
+                                             onClick={() => {
+                                                onUpdate({ ...settings, answerWithDefinition: opt.value });
+                                                setIsAnswerWithOpen(false);
+                                             }}
+                                             className={clsx(
+                                                "w-full text-left px-3 py-2 text-sm hover:bg-panel-2 transition-colors",
+                                                settings.answerWithDefinition === opt.value
+                                                   ? "text-accent font-bold bg-accent/5"
+                                                   : "text-text"
+                                             )}
+                                          >
+                                             {opt.label}
+                                          </button>
+                                       ))}
+                                    </div>
+                                 )}
                               </div>
                            </div>
                         </TooltipWrapper>
@@ -434,7 +485,7 @@ const SettingsModal: React.FC<{
 
                         {/* Keybinds */}
                         <div
-                           onClick={() => setIsKeybindsOpen(true)}
+                           onClick={onOpenKeybinds}
                            className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
                         >
                            <span className="font-medium text-text">Keybinds</span>
@@ -453,41 +504,47 @@ const SettingsModal: React.FC<{
                         <TooltipWrapper id="learnMode" tooltip={tooltips.learnMode} settings={settings}>
                            <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                               <span className="font-medium text-text block mb-3">Answer Style</span>
-                              <div className={clsx("grid gap-2", settings.aiEnabled && isApiKeyLocked ? "grid-cols-3" : "grid-cols-2")}>
+                              <div className="relative" ref={answerStyleRef}>
                                  <button
-                                    onClick={() => onUpdate({ ...settings, mode: 'standard' })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       settings.mode === 'standard'
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
+                                    onClick={() => setIsAnswerStyleOpen(!isAnswerStyleOpen)}
+                                    className="w-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm font-bold focus:border-accent outline-none transition-colors flex items-center justify-between gap-2"
                                  >
-                                    <Type size={16} /> Standard
+                                    <span className="truncate">
+                                       {settings.mode === "standard"
+                                          ? "Standard"
+                                          : settings.mode === "multiple_choice"
+                                             ? "Multiple Choice"
+                                             : "Random Choice"}
+                                    </span>
+                                    <ChevronDown size={14} className="opacity-50 flex-shrink-0" />
                                  </button>
-                                 <button
-                                    onClick={() => onUpdate({ ...settings, mode: 'multiple_choice' })}
-                                    className={clsx(
-                                       "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                       settings.mode === 'multiple_choice'
-                                          ? "bg-accent text-bg border-accent"
-                                          : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                    )}
-                                 >
-                                    <LayoutGrid size={16} /> Multiple Choice
-                                 </button>
-                                 {settings.aiEnabled && isApiKeyLocked && (
-                                    <button
-                                       onClick={() => onUpdate({ ...settings, mode: 'ai_random_choice' })}
-                                       className={clsx(
-                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all border cursor-default",
-                                          settings.mode === 'ai_random_choice'
-                                             ? "bg-accent text-bg border-accent"
-                                             : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                       )}
-                                    >
-                                       <Terminal size={16} /> Random Choice
-                                    </button>
+
+                                 {isAnswerStyleOpen && (
+                                    <div className="absolute top-full left-0 mt-2 w-full bg-panel border border-outline rounded-xl shadow-xl z-50 overflow-hidden animate-in zoom-in-95">
+                                       {[
+                                          { value: "standard", label: "Standard" },
+                                          { value: "multiple_choice", label: "Multiple Choice" },
+                                          ...(settings.aiEnabled && isApiKeyLocked
+                                             ? [{ value: "ai_random_choice", label: "Random Choice" }]
+                                             : []),
+                                       ].map((opt) => (
+                                          <button
+                                             key={opt.value}
+                                             onClick={() => {
+                                                onUpdate({ ...settings, mode: opt.value as Settings["mode"] });
+                                                setIsAnswerStyleOpen(false);
+                                             }}
+                                             className={clsx(
+                                                "w-full text-left px-3 py-2 text-sm hover:bg-panel-2 transition-colors",
+                                                settings.mode === opt.value
+                                                   ? "text-accent font-bold bg-accent/5"
+                                                   : "text-text"
+                                             )}
+                                          >
+                                             {opt.label}
+                                          </button>
+                                       ))}
+                                    </div>
                                  )}
                               </div>
                            </div>
@@ -511,7 +568,7 @@ const SettingsModal: React.FC<{
                                     {/* Ignore Diacritics */}
                                     <div className="flex items-center justify-between">
                                        <TooltipWrapper id="ignoreDiacritics" tooltip={tooltips.ignoreDiacritics} settings={settings}>
-                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Ignore diacritics (é, ñ)</label>
+                                          <label className="text-sm text-text cursor-pointer hover:text-text transition-colors">Ignore diacritics (é, ñ)</label>
                                        </TooltipWrapper>
                                        <div
                                           onClick={(e) => { e.stopPropagation(); toggle('ignoreDiacritics'); }}
@@ -524,7 +581,7 @@ const SettingsModal: React.FC<{
                                     {/* Ignore Capitalization */}
                                     <div className="flex items-center justify-between">
                                        <TooltipWrapper id="ignoreCapitalization" tooltip={tooltips.ignoreCapitalization} settings={settings}>
-                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Ignore capitalization</label>
+                                          <label className="text-sm text-text cursor-pointer hover:text-text transition-colors">Ignore capitalization</label>
                                        </TooltipWrapper>
                                        <div
                                           onClick={(e) => { e.stopPropagation(); toggle('ignoreCapitalization'); }}
@@ -537,7 +594,7 @@ const SettingsModal: React.FC<{
                                     {/* Forgive "the" */}
                                     <div className="flex items-center justify-between">
                                        <TooltipWrapper id="forgiveThe" tooltip={tooltips.forgiveThe} settings={settings}>
-                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Forgive "the"</label>
+                                          <label className="text-sm text-text cursor-pointer hover:text-text transition-colors">Forgive "the"</label>
                                        </TooltipWrapper>
                                        <div
                                           onClick={(e) => { e.stopPropagation(); toggle('forgiveThe'); }}
@@ -550,7 +607,7 @@ const SettingsModal: React.FC<{
                                     {/* Wiggle Room */}
                                     <div className="flex items-center justify-between">
                                        <TooltipWrapper id="wiggleRoom" tooltip={tooltips.wiggleRoom} settings={settings}>
-                                          <label className="text-sm text-text/80 cursor-pointer hover:text-text transition-colors">Wiggle room (letters)</label>
+                                          <label className="text-sm text-text cursor-pointer hover:text-text transition-colors">Wiggle room (letters)</label>
                                        </TooltipWrapper>
                                        <WiggleInput
                                           value={settings.wiggleRoom}
@@ -595,14 +652,6 @@ const SettingsModal: React.FC<{
 
                      </div>
                   )}
-
-                  {/* Keybinds Modal */}
-                  <KeybindsModal
-                     isOpen={isKeybindsOpen}
-                     onClose={() => setIsKeybindsOpen(false)}
-                     settings={settings}
-                     onUpdate={onUpdate}
-                  />
 
                   {activeTab === 'builder' && (
                      <div className="space-y-4">
@@ -1066,7 +1115,7 @@ const SettingsModal: React.FC<{
                                     </button>
                                  ) : (
                                     <div className="space-y-3">
-                                       <p className="text-sm text-muted">
+                                       <p className="text-sm text-text">
                                           This will reset all your settings to their default values. Your flashcard sets will not be affected.
                                        </p>
                                        <div className="flex gap-2">
@@ -1125,6 +1174,8 @@ const App: React.FC = () => {
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
 
    const activeSession = librarySets.find(s => s.id === activeSetId) || null;
+   const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
+   const shouldHighlightSignIn = !user && gameState === GameState.MENU && isHomeScreenActive;
 
    const [settings, setSettings] = useState<Settings>({
       forgiveSpellingErrors: true,
@@ -1153,6 +1204,27 @@ const App: React.FC = () => {
 
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
+   const [isKeybindsModalOpen, setIsKeybindsModalOpen] = useState(false);
+   const [forceAiSetupOpen, setForceAiSetupOpen] = useState(false);
+
+   const [uiAuditRequest, setUiAuditRequest] = useState<UiAuditRequest | null>(null);
+   const [uiAuditToastReports, setUiAuditToastReports] = useState<CorruptionReport[]>([]);
+   const [uiAuditPopupReports, setUiAuditPopupReports] = useState<CorruptionReport[]>([]);
+   const [uiAuditCorruptionPopupOpen, setUiAuditCorruptionPopupOpen] = useState(false);
+
+   useEffect(() => {
+      const handleKeybindsShortcut = (e: KeyboardEvent) => {
+         const isModifier = e.metaKey || e.ctrlKey;
+         const isQuestionKey = e.key === '?' || e.key === '/' || e.code === 'Slash';
+         if (isModifier && isQuestionKey) {
+            e.preventDefault();
+            setIsKeybindsModalOpen(true);
+         }
+      };
+
+      window.addEventListener('keydown', handleKeybindsShortcut, true);
+      return () => window.removeEventListener('keydown', handleKeybindsShortcut, true);
+   }, []);
 
    // Set Detail View
    const [detailSetId, setDetailSetId] = useState<string | null>(null);
@@ -1273,7 +1345,7 @@ const App: React.FC = () => {
             setCorruptionReports(data.corruptions);
          }
 
-         console.log("[Sync] ✅ Smart merge complete");
+         console.log("[Sync] Smart merge complete");
          hasSyncedOnceRef.current = true;
       } finally {
          syncInProgressRef.current = false;
@@ -1281,9 +1353,9 @@ const App: React.FC = () => {
       }
    };
 
-   const handleLogin = async () => {
+   const handleLogin = async (keepSignedIn: boolean = true) => {
       try {
-         await googleDrive.signIn();
+         await googleDrive.signIn(keepSignedIn);
       } catch (error) {
          console.error('Failed to sign in:', error);
          alert('Failed to sign in. Please try again.');
@@ -1519,9 +1591,9 @@ const App: React.FC = () => {
                } catch (e) { }
             }
 
-            console.log("[App] ✅ Initial data load complete.");
+            console.log("[App] Initial data load complete.");
          } catch (error) {
-            console.error("[App] ❌ CRITICAL ERROR during loadData:", error);
+            console.error("[App] CRITICAL ERROR during loadData:", error);
             console.error("[App] Stack:", error instanceof Error ? error.stack : 'No stack trace');
          } finally {
             // CRITICAL: Always mark as loaded, even if there was an error
@@ -1903,11 +1975,15 @@ const App: React.FC = () => {
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
 
-         <SettingsModal
+        <SettingsModal
             isOpen={isSettingsOpen}
-            onClose={() => setIsSettingsOpen(false)}
+            onClose={() => {
+               setIsSettingsOpen(false);
+               setForceAiSetupOpen(false);
+            }}
             settings={settings}
             onUpdate={updateSettings}
+            onOpenKeybinds={() => setIsKeybindsModalOpen(true)}
             onDeleteData={handleDeleteData}
             onExportData={handleExportData}
             onResetSettings={handleResetSettings}
@@ -1918,6 +1994,7 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             initialTab={settingsInitialTab}
             tags={tags}
+            forceAiSetupOpen={forceAiSetupOpen}
             onUpdateTags={(newTags) => {
                setTags(newTags);
                saveTags(newTags);
@@ -1951,11 +2028,33 @@ const App: React.FC = () => {
             onClose={() => setIsTermsOpen(false)}
          />
 
+         <KeybindsModal
+            isOpen={isKeybindsModalOpen}
+            onClose={() => setIsKeybindsModalOpen(false)}
+            settings={settings}
+            onUpdate={updateSettings}
+         />
+
          {/* Corruption Notification */}
          <CorruptionNotification
             reports={corruptionReports}
             onDismiss={() => setCorruptionReports([])}
          />
+         {/* UI Audit disabled. Uncomment these and the UiAuditPanel block below to re-enable. */}
+         {/*
+         <CorruptionNotification
+            reports={uiAuditToastReports}
+            onDismiss={() => setUiAuditToastReports([])}
+         />
+         <CorruptionPopup
+            isOpen={uiAuditCorruptionPopupOpen}
+            onClose={() => {
+               setUiAuditCorruptionPopupOpen(false);
+               setUiAuditPopupReports([]);
+            }}
+            reports={uiAuditPopupReports}
+         />
+         */}
 
          {/* Top Bar */}
          <header className="sticky top-0 z-30 bg-bg/95 backdrop-blur border-b border-outline px-6 py-4">
@@ -2052,21 +2151,34 @@ const App: React.FC = () => {
                         setSettingsInitialTab('you');
                         setIsSettingsOpen(true);
                      }}
-                     className="flex items-center gap-2 px-2 py-1 rounded-lg bg-panel-2 border border-outline hover:border-accent transition-all"
+                     className={clsx(
+                        "flex items-center gap-2 px-3 py-2 rounded-xl bg-panel-2 border transition-all relative overflow-visible",
+                        shouldHighlightSignIn ? "border-outline signin-cta" : "border-outline hover:border-accent"
+                     )}
                      title={user ? `Logged in as ${user.email}` : "Account"}
                   >
+                     {shouldHighlightSignIn && (
+                        <svg
+                           className="signin-cta-outline"
+                           viewBox="0 0 100 40"
+                           preserveAspectRatio="none"
+                           aria-hidden="true"
+                        >
+                           <rect x="2" y="2" width="96" height="36" rx="10" ry="10" />
+                        </svg>
+                     )}
                      {user ? (
                         <img
                            src={user.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
                            alt="Profile"
-                           className="w-6 h-6 rounded-full"
+                           className="w-7 h-7 rounded-full"
                         />
                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-outline/20 flex items-center justify-center">
-                           <Cloud size={14} className="text-muted" />
+                        <div className="w-7 h-7 rounded-full bg-outline/20 flex items-center justify-center">
+                           <Cloud size={16} className="text-muted" />
                         </div>
                      )}
-                     <span className="text-xs text-muted hidden sm:block max-w-[80px] truncate">{user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
+                     <span className="text-sm text-muted hidden sm:block max-w-[90px] truncate">{user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
                   </button>
 
                   {/* Cloud Sync Status Indicator */}
@@ -2146,6 +2258,9 @@ const App: React.FC = () => {
                      setIsSettingsOpen(true);
                   }}
                   setAppliedTags={setAppliedTags}
+                  uiAuditRequest={uiAuditRequest}
+                  onUiAuditHandled={() => setUiAuditRequest(null)}
+                  onHomeScreenActiveChange={setIsHomeScreenActive}
                />
             )}
 
@@ -2226,7 +2341,8 @@ const App: React.FC = () => {
                            onClick={handleSaveStarredToLibrary}
                            className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-sm flex items-center justify-center gap-2"
                         >
-                           <span className="text-yellow text-xl">★</span> Save Starred
+                           <Star size={20} className="text-accent" fill="currentColor" />
+                           Save Starred
                         </button>
                      )}
 
@@ -2275,6 +2391,51 @@ const App: React.FC = () => {
                </button>
             </div>
          </footer>
+
+         {/* UI Audit disabled. Uncomment this block to re-enable the UI audit panel. */}
+         {/*
+         <UiAuditPanel
+            isMenuActive={gameState === GameState.MENU}
+            onOpenSettings={() => {
+               setSettingsInitialTab('set');
+               setIsSettingsOpen(true);
+            }}
+            onOpenUser={() => setIsUserModalOpen(true)}
+            onOpenPrivacy={() => setIsPrivacyOpen(true)}
+            onOpenTerms={() => setIsTermsOpen(true)}
+            onOpenKeybinds={() => {
+               setIsKeybindsModalOpen(true);
+            }}
+            onOpenAiSetup={() => {
+               setSettingsInitialTab('global');
+               setForceAiSetupOpen(true);
+               setIsSettingsOpen(true);
+            }}
+            onOpenCorruptionPopup={() => {
+               const sample = [
+                  {
+                     type: 'config',
+                     fileName: 'settings.json',
+                     error: 'Sample recovery notice for UI audit.',
+                  },
+               ];
+               setUiAuditPopupReports(sample);
+               setUiAuditCorruptionPopupOpen(true);
+            }}
+            onRequestMenuModal={(request) => setUiAuditRequest(request)}
+            onShowToast={() => {
+               const sample = [
+                  {
+                     type: 'config',
+                     fileName: 'settings.json',
+                     error: 'Sample recovery notice for UI audit.',
+                  },
+               ];
+               setUiAuditToastReports(sample);
+            }}
+            sampleTag={tags[0] || null}
+         />
+         */}
       </div>
    );
 };
