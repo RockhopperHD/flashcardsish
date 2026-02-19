@@ -9,8 +9,19 @@ declare global {
     }
 }
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+const FALLBACK_GOOGLE_CLIENT_ID = '108421532744-dcb911h9go7p3abunl0qe3jkd32v61c3.apps.googleusercontent.com';
+const FALLBACK_GOOGLE_API_KEY = 'AIzaSyC2JucOW6H74fe1cgt6zz-s5JnD7ku_0dw';
+const runtimeConfig = (globalThis as any).__FLASHCARDSISH_CONFIG__ ?? {};
+const CLIENT_ID = String(
+    runtimeConfig.googleClientId ??
+    import.meta.env.VITE_GOOGLE_CLIENT_ID ??
+    FALLBACK_GOOGLE_CLIENT_ID
+).trim();
+const API_KEY = String(
+    runtimeConfig.googleApiKey ??
+    import.meta.env.VITE_GOOGLE_API_KEY ??
+    FALLBACK_GOOGLE_API_KEY
+).trim();
 // Need both Drive access and user info access
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
@@ -34,10 +45,20 @@ class GoogleDriveClient {
     private currentUser: GoogleDriveUser | null = null;
     private rememberSession = true;
 
+    private validateGoogleConfig(): void {
+        if (!CLIENT_ID) {
+            throw new Error('Google OAuth client ID is missing. Set VITE_GOOGLE_CLIENT_ID.');
+        }
+        if (!API_KEY) {
+            throw new Error('Google API key is missing. Set VITE_GOOGLE_API_KEY.');
+        }
+    }
+
     async init(): Promise<void> {
         if (this.gapiInitialized && this.gisInitialized) return;
 
         // console.log('[GoogleDrive] Starting initialization...');
+        this.validateGoogleConfig();
 
         // 1. Try to restore session from localStorage first
         this.restoreSession();
@@ -115,6 +136,9 @@ class GoogleDriveClient {
 
             window.gapi.load('client', async () => {
                 try {
+                    if (!API_KEY) {
+                        throw new Error('Google API key is missing. Set VITE_GOOGLE_API_KEY.');
+                    }
                     await window.gapi.client.init({
                         apiKey: API_KEY,
                         discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
@@ -141,6 +165,10 @@ class GoogleDriveClient {
                 // Retry after a short delay
                 setTimeout(() => this.initGis().then(resolve), 100);
                 return;
+            }
+
+            if (!CLIENT_ID) {
+                throw new Error('Google OAuth client ID is missing. Set VITE_GOOGLE_CLIENT_ID.');
             }
 
             this.tokenClient = window.google.accounts.oauth2.initTokenClient({
