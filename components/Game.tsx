@@ -381,7 +381,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [batchProgressBarWidth, setBatchProgressBarWidth] = useState(0);
 
    // Refs
-   const termInputRef = useRef<HTMLInputElement>(null);
+   const termInputRef = useRef<RichInputRef>(null);
    const yearInputRef = useRef<HTMLInputElement>(null);
 
    const submitButtonRef = useRef<HTMLButtonElement>(null);
@@ -432,7 +432,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          if (currentIndex > 0) {
             const prevField = order[currentIndex - 1];
             if (prevField === 'term') {
-               termInputRef.current?.focus();
+               termInputRef.current?.focus({ position: 'first-gap' });
             } else if (prevField === 'year') {
                yearInputRef.current?.focus();
             } else {
@@ -477,6 +477,31 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       if (!currentId) return activeQueue[0] || null;
       return set.cards.find(c => c.id === currentId) || activeQueue[0] || null;
    }, [currentId, set.cards, activeQueue]);
+
+   // Ensure Slabs Cannot Be Deleted / Pre-filled
+   useEffect(() => {
+      if (!currentCard || (feedback.type !== 'idle' && feedback.type !== 'retype_needed')) return;
+      const expectedMatchText = settings.answerWithDefinition ? currentCard.content : currentCard.term[0];
+      const slabs = expectedMatchText?.match(/\[\[.*?\]\]/g);
+      if (slabs && slabs.length > 0) {
+         let missing = false;
+         for (const slab of slabs) {
+            if (!inputTerm.includes(slab)) {
+               missing = true;
+               break;
+            }
+         }
+         if (missing || inputTerm === '') {
+            const parts = expectedMatchText.split(/\[\[.*?\]\]/g);
+            let finalPrep = '';
+            for (let i = 0; i < parts.length; i++) {
+               if (parts[i].length > 0) finalPrep += '\u200B';
+               if (i < slabs.length) finalPrep += slabs[i];
+            }
+            setInputTerm(finalPrep);
+         }
+      }
+   }, [inputTerm, currentCard, settings.answerWithDefinition, feedback.type]);
 
    // Counts for header
    const counts = useMemo(() => {
@@ -630,7 +655,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    useEffect(() => {
       if (isEditOpen) return; // Don't steal focus when edit modal is open
       if (feedback.type === 'idle' || feedback.type === 'retype_needed') {
-         termInputRef.current?.focus();
+         termInputRef.current?.focus({ position: 'first-gap' });
       }
    }, [feedback.type, currentId, isEditOpen]);
 
@@ -1812,25 +1837,20 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                        : currentCard.term[0]}
                                  </div>
                               )}
-                              <input
+                              <RichInput
                                  ref={termInputRef}
-                                 type="text"
                                  value={inputTerm}
-                                 onChange={(e) => setInputTerm(e.target.value)}
-
+                                 onChange={(val) => setInputTerm(val)}
                                  disabled={!isInteractive || (feedback.type === 'retype_needed' && feedback.results?.isTermMatch)}
                                  placeholder={feedback.type === 'retype_needed'
                                     ? `Retype ${inputLabel.toLowerCase()}...`
                                     : `Type the ${inputLabel.toLowerCase()}...`}
                                  className={clsx(
-                                    "w-full h-full bg-panel-2 border rounded-xl px-6 py-5 text-xl focus:outline-none focus:border-accent disabled:opacity-50 transition-colors placeholder-text/20",
+                                    "w-full h-full bg-panel-2 border rounded-xl px-6 py-5 text-xl flex items-center focus:outline-none focus:border-accent disabled:opacity-50 transition-colors empty:before:content-[attr(data-placeholder)] empty:before:text-text/20",
                                     feedback.type === 'retype_needed' && !feedback.results?.isTermMatch ? "border-red text-red" : "border-outline text-text",
                                     feedback.type === 'retype_needed' && feedback.results?.isTermMatch && "border-green text-green bg-green/5"
                                  )}
-                                 autoComplete="off"
-                                 onKeyDown={(e) => {
-                                    handleInputKeyDown(e);
-                                 }}
+                                 onKeyDown={(e) => handleInputKeyDown(e as any)}
                               />
                            </div>
                         );

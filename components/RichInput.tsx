@@ -13,11 +13,12 @@ interface RichInputProps {
     onKeyUp?: (e: React.KeyboardEvent) => void;
     onMouseUp?: (e: React.MouseEvent) => void;
     onContextMenu?: (e: React.MouseEvent) => void;
+    disabled?: boolean;
 }
 
 export interface RichInputRef {
     applyFormat: (type: string, value?: string) => void;
-    focus: () => void;
+    focus: (opts?: { position?: 'end' | 'first-gap' }) => void;
     getContainer: () => HTMLDivElement | null;
 }
 
@@ -139,7 +140,7 @@ const markdownToHtmlInline = (text: string): string => {
 
     while (remaining.length > 0) {
         // Regex search
-        const tokenRegex = /(<h=[rbgpy]>)|(<\/h>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)|(<\/u>)/;
+        const tokenRegex = /(\[\[.*?\]\])|(<h=[rbgpy]>)|(<\/h>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)|(<\/u>)/;
         const match = remaining.match(tokenRegex);
 
         if (!match) {
@@ -156,7 +157,11 @@ const markdownToHtmlInline = (text: string): string => {
 
         const rest = remaining.substring(idx + token.length);
 
-        if (token.startsWith('<h=')) {
+        if (token.startsWith('[[') && token.endsWith(']]')) {
+            const innerText = token.substring(2, token.length - 2);
+            html += `<span data-md-start="[[" data-md-end="]]" contenteditable="false" class="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px);">${innerText}</span>`;
+            remaining = rest;
+        } else if (token.startsWith('<h=')) {
             // Highlight opener
             const color = token.charAt(3);
             const tag = `hl-${color}`;
@@ -240,7 +245,8 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     onKeyDown,
     onKeyUp,
     onMouseUp,
-    onContextMenu
+    onContextMenu,
+    disabled
 }, ref) => {
     const isMac = isMacPlatform();
     const contentEditableRef = useRef<HTMLDivElement>(null);
@@ -726,19 +732,39 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     };
 
     useImperativeHandle(ref, () => ({
-        focus: () => {
+        focus: (opts?: { position?: 'end' | 'first-gap' }) => {
             if (contentEditableRef.current) {
                 contentEditableRef.current.focus();
+
+                const selection = window.getSelection();
+                if (!selection) return;
+
+                if (opts?.position === 'first-gap') {
+                    const walker = document.createTreeWalker(contentEditableRef.current, NodeFilter.SHOW_TEXT, null);
+                    let gapNode: Node | null = null;
+                    while (walker.nextNode()) {
+                        if (walker.currentNode.textContent?.includes('\u200B')) {
+                            gapNode = walker.currentNode;
+                            break;
+                        }
+                    }
+
+                    if (gapNode) {
+                        const range = document.createRange();
+                        range.setStart(gapNode, gapNode.textContent!.indexOf('\u200B') + 1);
+                        range.collapse(true);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        return;
+                    }
+                }
 
                 // Move cursor to end of content
                 const range = document.createRange();
                 range.selectNodeContents(contentEditableRef.current);
                 range.collapse(false);
-                const selection = window.getSelection();
-                if (selection) {
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                }
+                selection.removeAllRanges();
+                selection.addRange(range);
             }
         },
         applyFormat,
@@ -848,6 +874,47 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             }
         }
 
+        // Handle Tab for Slabs
+        if (e.key === 'Tab' && selection && selection.isCollapsed) {
+            const range = selection.getRangeAt(0);
+
+            let nextNode: Node | null = null;
+            if (range.startContainer.nodeType === Node.TEXT_NODE) {
+                if (range.startOffset === range.startContainer.textContent?.length) {
+                    nextNode = range.startContainer.nextSibling;
+                }
+            } else {
+                nextNode = range.startContainer.childNodes[range.startOffset];
+            }
+
+            if (nextNode && nextNode.nodeType === Node.ELEMENT_NODE) {
+                const el = nextNode as HTMLElement;
+                if (el.dataset?.mdStart === '[[') {
+                    // Cursor is strictly before a slab.
+                    let afterSlab = el.nextSibling;
+                    if (afterSlab) {
+                        e.preventDefault();
+                        const newRange = document.createRange();
+                        // If there is text, select the text node to keep the cursor in a valid editing state
+                        if (afterSlab.nodeType === Node.TEXT_NODE) {
+                            newRange.setStart(afterSlab, 0);
+                        } else {
+                            if (afterSlab.nodeName === 'BR') {
+                                newRange.setStartBefore(afterSlab);
+                            } else {
+                                // For spans or other nodes, safest is often startBefore or inserting a zero-width space
+                                newRange.setStartBefore(afterSlab);
+                            }
+                        }
+                        newRange.collapse(true);
+                        selection.removeAllRanges();
+                        selection.addRange(newRange);
+                        return;
+                    }
+                }
+            }
+        }
+
         // Keyboard Shortcuts (Ctrl/Cmd)
         const modKeyPressed = isMac ? e.metaKey : e.ctrlKey;
         if (modKeyPressed && !e.shiftKey && !e.altKey) {
@@ -873,8 +940,8 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
     return (
         <div
             ref={contentEditableRef}
-            contentEditable
-            className={clsx("outline-none whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className)}
+            contentEditable={!disabled}
+            className={clsx("outline-none whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className, disabled && "opacity-50 pointer-events-none")}
             onInput={handleInput}
             onBlur={() => {
                 // On blur, force a sync so the user sees formatted content

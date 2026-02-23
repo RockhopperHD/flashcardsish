@@ -591,6 +591,14 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                   </tr>
                   <tr>
                     <td className="px-4 py-3 font-mono text-muted">
+                      [[slab]]
+                    </td>
+                    <td className="px-4 py-3 text-right text-text">
+                      <span className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)' }}>slab</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-mono text-muted">
                       (Cue) Text
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -1075,7 +1083,7 @@ const SetConfigurationModal: React.FC<{
   setImportOverride?: (s: "keep" | "duplicate" | "override") => void;
   rawText?: string;
   setRawText?: (s: string) => void;
-  onImportContinue?: (cards: Partial<Card>[]) => void;
+  onImportContinue?: (cards: Partial<Card>[], append: boolean, overrideStrategy: 'keep' | 'duplicate' | 'override') => void;
   hideImportButton?: boolean;
   builderRows?: BuilderRow[];
   setBuilderRows?: (rows: BuilderRow[]) => void;
@@ -1101,10 +1109,6 @@ const SetConfigurationModal: React.FC<{
   enableTermCards,
   setEnableTermCards,
   settings,
-  importAppend,
-  setImportAppend,
-  importOverride,
-  setImportOverride,
   rawText,
   setRawText,
   onImportContinue,
@@ -1307,18 +1311,19 @@ const SetConfigurationModal: React.FC<{
           className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
           onMouseDown={handleClose}
         >
-        <div
-          className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-6xl h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
+          <div
+            className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-6xl h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <RawTextImport
               onClose={() => setMode('config')}
-              onContinue={(cards) => {
-                onImportContinue(cards);
+              onContinue={(cards, append, overrideStrategy) => {
+                onImportContinue(cards, append, overrideStrategy);
                 handleClose();
               }}
               rawText={rawText}
               setRawText={setRawText}
+              settings={settings}
               isModal={true}
             />
           </div>
@@ -1363,385 +1368,385 @@ const SetConfigurationModal: React.FC<{
 
             <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
               <div className="grid md:grid-cols-2 gap-8">
-              {/* Term Side */}
-              <Droppable droppableId="term">
-                {(provided, snapshot) => (
-                  <div
-                    className={clsx(
-                      "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
-                      snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
-                    )}
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                  >
-                    <div className="uppercase text-xs font-bold text-muted tracking-widest">
-                      Terms Side
-                    </div>
+                {/* Term Side */}
+                <Droppable droppableId="term">
+                  {(provided, snapshot) => (
+                    <div
+                      className={clsx(
+                        "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
+                        snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+                      )}
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                    >
+                      <div className="uppercase text-xs font-bold text-muted tracking-widest">
+                        Terms Side
+                      </div>
 
-                    <div className="flex items-center gap-2 relative">
-                      <HelperTooltip
-                        show={activeLabelSide === "term"}
-                        hideTooltips={settings.hideTooltips}
-                        text={
-                          <span>
-                            When you’re studying <b>Terms</b>, we’ll call the{" "}
-                            <b>Terms</b> side this word. You can put a language here, a
-                            special title, or anything else.
+                      <div className="flex items-center gap-2 relative">
+                        <HelperTooltip
+                          show={activeLabelSide === "term"}
+                          hideTooltips={settings.hideTooltips}
+                          text={
+                            <span>
+                              When you’re studying <b>Terms</b>, we’ll call the{" "}
+                              <b>Terms</b> side this word. You can put a language here, a
+                              special title, or anything else.
+                            </span>
+                          }
+                        />
+                        <input
+                          value={termLabel}
+                          onChange={(e) => setTermLabel(e.target.value)}
+                          onFocus={() => setActiveLabelSide("term")}
+                          onBlur={() => setActiveLabelSide(null)}
+                          className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                          placeholder="Term"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+                          Custom Fields
+                          <span className="text-xs font-normal text-muted">
+                            {termSideFields.length}/4
                           </span>
-                        }
-                      />
-                      <input
-                        value={termLabel}
-                        onChange={(e) => setTermLabel(e.target.value)}
-                        onFocus={() => setActiveLabelSide("term")}
-                        onBlur={() => setActiveLabelSide(null)}
-                        className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                        placeholder="Term"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                        Custom Fields
-                        <span className="text-xs font-normal text-muted">
-                          {termSideFields.length}/4
-                        </span>
-                      </label>
-                      <div className="flex flex-col gap-1 min-h-[50px]">
-                        {termSideFields.map((field, i) => (
-                          <Draggable
-                            key={field.id || `term-${i}`}
-                            draggableId={field.id || `term-${i}`}
-                            index={i}
-                          >
-                            {(provided, snapshot) => (
-                              <div className="group/field-row">
-                                <FieldRowComponent
-                                  field={field}
-                                  index={i}
-                                  update={updateTermField}
-                                  remove={deleteTermField}
-                                  isLast={i === termSideFields.length - 1}
-                                  addNext={addTermField}
-                                  side="term"
-                                  activeFieldId={activeFieldId}
-                                  setActiveFieldId={setActiveFieldId}
-                                  termLabel={termLabel}
-                                  definitionLabel={definitionLabel}
-                                  hideTooltips={settings.hideTooltips}
-                                  onSwap={() => swapTermField(i)}
-                                  innerRef={provided.innerRef}
-                                  draggableProps={provided.draggableProps}
-                                  dragHandleProps={provided.dragHandleProps}
-                                  isDragging={snapshot.isDragging}
-                                />
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {termSideFields.length < 4 && (
-                          <button
-                            onClick={addTermField}
-                            className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
-                          >
-                            <Plus size={14} /> Add Field
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </Droppable>
-
-              {/* Definition Side */}
-              <Droppable droppableId="def">
-                {(provided, snapshot) => (
-                  <div
-                    className={clsx(
-                      "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
-                      snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
-                    )}
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                  >
-                    <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
-                      Definitions Side
-                    </div>
-
-                    <div className="flex items-center gap-2 relative">
-                      <HelperTooltip
-                        show={activeLabelSide === "def"}
-                        hideTooltips={settings.hideTooltips}
-                        text={
-                          <span>
-                            When you’re studying <b>Definitions</b>, we’ll call the{" "}
-                            <b>Definitions</b> side this word. You can put a language
-                            here, a special title, or anything else.
-                          </span>
-                        }
-                      />
-                      <input
-                        value={definitionLabel}
-                        onChange={(e) => setDefinitionLabel(e.target.value)}
-                        onFocus={() => setActiveLabelSide("def")}
-                        onBlur={() => setActiveLabelSide(null)}
-                        className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                        placeholder="Definition"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                        Custom Fields
-                        <span className="text-xs font-normal text-muted">
-                          {defSideFields.length}/4
-                        </span>
-                      </label>
-                      <div className="flex flex-col gap-1 min-h-[50px]">
-                        {defSideFields.map((field, i) => (
-                          <Draggable
-                            key={field.id || `def-${i}`}
-                            draggableId={field.id || `def-${i}`}
-                            index={i}
-                          >
-                            {(provided, snapshot) => (
-                              <div className="group/field-row">
-                                <FieldRowComponent
-                                  field={field}
-                                  index={i}
-                                  update={updateDefField}
-                                  remove={deleteDefField}
-                                  isLast={i === defSideFields.length - 1}
-                                  addNext={addDefField}
-                                  side="def"
-                                  activeFieldId={activeFieldId}
-                                  setActiveFieldId={setActiveFieldId}
-                                  termLabel={termLabel}
-                                  definitionLabel={definitionLabel}
-                                  hideTooltips={settings.hideTooltips}
-                                  onSwap={() => swapDefField(i)}
-                                  innerRef={provided.innerRef}
-                                  draggableProps={provided.draggableProps}
-                                  dragHandleProps={provided.dragHandleProps}
-                                  isDragging={snapshot.isDragging}
-                                />
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                        {defSideFields.length < 4 && (
-                          <button
-                            onClick={addDefField}
-                            className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
-                          >
-                            <Plus size={14} /> Add Field
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </Droppable>
-            </div>
-          </DragDropContext>
-
-          {/* Set Data Section */}
-          <div className="mt-8 pt-6 border-t border-outline/50">
-            <h4 className="text-lg font-bold text-text mb-4">Set Data</h4>
-            <div className="flex flex-col gap-4">
-              {/* Applied Tags List */}
-              {appliedTags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {tags.filter(t => appliedTags.includes(t.id)).map(tag => (
-                    <div key={tag.id} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-text text-sm font-medium">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: getTagColor(tag.color) }}
-                      />
-                      {tag.name}
-                      <button
-                        onClick={() => setAppliedTags(appliedTags.filter(id => id !== tag.id))}
-                        className="ml-1 text-muted hover:text-red transition-colors"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
-                  >
-                    <Plus size={16} />
-                    Add Tag
-                  </button>
-
-                  {isTagDropdownOpen && (
-                    <div className="absolute top-full left-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl z-50 animate-in fade-in zoom-in-95 flex flex-col overflow-hidden">
-                      <div className="max-h-60 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                        {tags.length === 0 ? (
-                          <div className="p-4 text-center text-xs text-muted italic">No tags found.</div>
-                        ) : (
-                          tags.map(tag => {
-                            const isSelected = appliedTags.includes(tag.id);
-                            return (
-                              <button
-                                key={tag.id}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setAppliedTags(appliedTags.filter(id => id !== tag.id));
-                                  } else {
-                                    setAppliedTags([...appliedTags, tag.id]);
-                                  }
-                                }}
-                                className={clsx(
-                                  "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
-                                  isSelected ? "bg-accent/10 text-text" : "hover:bg-panel-2 text-muted hover:text-text"
-                                )}
-                              >
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: getTagColor(tag.color) }}
-                                />
-                                <span className="flex-1 truncate">{tag.name}</span>
-                                {isSelected && <Check size={14} className="text-accent" />}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-
-                      {/* Frozen Footer */}
-                      <div className="p-2 border-t border-outline bg-panel-2">
-                        <button
-                          onClick={() => {
-                            setIsTagDropdownOpen(false);
-                            if (onManageTags) onManageTags();
-                          }}
-                          className="w-full text-center px-3 py-2 text-xs font-bold text-accent hover:underline transition-all"
-                        >
-                          Manage Tags
-                        </button>
+                        </label>
+                        <div className="flex flex-col gap-1 min-h-[50px]">
+                          {termSideFields.map((field, i) => (
+                            <Draggable
+                              key={field.id || `term-${i}`}
+                              draggableId={field.id || `term-${i}`}
+                              index={i}
+                            >
+                              {(provided, snapshot) => (
+                                <div className="group/field-row">
+                                  <FieldRowComponent
+                                    field={field}
+                                    index={i}
+                                    update={updateTermField}
+                                    remove={deleteTermField}
+                                    isLast={i === termSideFields.length - 1}
+                                    addNext={addTermField}
+                                    side="term"
+                                    activeFieldId={activeFieldId}
+                                    setActiveFieldId={setActiveFieldId}
+                                    termLabel={termLabel}
+                                    definitionLabel={definitionLabel}
+                                    hideTooltips={settings.hideTooltips}
+                                    onSwap={() => swapTermField(i)}
+                                    innerRef={provided.innerRef}
+                                    draggableProps={provided.draggableProps}
+                                    dragHandleProps={provided.dragHandleProps}
+                                    isDragging={snapshot.isDragging}
+                                  />
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                          {termSideFields.length < 4 && (
+                            <button
+                              onClick={addTermField}
+                              className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                            >
+                              <Plus size={14} /> Add Field
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
-                </div>
+                </Droppable>
 
-                {!hideImportButton && (
-                  <button
-                    onClick={() => setMode("import")}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
-                  >
-                    <FileText size={14} />
-                    Raw Text Import
-                  </button>
+                {/* Definition Side */}
+                <Droppable droppableId="def">
+                  {(provided, snapshot) => (
+                    <div
+                      className={clsx(
+                        "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
+                        snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+                      )}
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                    >
+                      <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
+                        Definitions Side
+                      </div>
+
+                      <div className="flex items-center gap-2 relative">
+                        <HelperTooltip
+                          show={activeLabelSide === "def"}
+                          hideTooltips={settings.hideTooltips}
+                          text={
+                            <span>
+                              When you’re studying <b>Definitions</b>, we’ll call the{" "}
+                              <b>Definitions</b> side this word. You can put a language
+                              here, a special title, or anything else.
+                            </span>
+                          }
+                        />
+                        <input
+                          value={definitionLabel}
+                          onChange={(e) => setDefinitionLabel(e.target.value)}
+                          onFocus={() => setActiveLabelSide("def")}
+                          onBlur={() => setActiveLabelSide(null)}
+                          className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                          placeholder="Definition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+                          Custom Fields
+                          <span className="text-xs font-normal text-muted">
+                            {defSideFields.length}/4
+                          </span>
+                        </label>
+                        <div className="flex flex-col gap-1 min-h-[50px]">
+                          {defSideFields.map((field, i) => (
+                            <Draggable
+                              key={field.id || `def-${i}`}
+                              draggableId={field.id || `def-${i}`}
+                              index={i}
+                            >
+                              {(provided, snapshot) => (
+                                <div className="group/field-row">
+                                  <FieldRowComponent
+                                    field={field}
+                                    index={i}
+                                    update={updateDefField}
+                                    remove={deleteDefField}
+                                    isLast={i === defSideFields.length - 1}
+                                    addNext={addDefField}
+                                    side="def"
+                                    activeFieldId={activeFieldId}
+                                    setActiveFieldId={setActiveFieldId}
+                                    termLabel={termLabel}
+                                    definitionLabel={definitionLabel}
+                                    hideTooltips={settings.hideTooltips}
+                                    onSwap={() => swapDefField(i)}
+                                    innerRef={provided.innerRef}
+                                    draggableProps={provided.draggableProps}
+                                    dragHandleProps={provided.dragHandleProps}
+                                    isDragging={snapshot.isDragging}
+                                  />
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          {provided.placeholder}
+                          {defSideFields.length < 4 && (
+                            <button
+                              onClick={addDefField}
+                              className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                            >
+                              <Plus size={14} /> Add Field
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            </DragDropContext>
+
+            {/* Set Data Section */}
+            <div className="mt-8 pt-6 border-t border-outline/50">
+              <h4 className="text-lg font-bold text-text mb-4">Set Data</h4>
+              <div className="flex flex-col gap-4">
+                {/* Applied Tags List */}
+                {appliedTags.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {tags.filter(t => appliedTags.includes(t.id)).map(tag => (
+                      <div key={tag.id} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-text text-sm font-medium">
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: getTagColor(tag.color) }}
+                        />
+                        {tag.name}
+                        <button
+                          onClick={() => setAppliedTags(appliedTags.filter(id => id !== tag.id))}
+                          className="ml-1 text-muted hover:text-red transition-colors"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      onClick={() => setIsTagDropdownOpen(!isTagDropdownOpen)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
+                    >
+                      <Plus size={16} />
+                      Add Tag
+                    </button>
+
+                    {isTagDropdownOpen && (
+                      <div className="absolute top-full left-0 mt-2 w-64 bg-panel border border-outline rounded-xl shadow-xl z-50 animate-in fade-in zoom-in-95 flex flex-col overflow-hidden">
+                        <div className="max-h-60 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                          {tags.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-muted italic">No tags found.</div>
+                          ) : (
+                            tags.map(tag => {
+                              const isSelected = appliedTags.includes(tag.id);
+                              return (
+                                <button
+                                  key={tag.id}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setAppliedTags(appliedTags.filter(id => id !== tag.id));
+                                    } else {
+                                      setAppliedTags([...appliedTags, tag.id]);
+                                    }
+                                  }}
+                                  className={clsx(
+                                    "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left",
+                                    isSelected ? "bg-accent/10 text-text" : "hover:bg-panel-2 text-muted hover:text-text"
+                                  )}
+                                >
+                                  <div
+                                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                    style={{ backgroundColor: getTagColor(tag.color) }}
+                                  />
+                                  <span className="flex-1 truncate">{tag.name}</span>
+                                  {isSelected && <Check size={14} className="text-accent" />}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Frozen Footer */}
+                        <div className="p-2 border-t border-outline bg-panel-2">
+                          <button
+                            onClick={() => {
+                              setIsTagDropdownOpen(false);
+                              if (onManageTags) onManageTags();
+                            }}
+                            className="w-full text-center px-3 py-2 text-xs font-bold text-accent hover:underline transition-all"
+                          >
+                            Manage Tags
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {!hideImportButton && (
+                    <button
+                      onClick={() => setMode("import")}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
+                    >
+                      <FileText size={14} />
+                      Raw Text Import
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-8 pt-6 border-t border-outline/50">
-            <h4 className="text-lg font-bold text-text mb-4">Misc.</h4>
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
-                <CursorTooltip
-                  content="Adds an extra custom field for putting the year in. Goes on the term side."
-                  isEnabled={!settings.hideTooltips}
-                  tooltipClassName="w-80 max-w-[90vw]"
-                >
-                  <label className="flex items-center gap-3 cursor-pointer select-none group">
-                    <input
-                      type="checkbox"
-                      checked={showYear}
-                      onChange={() => setShowYear(!showYear)}
-                      className="hidden"
-                    />
-                    <div
-                      className={clsx(
-                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-                        showYear
-                          ? "bg-accent border-accent"
-                          : "border-outline group-hover:border-accent",
-                      )}
-                    >
-                      {showYear && (
-                        <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
-                      )}
-                    </div>
-                    <div className="text-sm font-bold text-text">
-                      Enable Year Field
-                    </div>
-                  </label>
-                </CursorTooltip>
+            <div className="mt-8 pt-6 border-t border-outline/50">
+              <h4 className="text-lg font-bold text-text mb-4">Misc.</h4>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <CursorTooltip
+                    content="Adds an extra custom field for putting the year in. Goes on the term side."
+                    isEnabled={!settings.hideTooltips}
+                    tooltipClassName="w-80 max-w-[90vw]"
+                  >
+                    <label className="flex items-center gap-3 cursor-pointer select-none group">
+                      <input
+                        type="checkbox"
+                        checked={showYear}
+                        onChange={() => setShowYear(!showYear)}
+                        className="hidden"
+                      />
+                      <div
+                        className={clsx(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          showYear
+                            ? "bg-accent border-accent"
+                            : "border-outline group-hover:border-accent",
+                        )}
+                      >
+                        {showYear && (
+                          <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                        )}
+                      </div>
+                      <div className="text-sm font-bold text-text">
+                        Enable Year Field
+                      </div>
+                    </label>
+                  </CursorTooltip>
 
-                <CursorTooltip
-                  content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
-                  isEnabled={!settings.hideTooltips}
-                  tooltipClassName="w-80 max-w-[90vw]"
+                  <CursorTooltip
+                    content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
+                    isEnabled={!settings.hideTooltips}
+                    tooltipClassName="w-80 max-w-[90vw]"
+                  >
+                    <label className="flex items-center gap-3 cursor-pointer select-none group">
+                      <input
+                        type="checkbox"
+                        checked={enableTermCards}
+                        onChange={() => {
+                          const newValue = !enableTermCards;
+                          setEnableTermCards(newValue);
+                          // Clear term images when disabling
+                          if (!newValue && builderRows && setBuilderRows) {
+                            setBuilderRows(builderRows.map(row => ({ ...row, termImage: "" })));
+                          }
+                        }}
+                        className="hidden"
+                      />
+                      <div
+                        className={clsx(
+                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+                          enableTermCards
+                            ? "bg-accent border-accent"
+                            : "border-outline group-hover:border-accent",
+                        )}
+                      >
+                        {enableTermCards && (
+                          <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                        )}
+                      </div>
+                      <div className="text-sm font-bold text-text">
+                        Enable Term Images
+                      </div>
+                    </label>
+                  </CursorTooltip>
+                </div>
+
+                <button
+                  onClick={() => {
+                    // Filter out blank fields before closing
+                    const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
+                    const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
+
+                    if (cleanTermFields.length !== termSideFields.length) {
+                      setTermSideFields(cleanTermFields);
+                    }
+                    if (cleanDefFields.length !== defSideFields.length) {
+                      setDefSideFields(cleanDefFields);
+                    }
+
+                    onClose();
+                  }}
+                  className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
                 >
-                  <label className="flex items-center gap-3 cursor-pointer select-none group">
-                    <input
-                      type="checkbox"
-                      checked={enableTermCards}
-                      onChange={() => {
-                        const newValue = !enableTermCards;
-                        setEnableTermCards(newValue);
-                        // Clear term images when disabling
-                        if (!newValue && builderRows && setBuilderRows) {
-                          setBuilderRows(builderRows.map(row => ({ ...row, termImage: "" })));
-                        }
-                      }}
-                      className="hidden"
-                    />
-                    <div
-                      className={clsx(
-                        "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-                        enableTermCards
-                          ? "bg-accent border-accent"
-                          : "border-outline group-hover:border-accent",
-                      )}
-                    >
-                      {enableTermCards && (
-                        <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
-                      )}
-                    </div>
-                    <div className="text-sm font-bold text-text">
-                      Enable Term Images
-                    </div>
-                  </label>
-                </CursorTooltip>
+                  OK
+                </button>
               </div>
-
-              <button
-                onClick={() => {
-                  // Filter out blank fields before closing
-                  const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
-                  const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
-
-                  if (cleanTermFields.length !== termSideFields.length) {
-                    setTermSideFields(cleanTermFields);
-                  }
-                  if (cleanDefFields.length !== defSideFields.length) {
-                    setDefSideFields(cleanDefFields);
-                  }
-
-                  onClose();
-                }}
-                className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
-              >
-                OK
-              </button>
             </div>
           </div>
         </div>
       </div>
-    </div>
     );
   };
 
@@ -2434,8 +2439,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showAddSetModal, setShowAddSetModal] = useState(false);
-  const [importAppend, setImportAppend] = useState(true);
-  const [importOverride, setImportOverride] = useState<'keep' | 'duplicate' | 'override'>('keep');
   const [builderMode, setBuilderMode] = useState<"visual" | "raw">("visual"); // Deprecated?
   const [wysiwyg, setWysiwyg] = useState(true);
   const [showWysiwygHelp, setShowWysiwygHelp] = useState(false);
@@ -3399,7 +3402,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setShowAddSetModal(true);
   };
 
-  const handleRawTextContinue = (cards: Partial<Card>[]) => {
+  const handleRawTextContinue = (cards: Partial<Card>[], append: boolean = true, overrideStrategy: 'keep' | 'duplicate' | 'override' = 'keep') => {
     // Convert cards to BuilderRows
     const newRows: BuilderRow[] = cards.map((c, i) => {
       let term = c.term?.[0] || "";
@@ -3421,14 +3424,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     if (cards.some((c) => c.year && c.year.trim())) setShowYear(true);
 
     // Merge Logic based on importAppend & importOverride
-    if (!settings.importAppend) {
+    if (!append) {
       // If not appending, replace entirely
       setBuilderRows(newRows);
     } else {
       // Append mode
       setBuilderRows(prev => {
         const result = [...prev];
-        const strategy = settings.importOverride || 'keep';
+        const strategy = overrideStrategy || 'keep';
 
         newRows.forEach(row => {
           // Check for duplicate by term
@@ -4306,10 +4309,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         setShowYear={setShowYear}
         enableTermCards={enableTermCards}
         setEnableTermCards={setEnableTermCards}
-        importAppend={importAppend}
-        setImportAppend={setImportAppend}
-        importOverride={importOverride}
-        setImportOverride={setImportOverride}
         rawText={rawText}
         setRawText={setRawText}
         onImportContinue={handleRawTextContinue}
@@ -5339,6 +5338,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             onContinue={handleRawTextContinue}
             rawText={rawText}
             setRawText={setRawText}
+            settings={settings}
           />
         )}
 

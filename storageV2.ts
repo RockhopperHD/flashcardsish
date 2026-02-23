@@ -40,8 +40,6 @@ export const DEFAULT_SETTINGS: Settings = {
     batchLength: 10,
     shuffleCards: true,
     brutalMode: false,
-    importAppend: true,
-    importOverride: 'duplicate',
     autoCloseImageWindow: false,
     hideTooltips: false,
     darkMode: true,

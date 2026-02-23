@@ -655,47 +655,6 @@ const SettingsModal: React.FC<{
 
                   {activeTab === 'builder' && (
                      <div className="space-y-4">
-                        <TooltipWrapper id="importAppend" tooltip={tooltips.importAppend} settings={settings}>
-                           <label
-                              onClick={() => toggle('importAppend')}
-                              className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all"
-                           >
-                              <span className="font-medium text-text">Append Import</span>
-                              <div
-                                 onClick={(e) => { e.stopPropagation(); toggle('importAppend'); }}
-                                 className={clsx("w-12 h-6 rounded-full p-1 transition-colors cursor-default", settings.importAppend ? "bg-accent" : "bg-outline")}
-                              >
-                                 <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.importAppend ? "translate-x-6" : "translate-x-0")} />
-                              </div>
-                           </label>
-                        </TooltipWrapper>
-
-                        <TooltipWrapper id="importOverride" tooltip={tooltips.importOverride} settings={settings}>
-                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
-                              <span className="font-medium text-text block mb-3">Duplicate Strategy</span>
-                              <div className="grid grid-cols-3 gap-2">
-                                 {[
-                                    { value: 'keep', label: 'Keep Old' },
-                                    { value: 'duplicate', label: 'Add Duplicate' },
-                                    { value: 'override', label: 'Override Old' }
-                                 ].map((opt) => (
-                                    <button
-                                       key={opt.value}
-                                       onClick={() => onUpdate({ ...settings, importOverride: opt.value as any })}
-                                       className={clsx(
-                                          "flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all border cursor-default",
-                                          settings.importOverride === opt.value
-                                             ? "bg-accent text-bg border-accent"
-                                             : "bg-panel border-outline text-muted hover:text-text hover:border-accent/50"
-                                       )}
-                                    >
-                                       {opt.label}
-                                    </button>
-                                 ))}
-                              </div>
-                           </div>
-                        </TooltipWrapper>
-
                         <TooltipWrapper id="autoCloseImageWindow" tooltip={tooltips.autoCloseImageWindow} settings={settings}>
                            <label
                               onClick={() => toggle('autoCloseImageWindow')}
@@ -1192,8 +1151,6 @@ const App: React.FC = () => {
       batchLength: 10,
       shuffleCards: true,
       brutalMode: false,
-      importAppend: false,
-      importOverride: 'keep',
       autoCloseImageWindow: false
    });
 
@@ -1975,7 +1932,7 @@ const App: React.FC = () => {
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
 
-        <SettingsModal
+         <SettingsModal
             isOpen={isSettingsOpen}
             onClose={() => {
                setIsSettingsOpen(false);

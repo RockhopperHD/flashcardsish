@@ -256,7 +256,9 @@ export const checkAnswer = (
       .replace(/__/g, '')
       .replace(/`/g, '')
       .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '');
+      .replace(/<\/u>/g, '')
+      .replace(/\[\[.*?\]\]/g, '')
+      .replace(/\u200B/g, '');
     // Normalize and remove diacritics
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -343,6 +345,8 @@ export const checkDefinitionAnswer = (
       .replace(/`/g, '')
       .replace(/<u>/g, '')
       .replace(/<\/u>/g, '')
+      .replace(/\[\[.*?\]\]/g, '')
+      .replace(/\u200B/g, '')
       .replace(/<p>/gi, ' ')
       .replace(/- /g, ' ');
     // Normalize and remove diacritics
@@ -425,6 +429,8 @@ export const findMixup = (
       .replace(/`/g, '')
       .replace(/<u>/g, '')
       .replace(/<\/u>/g, '')
+      .replace(/\[\[.*?\]\]/g, '')
+      .replace(/\u200B/g, '')
       .replace(/<p>/gi, ' ')
       .replace(/- /g, ' ');
     clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -943,7 +949,7 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
   while (remaining.length > 0) {
     // Scan for next token
     // Note: Regex order matters (longest match first usually desirable for *** vs **)
-    const tokenRegex = /(<h=[rbgpy]>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)/;
+    const tokenRegex = /(\[\[.*?\]\])|(<h=[rbgpy]>)|(`)|(\*\*\*)|(\*\*)|(\*)|(__)|(<u>)/;
     const match = remaining.match(tokenRegex);
 
     if (!match) {
@@ -965,8 +971,21 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
     let handled = false;
     let consumedLength = 0;
 
+    // Slab: [[...]]
+    if (token.startsWith('[[') && token.endsWith(']]')) {
+      const content = token.substring(2, token.length - 2);
+      nodes.push(React.createElement('span', {
+        key: `${keyPrefix}-${cursor}-slab`,
+        className: "inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600",
+        style: {
+          backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)'
+        }
+      }, content));
+      consumedLength = token.length;
+      handled = true;
+    }
     // 1. Highlight <h=x>... (Supports Nesting)
-    if (token.startsWith('<h=')) {
+    else if (token.startsWith('<h=')) {
       let depth = 0;
       let endIdx = -1;
       const tagSearch = /<h=[rbgpy]>|<\/h>/g;

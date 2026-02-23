@@ -720,6 +720,12 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                     <td className="px-4 py-3 text-right"><u>underline</u></td>
                                 </tr>
                                 <tr>
+                                    <td className="px-4 py-3 font-mono text-muted">[[slab]]</td>
+                                    <td className="px-4 py-3 text-right">
+                                        <span className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)' }}>slab</span>
+                                    </td>
+                                </tr>
+                                <tr>
                                     <td className="px-4 py-3 font-mono text-muted">- Bullet</td>
                                     <td className="px-4 py-3 text-right">
                                         <ul className="list-disc list-inside inline-block">

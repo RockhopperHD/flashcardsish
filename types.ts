@@ -74,8 +74,6 @@ export interface Settings {
   batchLength: number; // Batch mode: number of cards per batch (default 10)
   shuffleCards: boolean; // Shuffle cards in Learn mode (default true)
   brutalMode: boolean; // Zen mode: if wrong at 1/2 mastery, reset to 0/2 (default false)
-  importAppend?: boolean;
-  importOverride?: 'keep' | 'duplicate' | 'override';
   autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
   // AI Features
   aiEnabled?: boolean; // Master killswitch for AI features (default false)
