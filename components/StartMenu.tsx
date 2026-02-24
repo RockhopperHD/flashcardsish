@@ -103,6 +103,7 @@ interface StartMenuProps {
   uiAuditRequest?: UiAuditRequest | null;
   onUiAuditHandled?: () => void;
   onHomeScreenActiveChange?: (isActive: boolean) => void;
+  homeNavigationNonce?: number;
 }
 
 interface BuilderRow {
@@ -1771,6 +1772,9 @@ const BuilderRowItem: React.FC<{
   onOpenImageModal: (id: string, field?: 'image' | 'termImage') => void;
   onDuplicate: (id: string) => void;
   onSwap: (id: string) => void;
+  nextRowId?: string;
+  onFocusRowTerm: (rowId: string) => void;
+  tabSelectsEverythingInBuilder: boolean;
   draggableProps?: DraggableProvided["draggableProps"];
   dragHandleProps?: DraggableProvided["dragHandleProps"];
   innerRef?: (element: HTMLElement | null) => void;
@@ -1794,6 +1798,9 @@ const BuilderRowItem: React.FC<{
     onOpenImageModal,
     onDuplicate,
     onSwap,
+    nextRowId,
+    onFocusRowTerm,
+    tabSelectsEverythingInBuilder,
     draggableProps,
     dragHandleProps,
     innerRef,
@@ -1934,6 +1941,7 @@ const BuilderRowItem: React.FC<{
     // Handle Term Keydown (Tab to Def)
     const handleTermKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement>) => {
       if (e.key === "Tab" && !e.shiftKey) {
+        if (tabSelectsEverythingInBuilder) return;
         e.preventDefault();
         setIsEditingDef(true);
       }
@@ -1952,10 +1960,15 @@ const BuilderRowItem: React.FC<{
       }
 
       if (e.key === "Tab" && !e.shiftKey) {
+        if (tabSelectsEverythingInBuilder) return;
+        e.preventDefault();
         // Def is the last field now.
         if (isLast) {
-          e.preventDefault();
           onAddNext();
+          return;
+        }
+        if (nextRowId) {
+          onFocusRowTerm(nextRowId);
         }
       }
     };
@@ -2093,6 +2106,7 @@ const BuilderRowItem: React.FC<{
               {isEditingTerm ? (
                 <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
                   <RichInput
+                    id={`term-${row.id}`}
                     ref={termInputRef}
                     value={row.term}
                     onChange={(val) => updateRow(row.id, "term", val)}
@@ -2109,6 +2123,7 @@ const BuilderRowItem: React.FC<{
                 </div>
               ) : (
                 <div
+                  id={`term-${row.id}`}
                   tabIndex={0}
                   onFocus={() => {
                     saveHistory();
@@ -2436,6 +2451,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   uiAuditRequest,
   onUiAuditHandled,
   onHomeScreenActiveChange,
+  homeNavigationNonce,
 }) => {
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -2752,6 +2768,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [newFolderColor, setNewFolderColor] =
     useState<Folder["color"]>("brown");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+
+  useEffect(() => {
+    if (view === "menu") {
+      setCurrentFolderId(null);
+    }
+  }, [homeNavigationNonce, view]);
+
   useEffect(() => {
     if (!uiAuditRequest) return;
 
@@ -3045,10 +3068,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const handleCreateFolder = () => {
-    if (selectedSetIds.size === 0) return;
     setNewFolderColor("brown");
     setIsCreatingFolder(true);
   };
+
+  const focusRowTerm = useCallback((rowId: string) => {
+    window.requestAnimationFrame(() => {
+      const el = document.getElementById(`term-${rowId}`) as HTMLElement | null;
+      if (el) el.focus();
+    });
+  }, []);
 
   const confirmCreateFolder = (color: Folder["color"] = "brown") => {
     const newFolder: Folder = {
@@ -4728,10 +4757,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </button>
                   )}
                   <button
-                    onClick={handleCreateNew}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-text text-bg rounded-lg text-xs font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
+                    onClick={handleCreateFolder}
+                    className="flex items-center gap-2 px-4 py-2 bg-panel-2 border border-outline text-text rounded-lg text-sm font-bold hover:border-accent hover:text-accent transition-all shadow-lg"
                   >
-                    <Plus size={14} /> Add
+                    <Plus size={16} /> Folder
+                  </button>
+                  <button
+                    onClick={handleCreateNew}
+                    className="flex items-center gap-2 px-4 py-2 bg-text text-bg rounded-lg text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
+                  >
+                    <Plus size={16} /> Add
                   </button>
                 </div>
               </div>
@@ -5460,6 +5495,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       onOpenImageModal={openImageModal}
                                       onDuplicate={duplicateRow}
                                       onSwap={swapRow}
+                                      nextRowId={builderRows[index + 1]?.id}
+                                      onFocusRowTerm={focusRowTerm}
+                                      tabSelectsEverythingInBuilder={!!settings.tabSelectsEverythingInBuilder}
                                       draggableProps={provided.draggableProps}
                                       dragHandleProps={provided.dragHandleProps}
                                       innerRef={provided.innerRef}

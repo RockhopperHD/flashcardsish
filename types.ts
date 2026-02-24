@@ -83,6 +83,7 @@ export interface Settings {
   learnModeRightKey1?: string; // Primary key for Right/Option B/False (default 'b')
   learnModeRightKey2?: string; // Secondary key for Right/Option B/False (default 'ArrowRight')
   autoAdvanceOnAnswer?: boolean; // Whether to auto-advance after answering A/B/True/False (default true)
+  tabSelectsEverythingInBuilder?: boolean; // If true, Tab follows normal page navigation in Visual Builder
   flipCardKey1?: string; // Primary key for flipping flashcard (default ' ' i.e. Space)
   flipCardKey2?: string; // Secondary key for flipping flashcard (default 'Enter')
   submitAnswerKey1?: string; // Primary key for submitting answer in Learn mode (default 'Enter')

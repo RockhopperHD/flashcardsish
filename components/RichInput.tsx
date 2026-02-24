@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { isMacPlatform } from '../utils';
 
 interface RichInputProps {
+    id?: string;
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
@@ -236,6 +237,7 @@ const markdownToHtmlInline = (text: string): string => {
 };
 
 export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
+    id,
     value,
     onChange,
     placeholder,
@@ -939,6 +941,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
 
     return (
         <div
+            id={id}
             ref={contentEditableRef}
             contentEditable={!disabled}
             className={clsx("outline-none whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className, disabled && "opacity-50 pointer-events-none")}

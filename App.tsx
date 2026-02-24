@@ -273,7 +273,8 @@ const SettingsModal: React.FC<{
       learnModeLeftKey2: "Secondary key for Option A / True.",
       learnModeRightKey1: "Primary key for Option B / False.",
       learnModeRightKey2: "Secondary key for Option B / False.",
-      autoAdvanceOnAnswer: "If enabled, selecting an A / B or True / False option will automatically advance to the next field or the Submit button. If disabled, you must press Tab or Enter to continue."
+      autoAdvanceOnAnswer: "If enabled, selecting an A / B or True / False option will automatically advance to the next field or the Submit button. If disabled, you must press Tab or Enter to continue.",
+      tabSelectsEverythingInBuilder: "When enabled, pressing tab in the Visual Editor will skip you to the next button on the screen instead of to the next text field."
    };
 
 
@@ -674,6 +675,14 @@ const SettingsModal: React.FC<{
 
                   {activeTab === 'builder' && (
                      <div className="space-y-4">
+                        <SettingRow
+                           id="tabSelectsEverythingInBuilder"
+                           label="Tab Selects Everything in the Builder"
+                           settingKey="tabSelectsEverythingInBuilder"
+                           settings={settings}
+                           tooltips={tooltips}
+                           onUpdate={onUpdate}
+                        />
                         <TooltipWrapper id="autoCloseImageWindow" tooltip={tooltips.autoCloseImageWindow} settings={settings}>
                            <label
                               onClick={() => toggle('autoCloseImageWindow')}
@@ -1150,6 +1159,7 @@ const App: React.FC = () => {
    const [folders, setFolders] = useState<Folder[]>([]);
    const [tags, setTags] = useState<Tag[]>([]);
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
+   const [menuHomeClickNonce, setMenuHomeClickNonce] = useState(0);
 
    const effectiveLibrarySets = React.useMemo(() => {
       return librarySets.map(set => set.isMultistudy ? syncMultistudySet(set, librarySets) : set);
@@ -1174,7 +1184,8 @@ const App: React.FC = () => {
       batchLength: 10,
       shuffleCards: true,
       brutalMode: false,
-      autoCloseImageWindow: false
+      autoCloseImageWindow: false,
+      tabSelectsEverythingInBuilder: false
    });
 
    // Modals
@@ -1917,6 +1928,7 @@ const App: React.FC = () => {
       setGameState(GameState.MENU);
       setActiveSetId(null);
       setIsRenaming(false);
+      setMenuHomeClickNonce(prev => prev + 1);
    };
 
    // Handle back from Learn mode to Set Detail
@@ -2266,6 +2278,7 @@ const App: React.FC = () => {
                   uiAuditRequest={uiAuditRequest}
                   onUiAuditHandled={() => setUiAuditRequest(null)}
                   onHomeScreenActiveChange={setIsHomeScreenActive}
+                  homeNavigationNonce={menuHomeClickNonce}
                />
             )}
 
@@ -2379,7 +2392,7 @@ const App: React.FC = () => {
          <button
             type="button"
             data-tally-open="A7dV60"
-            data-tally-auto-close="5000"
+            data-tally-auto-close="1000"
             className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border border-outline bg-panel px-4 py-3 text-sm font-bold text-text shadow-2xl transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
             aria-label="Open feedback form"
             title="Send feedback"

@@ -49,6 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
     learnModeRightKey1: 'b',
     learnModeRightKey2: 'ArrowRight',
     autoAdvanceOnAnswer: true,
+    tabSelectsEverythingInBuilder: false,
     flipCardKey1: ' ',
     flipCardKey2: 'Enter',
     submitAnswerKey1: 'Enter',
