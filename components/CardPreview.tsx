@@ -2,7 +2,7 @@ import React from 'react';
 import clsx from 'clsx';
 import { Star } from 'lucide-react';
 import { Card, CustomFieldDefinition } from '../types';
-import { renderMarkdown, sanitizeImageUrl } from '../utils';
+import { renderMarkdown, renderInline, sanitizeImageUrl } from '../utils';
 
 interface CardPreviewProps {
   card: Partial<Card>;
@@ -88,7 +88,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
             {termLabel || "Term"}
           </div>
           <div className="text-text text-base leading-relaxed">
-            {hasTerm ? card.term!.join(' / ') : <span className="text-muted italic">Empty Term</span>}
+            {hasTerm ? <>{renderInline(card.term!.join(' / '))}</> : <span className="text-muted italic">Empty Term</span>}
           </div>
 
           {card.year && (
@@ -105,7 +105,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
                     {cf.name}
                   </div>
                   <div className="text-sm text-text">
-                    {cf.value || <span className="text-muted italic">Empty</span>}
+                    {cf.value ? <>{renderInline(cf.value as string)}</> : <span className="text-muted italic">Empty</span>}
                   </div>
                 </div>
               ))}
@@ -135,7 +135,7 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
                     {cf.name}
                   </div>
                   <div className="text-sm text-text">
-                    {cf.value || <span className="text-muted italic">Empty</span>}
+                    {cf.value ? <>{renderInline(cf.value as string)}</> : <span className="text-muted italic">Empty</span>}
                   </div>
                 </div>
               ))}

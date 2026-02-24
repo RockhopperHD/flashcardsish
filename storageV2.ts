@@ -104,6 +104,7 @@ export interface FlashcardFile {
     topStreak: number;
     isSessionActive?: boolean;
     isMultistudy?: boolean;
+    sourceSetIds?: string[];
     isLocalOnly?: boolean;
 }
 
@@ -277,6 +278,7 @@ const setToFile = (set: CardSet): FlashcardFile => ({
     topStreak: set.topStreak,
     isSessionActive: set.isSessionActive,
     isMultistudy: set.isMultistudy,
+    sourceSetIds: set.sourceSetIds,
     isLocalOnly: set.isLocalOnly
 });
 
@@ -368,6 +370,7 @@ const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
         topStreak: cleanFile.topStreak,
         isSessionActive: cleanFile.isSessionActive,
         isMultistudy: cleanFile.isMultistudy,
+        sourceSetIds: cleanFile.sourceSetIds,
         isLocalOnly: cleanFile.isLocalOnly,
         folderId
     };

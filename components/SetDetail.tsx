@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings, Tag, CustomFieldDefinition } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star } from 'lucide-react';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp } from 'lucide-react';
 import { downloadFile } from '../utils';
 import clsx from 'clsx';
 import { TagPill } from './TagPill';
@@ -97,14 +97,51 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     tags
 }) => {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+    const toggleGroup = (groupKey: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupKey)) next.delete(groupKey);
+            else next.add(groupKey);
+            return next;
+        });
+    };
+
+    // Group cards (if multistudy)
+    const groupedCards = React.useMemo(() => {
+        if (!set.isMultistudy) return null;
+        const groups = new Map<string, { groupName: string; cards: Card[] }>();
+        set.cards.forEach(card => {
+            const groupName = card.originalSetName || "Unknown Set";
+            const groupKey = card.originalSetId || `unknown:${groupName}`;
+            const existing = groups.get(groupKey);
+            if (existing) {
+                existing.cards.push(card);
+            } else {
+                groups.set(groupKey, { groupName, cards: [card] });
+            }
+        });
+        return Array.from(groups.entries()).map(([groupKey, group]) => ({
+            groupKey,
+            groupName: group.groupName,
+            cards: group.cards
+        }));
+    }, [set]);
 
     const masteredCount = set.cards.filter(c => c.mastery >= 2).length;
     const starredCount = set.cards.filter(c => c.star).length;
     const progress = set.cards.length > 0 ? Math.round((masteredCount / set.cards.length) * 100) : 0;
 
-    const toggleStar = (cardId: string) => {
+    const getCardKey = (card: Card): string => {
+        if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
+        return card.id;
+    };
+
+    const toggleStar = (card: Card) => {
+        const targetKey = getCardKey(card);
         const newCards = set.cards.map(c =>
-            c.id === cardId ? { ...c, star: !c.star } : c
+            getCardKey(c) === targetKey ? { ...c, star: !c.star } : c
         );
         onUpdateSet({ ...set, cards: newCards });
     };
@@ -175,14 +212,16 @@ export const SetDetail: React.FC<SetDetailProps> = ({
 
             {/* Action Toolbar */}
             <div className="mb-10 flex items-center gap-2 p-3 bg-panel-2 border border-outline rounded-xl">
-                <button
-                    onClick={onEdit}
-                    className="flex items-center gap-2 px-3 py-2 text-muted hover:text-text hover:bg-panel-3 rounded-lg transition-all"
-                    title="Edit Set"
-                >
-                    <Pencil size={16} />
-                    <span className="text-sm font-medium hidden sm:inline">Edit</span>
-                </button>
+                {!set.isMultistudy && (
+                    <button
+                        onClick={onEdit}
+                        className="flex items-center gap-2 px-3 py-2 text-muted hover:text-text hover:bg-panel-3 rounded-lg transition-all"
+                        title="Edit Set"
+                    >
+                        <Pencil size={16} />
+                        <span className="text-sm font-medium hidden sm:inline">Edit</span>
+                    </button>
+                )}
                 <button
                     onClick={handleExport}
                     className="flex items-center gap-2 px-3 py-2 text-muted hover:text-text hover:bg-panel-3 rounded-lg transition-all"
@@ -241,23 +280,64 @@ export const SetDetail: React.FC<SetDetailProps> = ({
 
             {/* Cards List */}
             <div>
-                <h2 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 pl-1">
-                    Cards in this Set ({set.cards.length})
-                </h2>
-                <div className="space-y-3">
-                    {set.cards.map((card, index) => (
-                        <TermRow
-                            key={card.id}
-                            card={card}
-                            index={index}
-                            onToggleStar={() => toggleStar(card.id)}
-                            termSideFields={set.termSideFields}
-                            defSideFields={set.defSideFields}
-                            termLabel={set.termLabel}
-                            definitionLabel={set.definitionLabel}
-                        />
-                    ))}
-                </div>
+                {!set.isMultistudy ? (
+                    <>
+                        <h2 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 pl-1">
+                            Cards in this Set ({set.cards.length})
+                        </h2>
+                        <div className="space-y-3">
+                            {set.cards.map((card, index) => (
+                                <TermRow
+                                    key={card.id || index}
+                                    card={card}
+                                    index={index}
+                                    onToggleStar={() => toggleStar(card)}
+                                    termSideFields={set.termSideFields}
+                                    defSideFields={set.defSideFields}
+                                    termLabel={set.termLabel}
+                                    definitionLabel={set.definitionLabel}
+                                />
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    <div className="space-y-6">
+                        {groupedCards && groupedCards.map(({ groupKey, groupName, cards: groupCards }) => {
+                            const isCollapsed = collapsedGroups.has(groupKey);
+                            return (
+                                <div key={groupKey} className="bg-panel-2 rounded-xl border border-outline overflow-hidden">
+                                    <div
+                                        className="px-4 py-3 bg-panel-3 border-b border-outline flex items-center justify-between cursor-pointer hover:bg-panel transition-colors"
+                                        onClick={() => toggleGroup(groupKey)}
+                                    >
+                                        <h3 className="font-bold text-sm text-text flex items-center gap-2">
+                                            {groupName} <span className="text-muted text-xs bg-panel px-2 py-0.5 rounded-full">{groupCards.length}</span>
+                                        </h3>
+                                        <div className="text-muted">
+                                            {isCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                                        </div>
+                                    </div>
+                                    {!isCollapsed && (
+                                        <div className="p-3 space-y-2">
+                                            {groupCards.map((card, index) => (
+                                                <TermRow
+                                                    key={card.id || `${groupKey}-${index}`}
+                                                    card={card}
+                                                    index={set.cards.indexOf(card)}
+                                                    onToggleStar={() => toggleStar(card)}
+                                                    termSideFields={set.termSideFields}
+                                                    defSideFields={set.defSideFields}
+                                                    termLabel={set.termLabel}
+                                                    definitionLabel={set.definitionLabel}
+                                                />
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     );

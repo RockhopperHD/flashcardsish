@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder, Tag } from './types';
-import { fmtTime, generateId, sanitizeSet } from './utils';
+import { fmtTime, generateId, sanitizeSet, syncMultistudySet } from './utils';
 import { StartMenu, type UiAuditRequest } from './components/StartMenu';
 import { Game } from './components/Game';
 import { SetDetail } from './components/SetDetail';
@@ -30,6 +30,25 @@ const LIBRARY_KEY = 'flashcard-library-v3';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const STATS_KEY = 'flashcard-stats-v1';
+const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
+
+const normalizeLoadedSet = (set: CardSet): CardSet => {
+   const sanitized = sanitizeSet(sanitizeStrings(set));
+   const hasSourceSetIds = Array.isArray(sanitized.sourceSetIds) && sanitized.sourceSetIds.length > 0;
+
+   if (!sanitized.isMultistudy || hasSourceSetIds) return sanitized;
+
+   return {
+      ...sanitized,
+      name: sanitized.name.endsWith(LEGACY_MULTISTUDY_SUFFIX)
+         ? sanitized.name
+         : `${sanitized.name}${LEGACY_MULTISTUDY_SUFFIX}`,
+      // Legacy multistudy sessions are preserved as regular snapshots to avoid sync collisions.
+      isMultistudy: false,
+      isSessionActive: false,
+      sourceSetIds: undefined
+   };
+};
 
 const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
    const [localVal, setLocalVal] = useState(value.toString());
@@ -1132,7 +1151,11 @@ const App: React.FC = () => {
    const [tags, setTags] = useState<Tag[]>([]);
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
 
-   const activeSession = librarySets.find(s => s.id === activeSetId) || null;
+   const effectiveLibrarySets = React.useMemo(() => {
+      return librarySets.map(set => set.isMultistudy ? syncMultistudySet(set, librarySets) : set);
+   }, [librarySets]);
+
+   const activeSession = effectiveLibrarySets.find(s => s.id === activeSetId) || null;
    const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
    const shouldHighlightSignIn = !user && gameState === GameState.MENU && isHomeScreenActive;
 
@@ -1185,7 +1208,7 @@ const App: React.FC = () => {
 
    // Set Detail View
    const [detailSetId, setDetailSetId] = useState<string | null>(null);
-   const detailSet = librarySets.find(s => s.id === detailSetId) || null;
+   const detailSet = effectiveLibrarySets.find(s => s.id === detailSetId) || null;
 
    // Edit Request (from SetDetail to StartMenu)
    const [editRequestSetId, setEditRequestSetId] = useState<string | null>(null);
@@ -1244,7 +1267,7 @@ const App: React.FC = () => {
 
          // 1. SMART MERGE LIBRARY SETS
          if (data.library_sets && data.library_sets.length > 0) {
-            const cloudSets = data.library_sets.map((s: CardSet) => sanitizeSet(s));
+            const cloudSets = data.library_sets.map((s: CardSet) => normalizeLoadedSet(s));
 
             setLibrarySets(prevLocalSets => {
                const merged = [...prevLocalSets];
@@ -1512,7 +1535,7 @@ const App: React.FC = () => {
             }
 
             if (setsToUse && setsToUse.length > 0) {
-               const sanitizedSets = setsToUse.map(s => sanitizeSet(sanitizeStrings(s)));
+               const sanitizedSets = setsToUse.map(s => normalizeLoadedSet(s));
                console.log("[App] Loaded", sanitizedSets.length, "sets from storage");
                setLibrarySets(sanitizedSets);
             } else {
@@ -1717,8 +1740,8 @@ const App: React.FC = () => {
    };
 
    const handleStartFromLibrary = (libSet: CardSet) => {
-      // Sanitize the set to remove any zombie custom field data
-      const sanitized = sanitizeSet(libSet);
+      // Sanitize and normalize before entering session flow.
+      const sanitized = normalizeLoadedSet(libSet);
       const updatedSet = { ...sanitized, isSessionActive: true, lastPlayed: Date.now() };
 
       setLibrarySets(prev => {
@@ -1738,8 +1761,8 @@ const App: React.FC = () => {
    };
 
    const handleResumeSession = (session: CardSet) => {
-      // Sanitize to remove any zombie custom field data
-      const sanitized = sanitizeSet(session);
+      // Sanitize and normalize before entering session flow.
+      const sanitized = normalizeLoadedSet(session);
 
       // Update in library with sanitized version
       setLibrarySets(prev => prev.map(s => s.id === session.id ? sanitized : s));
@@ -1808,22 +1831,47 @@ const App: React.FC = () => {
          let nextLibrary = prev.map(s => s.id === updatedSession.id ? newSessionData : s);
 
          if (updatedSession.isMultistudy) {
-            const updatedCardsMap = new Map(updatedSession.cards.map(c => [c.id, c]));
+            const updatedCardsByScopedId = new Map<string, typeof updatedSession.cards[number]>();
+            const fallbackUpdatedCardsById = new Map<string, typeof updatedSession.cards[number]>();
+            const fallbackUpdatedCardCounts = new Map<string, number>();
+
+            updatedSession.cards.forEach(card => {
+               if (card.originalSetId) {
+                  updatedCardsByScopedId.set(`${card.originalSetId}::${card.id}`, card);
+                  return;
+               }
+
+               fallbackUpdatedCardsById.set(card.id, card);
+               fallbackUpdatedCardCounts.set(card.id, (fallbackUpdatedCardCounts.get(card.id) || 0) + 1);
+            });
 
             nextLibrary = nextLibrary.map(set => {
                if (set.id === updatedSession.id) return set;
-               const hasUpdates = set.cards.some(c => updatedCardsMap.has(c.id));
-               if (!hasUpdates) return set;
+               let didUpdateAnyCard = false;
+
+               const nextCards = set.cards.map(c => {
+                  const scopedKey = `${set.id}::${c.id}`;
+                  let updated = updatedCardsByScopedId.get(scopedKey);
+
+                  if (!updated) {
+                     const fallbackCount = fallbackUpdatedCardCounts.get(c.id) || 0;
+                     if (fallbackCount === 1) {
+                        updated = fallbackUpdatedCardsById.get(c.id);
+                     }
+                  }
+
+                  if (!updated) return c;
+
+                  didUpdateAnyCard = true;
+                  const { id, mastery, originalSetId, originalSetName, ...fieldsToUpdate } = updated;
+                  return { ...c, ...fieldsToUpdate };
+               });
+
+               if (!didUpdateAnyCard) return set;
 
                return {
                   ...set,
-                  cards: set.cards.map(c => {
-                     const updated = updatedCardsMap.get(c.id);
-                     if (updated) {
-                        return { ...c, ...updated };
-                     }
-                     return c;
-                  })
+                  cards: nextCards
                };
             });
          }
@@ -2187,7 +2235,7 @@ const App: React.FC = () => {
             {gameState === GameState.MENU && (
                <StartMenu
                   isCloudLoading={isCloudLoading || !isLibraryLoaded}
-                  librarySets={librarySets}
+                  librarySets={effectiveLibrarySets}
                   setLibrarySets={setLibrarySets}
                   folders={folders}
                   setFolders={setFolders}

@@ -48,6 +48,7 @@ export interface CardSet {
   topStreak: number;
   isSessionActive?: boolean;
   isMultistudy?: boolean;
+  sourceSetIds?: string[]; // IDs of sets that this multistudy session draws from
   folderId?: string; // If belongs to a folder
   isLocalOnly?: boolean; // If true, this set is not synced to the cloud
 }

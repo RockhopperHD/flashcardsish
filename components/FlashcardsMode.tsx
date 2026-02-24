@@ -117,6 +117,11 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         return showTermFirst ? currentCard.content : currentCard.term.join(' / ');
     }, [currentCard, showTermFirst]);
 
+    const getCardKey = useCallback((card: Card): string => {
+        if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
+        return card.id;
+    }, [set.isMultistudy]);
+
     // Memoize a random message when round finishes
     const roundMessage = useMemo(() => {
         if (!isRoundFinished) return "";
@@ -173,11 +178,12 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
     // Toggle star
     const toggleStar = useCallback(() => {
         if (!currentCard) return;
+        const currentCardKey = getCardKey(currentCard);
         const newCards = set.cards.map(c =>
-            c.id === currentCard.id ? { ...c, star: !c.star } : c
+            getCardKey(c) === currentCardKey ? { ...c, star: !c.star } : c
         );
         onUpdateSet({ ...set, cards: newCards });
-    }, [currentCard, set, onUpdateSet]);
+    }, [currentCard, set, onUpdateSet, getCardKey]);
 
     // Sort mode actions
     const startNextRound = useCallback(() => {

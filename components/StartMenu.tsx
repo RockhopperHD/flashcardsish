@@ -57,6 +57,7 @@ import { CursorTooltip } from "./CursorTooltip";
 import {
   parseInput,
   generateId,
+  syncMultistudySet,
   downloadFile,
   renderMarkdown,
   renderInline,
@@ -3147,28 +3148,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const folderSets = librarySets.filter((s) => s.folderId === folderId);
     if (folderSets.length === 0) return;
 
-    // Select all sets in folder and trigger multistudy creation logic
-    // But we can just reuse the logic directly
-    const allCards: Card[] = [];
-    folderSets.forEach((set) => {
-      set.cards.forEach((card) => {
-        allCards.push({
-          ...card,
-          originalSetId: set.id,
-          originalSetName: set.name,
-        });
-      });
-    });
-
-    const newSet: CardSet = {
+    let newSet: CardSet = {
       id: generateId(),
       name: `Folder Study: ${folders.find((f) => f.id === folderId)?.name}`,
-      cards: allCards,
+      cards: [],
       lastPlayed: Date.now(),
       elapsedTime: 0,
       topStreak: 0,
       isSessionActive: true,
       isMultistudy: true,
+      sourceSetIds: folderSets.map((s) => s.id),
       customFieldNames: [],
     };
 
@@ -3177,6 +3166,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       s.customFieldNames?.forEach((n) => allCustomFields.add(n)),
     );
     newSet.customFieldNames = Array.from(allCustomFields);
+
+    newSet = syncMultistudySet(newSet, librarySets);
 
     handlePlaySet(newSet);
   };
@@ -3197,30 +3188,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       return;
     }
 
-    const allCards: Card[] = [];
-    selectedSets.forEach((set) => {
-      set.cards.forEach((card) => {
-        allCards.push({
-          ...card,
-          originalSetId: set.id,
-          originalSetName: set.name,
-        });
-      });
-    });
-
-    // Shuffle cards? Or keep order? Usually multistudy implies shuffling.
-    // Let's shuffle them for good measure, or let the game handle it.
-    // The game shuffles anyway.
-
-    const newSet: CardSet = {
+    let newSet: CardSet = {
       id: generateId(),
       name: `Multistudy (${selectedSets.length} Sets)`,
-      cards: allCards,
+      cards: [],
       lastPlayed: Date.now(),
       elapsedTime: 0,
       topStreak: 0,
       isSessionActive: true,
       isMultistudy: true,
+      sourceSetIds: selectedSets.map(s => s.id),
       customFieldNames: [], // Merge custom fields? Complex. Let's leave empty for now or try to merge unique ones.
     };
 
@@ -3230,6 +3207,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       s.customFieldNames?.forEach((n) => allCustomFields.add(n)),
     );
     newSet.customFieldNames = Array.from(allCustomFields);
+
+    newSet = syncMultistudySet(newSet, librarySets);
 
     handlePlaySet(newSet);
     setSelectedSetIds(new Set());
@@ -4933,13 +4912,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                   >
                                     <FolderOpen size={16} />
                                   </button>
-                                  <button
-                                    onClick={() => handleLoadSetToBuilder(set)}
-                                    className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
-                                    title="Edit"
-                                  >
-                                    <Pencil size={16} />
-                                  </button>
+                                  {!set.isMultistudy && (
+                                    <button
+                                      onClick={() => handleLoadSetToBuilder(set)}
+                                      className="p-1.5 text-muted hover:text-text rounded hover:bg-panel-2 transition-all"
+                                      title="Edit"
+                                    >
+                                      <Pencil size={16} />
+                                    </button>
+                                  )}
 
                                   <button
                                     onClick={() => handleMoveToLocal(set.id, !set.isLocalOnly)}

@@ -66,10 +66,12 @@ const BATCH_MESSAGES_NEEDS_WORK = [
 const renderEditField = (
    fieldDef: CustomFieldDefinition,
    currentCard: Card,
-   handleUpdateCard: (id: string, updates: Partial<Card>) => void
+   handleUpdateCard: (id: string, updates: Partial<Card>) => void,
+   getCardKey: (card: Card) => string
 ) => {
    const fieldName = fieldDef.name;
    const val = currentCard.customFields?.find(f => f.name === fieldName)?.value || '';
+   const cardKey = getCardKey(currentCard);
 
    if (fieldDef.type === 'ab' || fieldDef.type === 'tf') {
       const isTF = fieldDef.type === 'tf';
@@ -91,7 +93,7 @@ const renderEditField = (
                   onClick={() => {
                      const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
                      newFields.push({ name: fieldName, value: optionA });
-                     handleUpdateCard(currentCard.id, { customFields: newFields });
+                     handleUpdateCard(cardKey, { customFields: newFields });
                   }}
                   className={clsx("flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors", val === optionA ? "text-bg" : "text-muted hover:text-text")}
                >
@@ -100,7 +102,7 @@ const renderEditField = (
                <button
                   onClick={() => {
                      const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
-                     handleUpdateCard(currentCard.id, { customFields: newFields });
+                     handleUpdateCard(cardKey, { customFields: newFields });
                   }}
                   className={clsx("flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors", (!val || (val !== optionA && val !== optionB)) ? "text-bg" : "text-muted hover:text-text")}
                >
@@ -110,7 +112,7 @@ const renderEditField = (
                   onClick={() => {
                      const newFields = currentCard.customFields?.filter(f => f.name !== fieldName) || [];
                      newFields.push({ name: fieldName, value: optionB });
-                     handleUpdateCard(currentCard.id, { customFields: newFields });
+                     handleUpdateCard(cardKey, { customFields: newFields });
                   }}
                   className={clsx("flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors", val === optionB ? "text-bg" : "text-muted hover:text-text")}
                >
@@ -131,7 +133,7 @@ const renderEditField = (
                if (e.target.value) {
                   newFields.push({ name: fieldName, value: e.target.value });
                }
-               handleUpdateCard(currentCard.id, { customFields: newFields });
+               handleUpdateCard(cardKey, { customFields: newFields });
             }}
             onKeyDown={(e) => e.stopPropagation()}
             placeholder={`Enter ${fieldName}...`}
@@ -387,6 +389,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const submitButtonRef = useRef<HTMLButtonElement>(null);
    const customInputRefs = useRef<Record<string, HTMLElement | null>>({});
 
+   const getCardKey = useCallback((card: Card): string => {
+      if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
+      return card.id;
+   }, [set.isMultistudy]);
+
    // Helper for focusing next field
    const focusNext = (currentFieldName: string, direction: 'next' | 'prev' = 'next') => {
       // Determine field order
@@ -475,8 +482,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const currentCard = useMemo(() => {
       if (!currentId) return activeQueue[0] || null;
-      return set.cards.find(c => c.id === currentId) || activeQueue[0] || null;
-   }, [currentId, set.cards, activeQueue]);
+      return set.cards.find(c => getCardKey(c) === currentId) || activeQueue[0] || null;
+   }, [currentId, set.cards, activeQueue, getCardKey]);
 
    // Ensure Slabs Cannot Be Deleted / Pre-filled
    useEffect(() => {
@@ -519,11 +526,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       // FIX: Do not switch card if we are showing feedback (correct/incorrect/reveal)
       if (feedback.type === 'correct' || feedback.type === 'incorrect' || feedback.type === 'reveal') return;
 
-      const currentInQueue = activeQueue.find(c => c.id === currentId);
+      const currentInQueue = activeQueue.find(c => getCardKey(c) === currentId);
 
       if (!currentInQueue) {
          if (activeQueue.length > 0) {
-            setCurrentId(activeQueue[0].id);
+            setCurrentId(getCardKey(activeQueue[0]));
          } else {
             const hasCards = set.cards.length > 0;
             if (hasCards) {
@@ -537,7 +544,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             }
          }
       }
-   }, [activeQueue, currentId, set.cards, onFinish, settings.starredOnly, subMode, feedback.type]);
+   }, [activeQueue, currentId, set.cards, onFinish, settings.starredOnly, subMode, feedback.type, getCardKey]);
 
    // Initialize Batch Mode
    useEffect(() => {
@@ -558,7 +565,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       const firstBatch = candidates.slice(0, effectiveBatchSize);
       setBatchCards(firstBatch);
       setBatchIndex(0);
-      setSeenCardIds(new Set(firstBatch.map(c => c.id)));
+      setSeenCardIds(new Set(firstBatch.map(c => getCardKey(c))));
       setBatchCorrectInBatch(new Set());
       setBatchPerfectInBatch(new Set());
       setBatchProgress(0);
@@ -566,8 +573,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       // Initialize card states
       const newStates = new Map<string, BatchCardState>();
       firstBatch.forEach(card => {
-         newStates.set(card.id, {
-            cardId: card.id,
+         const cardKey = getCardKey(card);
+         newStates.set(cardKey, {
+            cardId: cardKey,
             trickyCount: 0,
             repeatedMistakes: 0,
             firstTry: true,
@@ -578,9 +586,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setBatchCardStates(newStates);
 
       if (firstBatch.length > 0) {
-         setCurrentId(firstBatch[0].id);
+         setCurrentId(getCardKey(firstBatch[0]));
       }
-   }, [subMode, batchCards.length, baseCards, settings.shuffleCards, effectiveBatchSize]);
+   }, [subMode, batchCards.length, baseCards, settings.shuffleCards, effectiveBatchSize, getCardKey]);
 
    // Generate Options for Multiple Choice
    useEffect(() => {
@@ -594,7 +602,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const fallbackToRegularMultipleChoice = () => {
             if (!isMounted) return;
             // Get all other cards from the set
-            const allOtherCards = set.cards.filter(c => c.id !== currentCard.id);
+            const currentCardKey = getCardKey(currentCard);
+            const allOtherCards = set.cards.filter(c => getCardKey(c) !== currentCardKey);
 
             // Shuffle and pick 3
             const distractors: string[] = [];
@@ -649,7 +658,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          }
       }
       return () => { isMounted = false; };
-   }, [currentCard, settings.mode, settings.answerWithDefinition, set.cards]);
+   }, [currentCard, settings.mode, settings.answerWithDefinition, set.cards, getCardKey]);
 
    // Focus Management
    useEffect(() => {
@@ -660,8 +669,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    }, [feedback.type, currentId, isEditOpen]);
 
    // Handlers
-   const handleUpdateCard = (id: string, updates: Partial<Card>) => {
-      const newCards = set.cards.map(c => (c.id === id ? { ...c, ...updates } : c));
+   const handleUpdateCard = (cardKey: string, updates: Partial<Card>) => {
+      const newCards = set.cards.map(c => (getCardKey(c) === cardKey ? { ...c, ...updates } : c));
       onUpdateSet({ ...set, cards: newCards, topStreak });
    };
 
@@ -683,11 +692,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setPendingStreakBreak(false);
 
       if (subMode === 'zen') {
-         const next = activeQueue.find(c => c.id !== currentId);
+         const next = activeQueue.find(c => getCardKey(c) !== currentId);
          if (next) {
-            setCurrentId(next.id);
+            setCurrentId(getCardKey(next));
          } else if (activeQueue.length > 0) {
-            setCurrentId(activeQueue[0].id);
+            setCurrentId(getCardKey(activeQueue[0]));
          } else {
             onFinish();
             return;
@@ -703,7 +712,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const nextIndex = batchIndex + 1;
          if (nextIndex < batchCards.length) {
             setBatchIndex(nextIndex);
-            setCurrentId(batchCards[nextIndex].id);
+            setCurrentId(getCardKey(batchCards[nextIndex]));
          } else {
             // Should not happen if logic is correct, but safe fallback
             // Maybe we just finished the last card and it was correct?
@@ -737,6 +746,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const handleAttempt = () => {
       if (!currentCard) return;
+      const currentCardKey = getCardKey(currentCard);
       // Check if any input is provided
       const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
       if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
@@ -775,29 +785,29 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   newTopStreak = newStreak;
                }
 
-               const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+               const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
                onUpdateSet({ ...set, cards: newCards, topStreak: newTopStreak });
                setPendingStreakBreak(false);
             } else if (subMode === 'batch') {
                // BATCH MODE CORRECT LOGIC
-               const cardState = batchCardStates.get(currentCard.id);
-               const isFirstCorrectInBatch = !batchCorrectInBatch.has(currentCard.id);
+               const cardState = batchCardStates.get(currentCardKey);
+               const isFirstCorrectInBatch = !batchCorrectInBatch.has(currentCardKey);
 
                if (isFirstCorrectInBatch) {
                   const newCorrectSet = new Set(batchCorrectInBatch);
-                  newCorrectSet.add(currentCard.id);
+                  newCorrectSet.add(currentCardKey);
                   setBatchCorrectInBatch(newCorrectSet);
                   setBatchProgress(prev => prev + 1);
 
                   // Only award mastery if it's the first try (no previous mistakes in this batch)
                   if (cardState?.firstTry) {
                      const newMastery = Math.min(2, currentCard.mastery + 1);
-                     const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+                     const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
                      onUpdateSet({ ...set, cards: newCards });
 
                      const newPerfectSet = new Set(batchPerfectInBatch);
-                     newPerfectSet.add(currentCard.id);
+                     newPerfectSet.add(currentCardKey);
                      setBatchPerfectInBatch(newPerfectSet);
                   }
                }
@@ -805,7 +815,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                // Reduce tricky count and reset repeated mistakes
                if (cardState) {
                   const newStates = new Map(batchCardStates);
-                  newStates.set(currentCard.id, {
+                  newStates.set(currentCardKey, {
                      ...cardState,
                      trickyCount: Math.max(0, cardState.trickyCount - 1),
                      repeatedMistakes: 0 // Reset on correct
@@ -901,16 +911,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             if (subMode === 'zen') {
                // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
                if (settings.brutalMode && currentCard.mastery === 1) {
-                  const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: 0 } : c);
+                  const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: 0 } : c);
                   onUpdateSet({ ...set, cards: newCards });
                }
             } else if (subMode === 'batch') {
                // BATCH MODE INCORRECT LOGIC
-               const cardState = batchCardStates.get(currentCard.id);
+               const cardState = batchCardStates.get(currentCardKey);
                if (cardState) {
                   const newRepeated = cardState.repeatedMistakes + 1;
                   const newStates = new Map(batchCardStates);
-                  newStates.set(currentCard.id, {
+                  newStates.set(currentCardKey, {
                      ...cardState,
                      firstTry: false, // Mark as failed first try
                      mistakeCount: cardState.mistakeCount + 1,
@@ -926,7 +936,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
                   // Reset Mastery if "tricky" or repeated mistakes >= 2
                   if (currentCard.mastery === 1 && newRepeated >= 2) {
-                     const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: 0 } : c);
+                     const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: 0 } : c);
                      onUpdateSet({ ...set, cards: newCards });
                   }
                }
@@ -1004,7 +1014,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          tags = fullTagString.match(/\(([^)]+)\)/g)?.map(t => t.slice(1, -1).trim()) || [];
          text = text.replace(tagRegex, '');
       }
-      handleUpdateCard(currentCard.id, {
+      handleUpdateCard(getCardKey(currentCard), {
          term: text.split('/').map(t => t.trim()),
          tags: tags
       });
@@ -1028,6 +1038,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const handleOptionClick = (option: string) => {
       if (!currentCard) return;
+      const currentCardKey = getCardKey(currentCard);
 
       // Check if option matches either the term (normal) or definition (answerWithDefinition mode)
       const isCorrect = settings.answerWithDefinition
@@ -1046,7 +1057,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             newTopStreak = newStreak;
          }
 
-         const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+         const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
          onUpdateSet({ ...set, cards: newCards, topStreak: newTopStreak });
          setPendingStreakBreak(false);
@@ -1066,7 +1077,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
          // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
          if (subMode === 'zen' && settings.brutalMode && currentCard.mastery === 1) {
-            const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: 0 } : c);
+            const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: 0 } : c);
             onUpdateSet({ ...set, cards: newCards });
          }
       }
@@ -1096,6 +1107,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const handleOverride = (wasActuallyCorrect: boolean) => {
       if (!currentCard) return;
+      const currentCardKey = getCardKey(currentCard);
 
       if (wasActuallyCorrect) {
          setPendingStreakBreak(false);
@@ -1111,7 +1123,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          }
 
          const newMastery = Math.min(2, currentCard.mastery + 1);
-         const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+         const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
          onUpdateSet({
             ...set,
@@ -1120,7 +1132,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          });
       } else {
          const newMastery = Math.max(0, currentCard.mastery - 1);
-         const newCards = set.cards.map(c => c.id === currentCard.id ? { ...c, mastery: newMastery } : c);
+         const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
          setStreak(0);
          setPendingStreakBreak(false);
@@ -1178,7 +1190,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
 
    const toggleStar = () => {
-      if (currentCard) handleUpdateCard(currentCard.id, { star: !currentCard.star });
+      if (currentCard) handleUpdateCard(getCardKey(currentCard), { star: !currentCard.star });
    };
 
    const startNextBatch = () => {
@@ -1237,7 +1249,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setBatchIndex(0);
       setSeenCardIds(prev => {
          const next = new Set(prev);
-         nextBatch.forEach(c => next.add(c.id));
+         nextBatch.forEach(c => next.add(getCardKey(c)));
          return next;
       });
       setBatchCorrectInBatch(new Set());
@@ -1245,14 +1257,15 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setBatchProgress(0);
       setShowBatchBreak(false);
 
-      setCurrentId(nextBatch[0].id);
+      setCurrentId(getCardKey(nextBatch[0]));
 
       // Init states for new batch
       const newStates = new Map(batchCardStates);
       nextBatch.forEach(card => {
-         if (!newStates.has(card.id)) {
-            newStates.set(card.id, {
-               cardId: card.id,
+         const cardKey = getCardKey(card);
+         if (!newStates.has(cardKey)) {
+            newStates.set(cardKey, {
+               cardId: cardKey,
                trickyCount: 0,
                repeatedMistakes: 0,
                firstTry: true,
@@ -1260,8 +1273,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                mixupCount: 0
             });
          } else {
-            const s = newStates.get(card.id)!;
-            newStates.set(card.id, {
+            const s = newStates.get(cardKey)!;
+            newStates.set(cardKey, {
                ...s,
                firstTry: true,
                trickyCount: 0
@@ -1288,7 +1301,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       // List of cards in this batch (unique)
       // We want to show "All cards introduced so far" or just "Current Batch"?
       // Requirement: "Lists all cards introduced so far with "pill tags" indicating their status"
-      const visibleCards = set.cards.filter(c => seenCardIds.has(c.id));
+      const visibleCards = set.cards.filter(c => seenCardIds.has(getCardKey(c)));
 
       return (
          <div className="w-full max-w-4xl mx-auto pb-20 pt-8 animate-in fade-in">
@@ -1333,16 +1346,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                </div>
                <div className="max-h-[400px] overflow-y-auto p-2 space-y-2">
                   {visibleCards.map(card => {
-                     const state = batchCardStates.get(card.id);
+                     const state = batchCardStates.get(getCardKey(card));
                      const isPerfect = card.mastery === 2 && state?.mistakeCount === 0;
                      const isFocus = (state?.mistakeCount || 0) >= 3;
                      const isConfusing = (state?.mixupCount || 0) >= 2;
 
                      return (
-                        <div key={card.id} className="flex items-center gap-4 p-3 rounded-xl hover:bg-panel-2 transition-colors border border-transparent hover:border-outline/50">
+                        <div key={getCardKey(card)} className="flex items-center gap-4 p-3 rounded-xl hover:bg-panel-2 transition-colors border border-transparent hover:border-outline/50">
                            <div className="flex-1 min-w-0">
-                              <div className="font-bold text-text truncate">{card.term.join(' / ')}</div>
-                              <div className="text-xs text-muted truncate">{card.content}</div>
+                              <div className="font-bold text-text truncate"><>{renderInline(card.term.join(' / '))}</></div>
+                              <div className="text-xs text-muted truncate"><>{renderInline(card.content)}</></div>
                            </div>
 
                            {/* Status Pills */}
@@ -2119,7 +2132,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               <label className="block text-xs font-bold text-muted uppercase mb-2">Year</label>
                               <input
                                  value={currentCard.year || ''}
-                                 onChange={(e) => handleUpdateCard(currentCard.id, { year: e.target.value })}
+                                 onChange={(e) => handleUpdateCard(getCardKey(currentCard), { year: e.target.value })}
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="Year..."
@@ -2135,7 +2148,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                     ? (set.termSideFields || [])
                                     : (set.customFieldNames || []).map(n => ({ name: n, type: 'text' as const }));
 
-                                 return fields.map(fieldDef => renderEditField(fieldDef, currentCard, handleUpdateCard));
+                                 return fields.map(fieldDef => renderEditField(fieldDef, currentCard, handleUpdateCard, getCardKey));
                               })()}
                            </div>
                         </div>
@@ -2150,7 +2163,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               <RichInput
                                  ref={modalDefRef}
                                  value={currentCard.content}
-                                 onChange={(val) => handleUpdateCard(currentCard.id, { content: val })}
+                                 onChange={(val) => handleUpdateCard(getCardKey(currentCard), { content: val })}
                                  onBlur={() => setToolbarVisible(false)}
                                  onMouseUp={(e) => handleMouseUp(e, 'def')}
                                  onContextMenu={(e) => handleContextMenu(e, 'def')}
@@ -2165,7 +2178,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               <label className="block text-xs font-bold text-muted uppercase mb-2">Image URL</label>
                               <input
                                  value={currentCard.image || ''}
-                                 onChange={(e) => handleUpdateCard(currentCard.id, { image: e.target.value })}
+                                 onChange={(e) => handleUpdateCard(getCardKey(currentCard), { image: e.target.value })}
                                  onKeyDown={(e) => e.stopPropagation()}
                                  className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text focus:border-accent focus:outline-none transition-colors"
                                  placeholder="https://..."
@@ -2179,7 +2192,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                     ? (set.defSideFields || [])
                                     : []; // If V1, we put them on Left, or we can just render nothing here. 
 
-                                 return fields.map(fieldDef => renderEditField(fieldDef, currentCard, handleUpdateCard));
+                                 return fields.map(fieldDef => renderEditField(fieldDef, currentCard, handleUpdateCard, getCardKey));
                               })()}
                            </div>
                         </div>
@@ -2266,7 +2279,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         </div>
                         <div>
                            <div className="text-xs text-muted mb-1 uppercase">Term</div>
-                           <div className="text-lg font-bold text-text">{currentCard.term.join(' / ')}</div>
+                           <div className="text-lg font-bold text-text"><>{renderInline(currentCard.term.join(' / '))}</></div>
                         </div>
                         {currentCard.content && (
                            <div>
@@ -2294,7 +2307,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               <>
                                  <div>
                                     <div className="text-xs text-muted mb-1 uppercase">Term</div>
-                                    <div className="text-lg font-bold text-accent">{matchedCard.term.join(' / ')}</div>
+                                    <div className="text-lg font-bold text-accent"><>{renderInline(matchedCard.term.join(' / '))}</></div>
                                  </div>
                                  {matchedCard.content && (
                                     <div>

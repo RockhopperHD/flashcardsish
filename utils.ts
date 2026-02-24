@@ -1107,3 +1107,73 @@ export const renderInline = (text: string, keyPrefix: string = 'root', isHighlig
 
   return nodes;
 };
+
+// Syncs a multistudy set's cards with its source sets while preserving session mastery
+export const syncMultistudySet = (multistudySet: CardSet, librarySets: CardSet[]): CardSet => {
+  if (!multistudySet.isMultistudy || !multistudySet.sourceSetIds) return multistudySet;
+
+  const allCards: Card[] = [];
+  const sourceSets = librarySets.filter(s => multistudySet.sourceSetIds?.includes(s.id));
+  const existingCardsByScopedId = new Map<string, Card>();
+  const fallbackExistingCardsById = new Map<string, Card>();
+  const fallbackExistingCardCounts = new Map<string, number>();
+
+  multistudySet.cards?.forEach(card => {
+    if (card.originalSetId) {
+      existingCardsByScopedId.set(`${card.originalSetId}::${card.id}`, card);
+      return;
+    }
+
+    fallbackExistingCardsById.set(card.id, card);
+    fallbackExistingCardCounts.set(card.id, (fallbackExistingCardCounts.get(card.id) || 0) + 1);
+  });
+
+  sourceSets.forEach(set => {
+    set.cards.forEach(card => {
+      const scopedKey = `${set.id}::${card.id}`;
+      let existingCard = existingCardsByScopedId.get(scopedKey);
+
+      if (!existingCard) {
+        const fallbackCount = fallbackExistingCardCounts.get(card.id) || 0;
+        if (fallbackCount === 1) {
+          existingCard = fallbackExistingCardsById.get(card.id);
+        }
+      }
+
+      allCards.push({
+        ...card,
+        originalSetId: set.id,
+        originalSetName: set.name,
+        // Preserve mastery from multistudy, default to 0
+        mastery: existingCard ? existingCard.mastery : 0,
+        // Note: The source card's 'star' state will naturally overwrite here, satisfying the sync requirement
+      });
+    });
+  });
+
+  // Merge custom fields from source sets
+  const allCustomFields = new Set<string>();
+  const termSideFieldsMap = new Map<string, any>();
+  const defSideFieldsMap = new Map<string, any>();
+
+  sourceSets.forEach(s => {
+    s.customFieldNames?.forEach(n => allCustomFields.add(n));
+    s.termSideFields?.forEach(f => {
+      const key = typeof f === 'string' ? f : f.name;
+      if (!termSideFieldsMap.has(key)) termSideFieldsMap.set(key, f);
+    });
+    s.defSideFields?.forEach(f => {
+      const key = typeof f === 'string' ? f : f.name;
+      if (!defSideFieldsMap.has(key)) defSideFieldsMap.set(key, f);
+    });
+  });
+
+  return {
+    ...multistudySet,
+    cards: allCards,
+    customFieldNames: Array.from(allCustomFields),
+    termSideFields: Array.from(termSideFieldsMap.values()),
+    defSideFields: Array.from(defSideFieldsMap.values()),
+    version: 2
+  };
+};
