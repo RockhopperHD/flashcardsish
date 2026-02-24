@@ -11,7 +11,7 @@ import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
 import { KeybindsModal } from './components/KeybindsModal';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
@@ -2375,6 +2375,18 @@ const App: React.FC = () => {
                <Documentation onBack={() => setGameState(previousGameState)} />
             )}
          </main>
+
+         <button
+            type="button"
+            data-tally-open="A7dV60"
+            data-tally-auto-close="5000"
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border border-outline bg-panel px-4 py-3 text-sm font-bold text-text shadow-2xl transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+            aria-label="Open feedback form"
+            title="Send feedback"
+         >
+            <MessageSquare size={16} />
+            <span>Feedback</span>
+         </button>
 
          <footer className="py-6 text-center text-muted text-sm border-t border-outline bg-panel-2/50">
             <div className="flex items-center justify-center gap-1.5 mb-3">
