@@ -38,7 +38,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
-                    <p className="text-sm text-muted">Last updated: February 9, 2026</p>
+                    <p className="text-sm text-muted">Last updated: February 27, 2026</p>
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Overview</h3>
                         <p>Flashcardsish ("the Service") is an experimental, open-source flashcard application created and maintained by an individual developer as a personal project. This Privacy Policy explains how data is handled when you use the Service.</p>
@@ -64,7 +64,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 <li>Profile image URL</li>
                                 <li>A unique Google account identifier ("sub")</li>
                             </ul>
-                            <p>This information is used only to authenticate you and associate your local or Google Drive data with your session. <strong>We do not store this information on our own servers.</strong> Session-related data may be stored temporarily in your browser's memory or local storage while you are signed in.</p>
+                            <p>This information is used to authenticate you and associate your local or Google Drive data with your session. Session-related data may be stored temporarily in your browser's memory or local storage while you are signed in.</p>
                         </div>
 
                         <div className="mb-4">
@@ -102,8 +102,14 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                             <p>You are solely responsible for how you use third-party APIs and for complying with their terms.</p>
                         </div>
 
+                        <div className="mb-4">
+                            <h4 className="font-bold mb-1">3.5 Badge Verification (Optional)</h4>
+                            <p>If badge features are enabled, the Service may send your signed-in email address to a Firebase-hosted backend endpoint to check badge eligibility and retrieve badge display metadata (for example, badge name, style instructions, and granted benefits).</p>
+                            <p className="mt-2">This check does not include your flashcard content.</p>
+                        </div>
+
                         <div>
-                            <h4 className="font-bold mb-1">3.5 Local Storage</h4>
+                            <h4 className="font-bold mb-1">3.6 Local Storage</h4>
                             <p>The Service uses browser local storage and IndexedDB to support offline access and performance. This data remains on your device unless you enable Google Drive synchronization.</p>
                         </div>
                     </section>
@@ -116,6 +122,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                             <li>Synchronize your data across devices</li>
                             <li>Display your content within the app</li>
                             <li>Authenticate your session</li>
+                            <li>Optionally check badge eligibility and render account badges</li>
                         </ul>
                         <p>We do not sell data, run ads, or perform analytics tracking.</p>
                         <p className="mt-2">We do not track users across third-party websites and therefore do not respond to Do Not Track (DNT) signals.</p>

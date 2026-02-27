@@ -1,13 +1,18 @@
 import React from 'react';
 import { GoogleDriveUser } from '../src/googleDriveClient';
-import { CardSet } from '../types';
-import { Cloud, Calendar, TrendingUp, BookOpen, Star, Layers, CheckCircle, User as UserIcon } from 'lucide-react';
+import { Badge, CardSet } from '../types';
+import { Cloud, Calendar, TrendingUp, BookOpen, Star, Layers, CheckCircle, Shield, RefreshCw, FlaskConical, Rocket, Bug, Crown, Wrench, Code2 } from 'lucide-react';
 import clsx from 'clsx';
 
 interface ProfileCardProps {
     user: GoogleDriveUser | null;
     lifetimeCorrect: number;
     librarySets: CardSet[];
+    badges?: Badge[];
+    badgeStatus?: 'idle' | 'loading' | 'ready' | 'error' | 'disabled';
+    badgeError?: string | null;
+    badgeLastCheckedAt?: number | null;
+    onRefreshBadges?: () => void;
     className?: string;
 }
 
@@ -22,7 +27,33 @@ const getInitials = (user: GoogleDriveUser | null): string => {
     return (parts[0]?.[0] || '?').toUpperCase();
 };
 
-export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect, librarySets, className }) => {
+const BADGE_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+    shield: Shield,
+    flask: FlaskConical,
+    bug: Bug,
+    rocket: Rocket,
+    crown: Crown,
+    wrench: Wrench,
+    code: Code2,
+    star: Star
+};
+
+const getBadgeIcon = (badge: Badge) => {
+    const iconName = (badge.draw?.icon || badge.icon || '').toLowerCase();
+    return BADGE_ICON_MAP[iconName] || Shield;
+};
+
+export const ProfileCard: React.FC<ProfileCardProps> = ({
+    user,
+    lifetimeCorrect,
+    librarySets,
+    badges = [],
+    badgeStatus = 'idle',
+    badgeError = null,
+    badgeLastCheckedAt = null,
+    onRefreshBadges,
+    className
+}) => {
     // Dynamic Stats
     const totalCards = librarySets.reduce((acc, set) => acc + set.cards.length, 0);
     const totalStarred = librarySets.reduce((acc, set) => acc + set.cards.filter(c => c.star).length, 0);
@@ -114,6 +145,108 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                             </div>
                             <div className="text-2xl md:text-3xl font-bold text-text">{avgSetSize}</div>
                         </div>
+                    </div>
+
+                    <div className="mt-10 border-t border-outline/50 pt-6">
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                            <div className="text-xs md:text-sm font-bold uppercase tracking-wider text-muted flex items-center gap-2">
+                                <Shield size={14} className="shrink-0" /> Badges
+                            </div>
+                            {onRefreshBadges && (
+                                <button
+                                    onClick={onRefreshBadges}
+                                    className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-md border border-outline hover:border-accent hover:text-accent transition-colors"
+                                    title="Refresh badges"
+                                >
+                                    <RefreshCw size={12} className={badgeStatus === 'loading' ? 'animate-spin' : ''} />
+                                    Refresh
+                                </button>
+                            )}
+                        </div>
+
+                        {badgeStatus === 'loading' && (
+                            <p className="text-sm text-muted">Checking badge access...</p>
+                        )}
+
+                        {badgeStatus === 'disabled' && (
+                            <p className="text-sm text-muted">Badge service is not configured for this client yet.</p>
+                        )}
+
+                        {badgeStatus === 'error' && (
+                            <p className="text-sm text-red">
+                                {badgeError || 'Badge lookup failed. Try again later.'}
+                            </p>
+                        )}
+
+                        {badgeStatus !== 'loading' && badgeStatus !== 'error' && badgeStatus !== 'disabled' && (
+                            <>
+                                {badges.length === 0 ? (
+                                    <p className="text-sm text-muted">No badges assigned to this account.</p>
+                                ) : (
+                                    <>
+                                        <div className="flex flex-wrap gap-2">
+                                            {badges.map((badge) => {
+                                                const Icon = getBadgeIcon(badge);
+                                                const badgeStyle: React.CSSProperties = {
+                                                    backgroundColor: badge.draw?.backgroundColor,
+                                                    color: badge.draw?.textColor,
+                                                    borderColor: badge.draw?.borderColor || badge.draw?.backgroundColor,
+                                                };
+
+                                                return (
+                                                    <div
+                                                        key={badge.id}
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border bg-panel-2"
+                                                        style={badgeStyle}
+                                                        title={badge.description || badge.name}
+                                                    >
+                                                        {badge.draw?.emoji ? (
+                                                            <span>{badge.draw.emoji}</span>
+                                                        ) : (
+                                                            <Icon size={12} />
+                                                        )}
+                                                        <span>{badge.name}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {badges.some((badge) => (badge.benefits?.length || 0) > 0) && (
+                                            <div className="mt-4 space-y-2">
+                                                {badges.map((badge) => {
+                                                    const benefits = badge.benefits || [];
+                                                    if (!benefits.length) return null;
+
+                                                    return (
+                                                        <div key={`${badge.id}-benefits`} className="bg-panel-2 border border-outline/50 rounded-lg p-3">
+                                                            <p className="text-sm font-bold text-text mb-2">{badge.name} benefits</p>
+                                                            <ul className="list-disc pl-4 space-y-1 text-sm text-muted">
+                                                                {benefits.map((benefit) => (
+                                                                    <li key={benefit.id}>
+                                                                        {benefit.label}
+                                                                        {benefit.description ? ` - ${benefit.description}` : ''}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+
+                        {badgeStatus === 'ready' && badgeError && (
+                            <p className="text-xs text-muted mt-2">{badgeError}</p>
+                        )}
+
+                        {badgeLastCheckedAt && (
+                            <p className="text-[11px] text-muted mt-3">
+                                Last checked {new Date(badgeLastCheckedAt).toLocaleTimeString()}
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>

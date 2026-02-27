@@ -90,13 +90,30 @@ export interface Settings {
   nextFieldKey1?: string; // Primary key for moving to next field (default 'Tab', locked)
 }
 
+export interface BadgeDrawInstructions {
+  backgroundColor?: string;
+  textColor?: string;
+  borderColor?: string;
+  icon?: string; // Lucide icon name
+  emoji?: string;
+}
+
+export interface BadgeBenefit {
+  id: string;
+  label: string;
+  description?: string;
+}
+
 export interface Badge {
   id: string;
   name: string;
-  description: string;
-  icon: string; // Lucide icon name
-  color: string; // tailwind color class alias like 'text-yellow'
-  earnedAt: number;
+  description?: string;
+  // Legacy fields are kept for compatibility with older badge payloads.
+  icon?: string;
+  color?: string;
+  earnedAt?: number;
+  draw?: BadgeDrawInstructions;
+  benefits?: BadgeBenefit[];
 }
 
 /**

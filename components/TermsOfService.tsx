@@ -38,7 +38,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
-                    <p className="text-sm text-muted">Last updated: February 9, 2026</p>
+                    <p className="text-sm text-muted">Last updated: February 27, 2026</p>
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Acceptance of Terms</h3>
                         <p>By accessing or using Flashcardsish, you agree to be bound by these Terms of Service and the Privacy Policy. If you do not agree, do not use the Service.</p>
@@ -99,6 +99,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                             <li>Changes to third-party terms or APIs</li>
                         </ul>
                         <p>If Google revokes or restricts API access, the Service may stop functioning immediately.</p>
+                        <p className="mt-2">Optional badge features may also depend on Firebase-hosted backend services.</p>
                     </section>
 
                     <section>

@@ -17,6 +17,7 @@ Like other flashcards apps (notably the one that rhymes with *Bizlet*), Flashcar
 * **Folders:** Categorize sets.  
 * **Multistudy:** Don’t want to merge sets, but want to study more than one at once? Use the multistudy feature to make a lump learn session to drill everything together.  
 * **Cloud Sync:** You can sign into Google to sync your cards across devices, and your data isn’t collected for advertising\! Doing so is also completely free, and allows you to upload images.  
+* **Account Badges (Firebase-ready):** Optionally connect to a Firebase-hosted badge endpoint that checks the signed-in email and returns badge styling + benefit metadata to render in-app.  
 * **Download Sets:** Don’t want to sign into Google or need to send it to a friend? You can download sets as `.flashcards` files\* and send or keep them for your own use. You can also directly edit those in a text editor, or use the `.flashcards` format for your own program(s).  
 * …and more\!
 
@@ -35,6 +36,14 @@ Do you prefer to run Flashcardsish offline? Great idea\! The only dependency is 
 1. Download or `gh repo clone RockhopperHD/flashcardsish`  
 2. `npm install`  
 3. `npm run dev`
+
+### Badge Backend Environment Variables
+
+If you want to enable server-validated badges, set the following in `.env`:
+
+* `VITE_BADGES_FUNCTION_URL` - Firebase HTTPS Function URL (or similar Firebase-hosted endpoint)  
+* `VITE_BADGES_FUNCTION_API_KEY` - Optional shared key sent in `x-api-key`  
+* `VITE_BADGES_REQUEST_TIMEOUT_MS` - Optional timeout in milliseconds (default `8000`)  
 
 # **Credits**
 

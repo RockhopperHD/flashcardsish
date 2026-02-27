@@ -4,7 +4,7 @@ import { ProfileCard } from './ProfileCard';
 import { SignInCard } from './SignInCard';
 import { X } from 'lucide-react';
 
-import { CardSet } from '../types';
+import { Badge, CardSet } from '../types';
 
 interface UserModalProps {
     isOpen: boolean;
@@ -15,6 +15,11 @@ interface UserModalProps {
     onLogout: () => void;
     librarySets: CardSet[];
     onOpenSettings: () => void;
+    badges?: Badge[];
+    badgeStatus?: 'idle' | 'loading' | 'ready' | 'error' | 'disabled';
+    badgeError?: string | null;
+    badgeLastCheckedAt?: number | null;
+    onRefreshBadges?: () => void;
 }
 
 export const UserModal: React.FC<UserModalProps> = ({
@@ -25,7 +30,12 @@ export const UserModal: React.FC<UserModalProps> = ({
     onLogin,
     onLogout,
     librarySets,
-    onOpenSettings
+    onOpenSettings,
+    badges = [],
+    badgeStatus = 'idle',
+    badgeError = null,
+    badgeLastCheckedAt = null,
+    onRefreshBadges
 }) => {
     React.useEffect(() => {
         if (!isOpen) return;
@@ -63,6 +73,11 @@ export const UserModal: React.FC<UserModalProps> = ({
                             user={user}
                             lifetimeCorrect={lifetimeCorrect}
                             librarySets={librarySets}
+                            badges={badges}
+                            badgeStatus={badgeStatus}
+                            badgeError={badgeError}
+                            badgeLastCheckedAt={badgeLastCheckedAt}
+                            onRefreshBadges={onRefreshBadges}
                             className="shadow-sm"
                         />
 

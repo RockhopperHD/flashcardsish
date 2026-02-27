@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { CardSet, GameState, Settings, Folder, Tag } from './types';
+import { Badge, CardSet, GameState, Settings, Folder, Tag } from './types';
 import { fmtTime, generateId, sanitizeSet, syncMultistudySet } from './utils';
 import { StartMenu, type UiAuditRequest } from './components/StartMenu';
 import { Game } from './components/Game';
@@ -17,6 +17,7 @@ import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
 import { sanitizeStrings } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
+import { fetchBadgesForEmail, isBadgeServiceConfigured } from './src/badgeService';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
@@ -180,7 +181,12 @@ const SettingsModal: React.FC<{
    tags: Tag[];
    onUpdateTags: (tags: Tag[]) => void;
    forceAiSetupOpen?: boolean;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen }) => {
+   badges: Badge[];
+   badgeStatus: 'idle' | 'loading' | 'ready' | 'error' | 'disabled';
+   badgeError: string | null;
+   badgeLastCheckedAt: number | null;
+   onRefreshBadges: () => void;
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen, badges, badgeStatus, badgeError, badgeLastCheckedAt, onRefreshBadges }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
@@ -1074,6 +1080,11 @@ const SettingsModal: React.FC<{
                                  user={user}
                                  lifetimeCorrect={lifetimeCorrect}
                                  librarySets={librarySets}
+                                 badges={badges}
+                                 badgeStatus={badgeStatus}
+                                 badgeError={badgeError}
+                                 badgeLastCheckedAt={badgeLastCheckedAt}
+                                 onRefreshBadges={onRefreshBadges}
                                  className="shadow-sm"
                               />
 
@@ -1154,6 +1165,11 @@ const App: React.FC = () => {
    const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
 
    const [user, setUser] = useState<GoogleDriveUser | null>(null);
+   const [badges, setBadges] = useState<Badge[]>([]);
+   const [badgeStatus, setBadgeStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'disabled'>('idle');
+   const [badgeError, setBadgeError] = useState<string | null>(null);
+   const [badgeLastCheckedAt, setBadgeLastCheckedAt] = useState<number | null>(null);
+   const badgeRequestIdRef = useRef(0);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
    const [folders, setFolders] = useState<Folder[]>([]);
@@ -1344,6 +1360,55 @@ const App: React.FC = () => {
       }
    };
 
+   const loadBadges = async (email: string, forceRefresh: boolean = false) => {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail) {
+         setBadges([]);
+         setBadgeStatus('error');
+         setBadgeError('Cannot fetch badges without an email address.');
+         setBadgeLastCheckedAt(null);
+         return;
+      }
+
+      if (!isBadgeServiceConfigured()) {
+         setBadges([]);
+         setBadgeStatus('disabled');
+         setBadgeError('Set VITE_BADGES_FUNCTION_URL to enable badges.');
+         setBadgeLastCheckedAt(null);
+         return;
+      }
+
+      const requestId = ++badgeRequestIdRef.current;
+      setBadgeStatus('loading');
+      if (forceRefresh) {
+         setBadgeError(null);
+      }
+
+      const result = await fetchBadgesForEmail(normalizedEmail, forceRefresh);
+      if (requestId !== badgeRequestIdRef.current) return;
+
+      if (result.status === 'success') {
+         setBadges(result.badges);
+         setBadgeStatus('ready');
+         setBadgeError(result.error || null);
+         setBadgeLastCheckedAt(result.fetchedAt);
+         return;
+      }
+
+      if (result.status === 'disabled') {
+         setBadges([]);
+         setBadgeStatus('disabled');
+         setBadgeError(result.error || 'Badge service not configured.');
+         setBadgeLastCheckedAt(null);
+         return;
+      }
+
+      setBadges([]);
+      setBadgeStatus('error');
+      setBadgeError(result.error || 'Unable to load badges.');
+      setBadgeLastCheckedAt(null);
+   };
+
    const handleLogin = async (keepSignedIn: boolean = true) => {
       try {
          await googleDrive.signIn(keepSignedIn);
@@ -1356,6 +1421,10 @@ const App: React.FC = () => {
    const handleLogout = async () => {
       await googleDrive.signOut();
       setUser(null);
+      setBadges([]);
+      setBadgeStatus('idle');
+      setBadgeError(null);
+      setBadgeLastCheckedAt(null);
       window.location.reload();
    };
 
@@ -1502,6 +1571,18 @@ const App: React.FC = () => {
 
       return () => unsubscribe();
    }, []);
+
+   useEffect(() => {
+      if (!user?.email) {
+         setBadges([]);
+         setBadgeError(null);
+         setBadgeLastCheckedAt(null);
+         setBadgeStatus(isBadgeServiceConfigured() ? 'idle' : 'disabled');
+         return;
+      }
+
+      loadBadges(user.email);
+   }, [user?.email]);
 
    // Browser closing protection
    useEffect(() => {
@@ -2012,6 +2093,13 @@ const App: React.FC = () => {
             initialTab={settingsInitialTab}
             tags={tags}
             forceAiSetupOpen={forceAiSetupOpen}
+            badges={badges}
+            badgeStatus={badgeStatus}
+            badgeError={badgeError}
+            badgeLastCheckedAt={badgeLastCheckedAt}
+            onRefreshBadges={() => {
+               if (user?.email) loadBadges(user.email, true);
+            }}
             onUpdateTags={(newTags) => {
                setTags(newTags);
                saveTags(newTags);
@@ -2026,6 +2114,13 @@ const App: React.FC = () => {
             onLogin={handleLogin}
             onLogout={handleLogout}
             librarySets={librarySets}
+            badges={badges}
+            badgeStatus={badgeStatus}
+            badgeError={badgeError}
+            badgeLastCheckedAt={badgeLastCheckedAt}
+            onRefreshBadges={() => {
+               if (user?.email) loadBadges(user.email, true);
+            }}
             onOpenSettings={() => {
                setIsUserModalOpen(false);
                setIsSettingsOpen(true);
@@ -2172,7 +2267,7 @@ const App: React.FC = () => {
                         "flex items-center gap-2 px-3 py-2 rounded-xl bg-panel-2 border transition-all relative overflow-visible",
                         shouldHighlightSignIn ? "border-outline signin-cta" : "border-outline hover:border-accent"
                      )}
-                     title={user ? `Logged in as ${user.email}` : "Account"}
+                     title={user ? `Logged in as ${user.email}${badges.length ? ` • ${badges.length} badge${badges.length === 1 ? '' : 's'}` : ''}` : "Account"}
                   >
                      {shouldHighlightSignIn && (
                         <svg
@@ -2196,6 +2291,12 @@ const App: React.FC = () => {
                         </div>
                      )}
                      <span className="text-sm text-muted hidden sm:block max-w-[90px] truncate">{user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
+                     {user && badges.length > 0 && (
+                        <span className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-outline text-[10px] font-bold text-accent">
+                           <Star size={10} className="fill-current" />
+                           {badges.length}
+                        </span>
+                     )}
                   </button>
 
                   {/* Cloud Sync Status Indicator */}
