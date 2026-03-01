@@ -713,6 +713,7 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
     </div>
   );
 };
+
 // Warning Modal
 const WarningModal: React.FC<{
   isOpen: boolean;
@@ -951,7 +952,7 @@ const FieldRowComponent: React.FC<{
         {/* Delete button - top right corner */}
         <button
           onClick={() => remove(index)}
-          className="absolute top-0 right-0 z-10 w-5 h-5 flex items-center justify-center bg-panel border border-outline rounded-full text-muted hover:text-red hover:border-red hover:bg-red hover:text-bg transition-all shadow-sm opacity-0 group-hover/field-row:opacity-100 focus:opacity-100"
+          className="absolute top-0 right-0 z-10 w-5 h-5 flex items-center justify-center bg-panel border border-outline rounded-full text-muted hover:text-white hover:border-red hover:bg-red transition-colors shadow-sm"
           title="Delete field"
         >
           <X size={10} />
@@ -1152,7 +1153,6 @@ const SetConfigurationModal: React.FC<{
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-    const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(null);
 
     // Reset mode on open
     useEffect(() => {
@@ -1359,61 +1359,72 @@ const SetConfigurationModal: React.FC<{
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-            <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
-
-            <p className="text-text mb-8 text-sm leading-relaxed">
-              You can tailor your flashcards set by renaming the main fields and
-              adding up to 4 custom fields per side. <br /> <br />
-              If you're repeating the same type of data in every card, like what category something falls into, this feature allows you to make the entry process for every one of those consistent. Regardless of how many custom fields you specify, leaving them blank or on their neutral option means that card won't ask for or have data for that custom field.
-              <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false. <strong>You most likely want to put custom fields on the term side.</strong>
+            <h4 className="text-lg font-bold text-text mb-2">Rename Sides</h4>
+            <p className="text-text mb-6 text-sm leading-relaxed">
+              You can optionally change the name of the Terms and Definitions sides. This is purely cosmetic and doesn't affect "gameplay" at all.
             </p>
 
-            <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
-              <div className="grid md:grid-cols-2 gap-8">
-                {/* Term Side */}
-                <Droppable droppableId="term">
-                  {(provided, snapshot) => (
-                    <div
-                      className={clsx(
-                        "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
-                        snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
-                      )}
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                    >
-                      <div className="uppercase text-xs font-bold text-muted tracking-widest">
-                        Terms Side
-                      </div>
+            <div className="grid md:grid-cols-2 gap-8">
+              <div className="space-y-3">
+                <div className="uppercase text-xs font-bold text-muted tracking-widest">
+                  Term Side
+                </div>
+                <div className="flex items-center gap-2 relative">
+                  <input
+                    value={termLabel}
+                    onChange={(e) => setTermLabel(e.target.value)}
+                    className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                    placeholder="Term"
+                  />
+                </div>
+              </div>
 
-                      <div className="flex items-center gap-2 relative">
-                        <HelperTooltip
-                          show={activeLabelSide === "term"}
-                          hideTooltips={settings.hideTooltips}
-                          text={
-                            <span>
-                              When you’re studying <b>Terms</b>, we’ll call the{" "}
-                              <b>Terms</b> side this word. You can put a language here, a
-                              special title, or anything else.
-                            </span>
-                          }
-                        />
-                        <input
-                          value={termLabel}
-                          onChange={(e) => setTermLabel(e.target.value)}
-                          onFocus={() => setActiveLabelSide("term")}
-                          onBlur={() => setActiveLabelSide(null)}
-                          className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                          placeholder="Term"
-                        />
-                      </div>
+              <div className="space-y-3">
+                <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
+                  Definition Side
+                </div>
+                <div className="flex items-center gap-2 relative">
+                  <input
+                    value={definitionLabel}
+                    onChange={(e) => setDefinitionLabel(e.target.value)}
+                    className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+                    placeholder="Definition"
+                  />
+                </div>
+              </div>
+            </div>
 
-                      <div>
-                        <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                          Custom Fields
-                          <span className="text-xs font-normal text-muted">
+            <div className="mt-8 pt-6 border-t border-outline/50">
+              <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
+              <p className="text-text mb-8 text-sm leading-relaxed">
+                Add up to 4 custom fields per side for repeated information like
+                category, date, source, or metadata. Leaving a field blank means
+                that card won&apos;t require that field.
+                <br /> <br />
+                Custom fields can be text, number, a two-option choice, or
+                true/false.
+              </p>
+
+              <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
+                <div className="grid md:grid-cols-2 gap-8">
+                  {/* Term Side */}
+                  <Droppable droppableId="term">
+                    {(provided, snapshot) => (
+                      <div
+                        className={clsx(
+                          "space-y-4 rounded-xl transition-colors",
+                          snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+                        )}
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                      >
+                        <div className="uppercase text-xs font-bold text-muted tracking-widest flex items-center justify-between">
+                          <span>{(termLabel || "Term")} Side Custom Fields</span>
+                          <span className="text-xs font-normal tracking-normal normal-case">
                             {termSideFields.length}/4
                           </span>
-                        </label>
+                        </div>
+
                         <div className="flex flex-col gap-1 min-h-[50px]">
                           {termSideFields.map((field, i) => (
                             <Draggable
@@ -1452,59 +1463,32 @@ const SetConfigurationModal: React.FC<{
                               onClick={addTermField}
                               className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
                             >
-                              <Plus size={14} /> Add Field
+                              <Plus size={14} /> Add {(termLabel || "Term")} Field
                             </button>
                           )}
                         </div>
                       </div>
-                    </div>
-                  )}
-                </Droppable>
+                    )}
+                  </Droppable>
 
-                {/* Definition Side */}
-                <Droppable droppableId="def">
-                  {(provided, snapshot) => (
-                    <div
-                      className={clsx(
-                        "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
-                        snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
-                      )}
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                    >
-                      <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
-                        Definitions Side
-                      </div>
-
-                      <div className="flex items-center gap-2 relative">
-                        <HelperTooltip
-                          show={activeLabelSide === "def"}
-                          hideTooltips={settings.hideTooltips}
-                          text={
-                            <span>
-                              When you’re studying <b>Definitions</b>, we’ll call the{" "}
-                              <b>Definitions</b> side this word. You can put a language
-                              here, a special title, or anything else.
-                            </span>
-                          }
-                        />
-                        <input
-                          value={definitionLabel}
-                          onChange={(e) => setDefinitionLabel(e.target.value)}
-                          onFocus={() => setActiveLabelSide("def")}
-                          onBlur={() => setActiveLabelSide(null)}
-                          className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
-                          placeholder="Definition"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-bold text-text mb-2 block flex justify-between">
-                          Custom Fields
-                          <span className="text-xs font-normal text-muted">
+                  {/* Definition Side */}
+                  <Droppable droppableId="def">
+                    {(provided, snapshot) => (
+                      <div
+                        className={clsx(
+                          "space-y-4 rounded-xl transition-colors",
+                          snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+                        )}
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                      >
+                        <div className="uppercase text-xs font-bold text-muted tracking-widest flex items-center justify-between">
+                          <span>{(definitionLabel || "Definition")} Side Custom Fields</span>
+                          <span className="text-xs font-normal tracking-normal normal-case">
                             {defSideFields.length}/4
                           </span>
-                        </label>
+                        </div>
+
                         <div className="flex flex-col gap-1 min-h-[50px]">
                           {defSideFields.map((field, i) => (
                             <Draggable
@@ -1543,16 +1527,16 @@ const SetConfigurationModal: React.FC<{
                               onClick={addDefField}
                               className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
                             >
-                              <Plus size={14} /> Add Field
+                              <Plus size={14} /> Add {(definitionLabel || "Definition")} Field
                             </button>
                           )}
                         </div>
                       </div>
-                    </div>
-                  )}
-                </Droppable>
-              </div>
-            </DragDropContext>
+                    )}
+                  </Droppable>
+                </div>
+              </DragDropContext>
+            </div>
 
             {/* Set Data Section */}
             <div className="mt-8 pt-6 border-t border-outline/50">
@@ -1655,38 +1639,8 @@ const SetConfigurationModal: React.FC<{
 
             <div className="mt-8 pt-6 border-t border-outline/50">
               <h4 className="text-lg font-bold text-text mb-4">Misc.</h4>
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-4">
-                  <CursorTooltip
-                    content="Adds an extra custom field for putting the year in. Goes on the term side."
-                    isEnabled={!settings.hideTooltips}
-                    tooltipClassName="w-80 max-w-[90vw]"
-                  >
-                    <label className="flex items-center gap-3 cursor-pointer select-none group">
-                      <input
-                        type="checkbox"
-                        checked={showYear}
-                        onChange={() => setShowYear(!showYear)}
-                        className="hidden"
-                      />
-                      <div
-                        className={clsx(
-                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-                          showYear
-                            ? "bg-accent border-accent"
-                            : "border-outline group-hover:border-accent",
-                        )}
-                      >
-                        {showYear && (
-                          <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
-                        )}
-                      </div>
-                      <div className="text-sm font-bold text-text">
-                        Enable Year Field
-                      </div>
-                    </label>
-                  </CursorTooltip>
-
+              <div className="flex flex-col gap-6">
+                <div className="flex items-center flex-wrap gap-4">
                   <CursorTooltip
                     content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
                     isEnabled={!settings.hideTooltips}
@@ -1724,26 +1678,27 @@ const SetConfigurationModal: React.FC<{
                     </label>
                   </CursorTooltip>
                 </div>
+                <div className="pt-6 border-t border-outline/50 flex justify-end">
+                  <button
+                    onClick={() => {
+                      // Filter out blank fields before closing
+                      const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
+                      const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
 
-                <button
-                  onClick={() => {
-                    // Filter out blank fields before closing
-                    const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
-                    const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
+                      if (cleanTermFields.length !== termSideFields.length) {
+                        setTermSideFields(cleanTermFields);
+                      }
+                      if (cleanDefFields.length !== defSideFields.length) {
+                        setDefSideFields(cleanDefFields);
+                      }
 
-                    if (cleanTermFields.length !== termSideFields.length) {
-                      setTermSideFields(cleanTermFields);
-                    }
-                    if (cleanDefFields.length !== defSideFields.length) {
-                      setDefSideFields(cleanDefFields);
-                    }
-
-                    onClose();
-                  }}
-                  className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
-                >
-                  OK
-                </button>
+                      onClose();
+                    }}
+                    className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
+                  >
+                    OK
+                  </button>
+                </div>
               </div>
             </div>
           </div>

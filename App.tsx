@@ -263,7 +263,6 @@ const SettingsModal: React.FC<{
       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
       exportData: "Download all your flashcard sets, folders, and settings as a JSON file for backup or transfer.",
       dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone.",
-      batchLength: "Set the number of cards in a batch, which is a repeated round, before new cards are introduced. If this number exceeds half the number of cards in your set, this is overridden by half the number of cards in your set.",
       shuffleCards: "When in Learn mode, shuffle terms so they don't appear in the same order as they are listed in the set.",
       brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen.",
       importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
@@ -644,28 +643,6 @@ const SettingsModal: React.FC<{
 
                         {/* Auto Advance */}
                         <SettingRow id="autoAdvanceOnAnswer" label="Auto-Advance on Answer" settingKey="autoAdvanceOnAnswer" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
-
-                        {/* Batch Length */}
-                        <TooltipWrapper id="batchLength" tooltip={tooltips.batchLength} settings={settings}>
-                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
-                              <div className="flex items-center justify-between">
-                                 <span className="font-medium text-text">Batch Length</span>
-                                 <input
-                                    type="number"
-                                    min={3}
-                                    max={50}
-                                    value={settings.batchLength}
-                                    onChange={(e) => {
-                                       const val = parseInt(e.target.value);
-                                       if (!isNaN(val) && val >= 3 && val <= 50) {
-                                          onUpdate({ ...settings, batchLength: val });
-                                       }
-                                    }}
-                                    className="w-16 py-1 px-2 text-center bg-panel border border-outline rounded-lg text-sm font-bold text-text focus:border-accent focus:outline-none"
-                                 />
-                              </div>
-                           </div>
-                        </TooltipWrapper>
 
                         {/* Brutal Mode */}
                         <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
@@ -1181,7 +1158,6 @@ const App: React.FC = () => {
       mode: 'standard',
       answerWithDefinition: false,
       hideTooltips: false,
-      batchLength: 10,
       shuffleCards: true,
       brutalMode: false,
       autoCloseImageWindow: false,

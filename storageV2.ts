@@ -37,7 +37,6 @@ export const DEFAULT_SETTINGS: Settings = {
     starredOnly: false,
     answerWithDefinition: false,
     mode: 'standard',
-    batchLength: 10,
     shuffleCards: true,
     brutalMode: false,
     autoCloseImageWindow: false,
@@ -177,6 +176,8 @@ const createDefaultStructure = (): StructureFile => ({
 const deepMerge = <T extends object>(base: T, updates: Partial<T>): T => {
     const result = { ...base };
     for (const key of Object.keys(updates) as (keyof T)[]) {
+        // Keep settings schema clean by ignoring unknown keys from older configs.
+        if (!(key in base)) continue;
         if (updates[key] !== undefined) {
             if (typeof base[key] === 'object' && !Array.isArray(base[key]) && base[key] !== null) {
                 result[key] = deepMerge(base[key] as object, updates[key] as object) as T[keyof T];

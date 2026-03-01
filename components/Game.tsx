@@ -62,6 +62,22 @@ const BATCH_MESSAGES_NEEDS_WORK = [
    "Keep pushing!"
 ];
 
+const getAutoBatchSize = (cardCount: number): number => {
+   if (cardCount <= 0) return 0;
+   if (cardCount <= 2) return 1;
+
+   const halfDeck = Math.floor(cardCount / 2);
+   const target =
+      cardCount <= 20
+         ? halfDeck
+         : cardCount <= 60
+            ? Math.round(cardCount * 0.4)
+            : Math.round(cardCount * 0.3);
+   const clampedTarget = Math.max(5, Math.min(25, target));
+
+   return Math.min(cardCount, halfDeck, clampedTarget);
+};
+
 // Helper Component for Rendering Edit Fields
 const renderEditField = (
    fieldDef: CustomFieldDefinition,
@@ -461,9 +477,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    // Calculate effective batch size
    const effectiveBatchSize = useMemo(() => {
-      const halfDeck = Math.floor(baseCards.length / 2);
-      return Math.min(settings.batchLength, halfDeck, baseCards.length);
-   }, [settings.batchLength, baseCards.length]);
+      return getAutoBatchSize(baseCards.length);
+   }, [baseCards.length]);
 
    // Derived Order (for Zen mode)
    const activeQueue = useMemo(() => {
@@ -834,7 +849,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          setFeedback({
             type: 'correct',
             correction: (settings.forgiveSpellingErrors && result.bestDist > 0)
-               ? (settings.answerWithDefinition ? currentCard.content.substring(0, 50) + '...' : (result as ReturnType<typeof checkAnswer>).bestTerm)
+               ? (settings.answerWithDefinition ? currentCard.content : (result as ReturnType<typeof checkAnswer>).bestTerm)
                : undefined
          });
       } else {
@@ -870,7 +885,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          } else {
             // Standard Incorrect Feedback
             let msg = settings.answerWithDefinition
-               ? `Answer: ${currentCard.content.length > 100 ? currentCard.content.substring(0, 100) + '...' : currentCard.content}`
+               ? `Answer: ${currentCard.content}`
                : `Answer: ${currentCard.term.join(' / ')}`;
             if (currentCard.year && !result.isYearMatch && isMainAnswerMatch) {
                msg = `${settings.answerWithDefinition ? 'Definition' : 'Term'} correct, but year is ${currentCard.year}`;
@@ -1286,6 +1301,33 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const isInteractive = feedback.type === 'idle' || feedback.type === 'retype_needed';
 
+   const renderFeedbackMessage = (message: string) => {
+      const answerPrefix = 'Answer: ';
+      const correctAnswerPrefix = 'Correct Answer: ';
+
+      if (message.startsWith(correctAnswerPrefix)) {
+         const answerText = message.slice(correctAnswerPrefix.length);
+         return (
+            <span>
+               {correctAnswerPrefix}
+               <>{renderInline(answerText, 'feedback-correct-answer')}</>
+            </span>
+         );
+      }
+
+      if (message.startsWith(answerPrefix)) {
+         const answerText = message.slice(answerPrefix.length);
+         return (
+            <span>
+               {answerPrefix}
+               <>{renderInline(answerText, 'feedback-answer')}</>
+            </span>
+         );
+      }
+
+      return <span>{message}</span>;
+   };
+
    // BREAK SCREEN
    if (showBatchBreak && subMode === 'batch') {
       // Calculation for motivation
@@ -1495,7 +1537,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      ) : (
                         <>
                            <span className="px-2 py-1 bg-accent/10 rounded text-xs font-bold text-accent">
-                              Batch Size: {effectiveBatchSize}
+                              Auto Batch Size: {effectiveBatchSize}
                            </span>
                         </>
                      )}
@@ -1694,7 +1736,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                        return (
                                           <div key={fieldName} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm font-medium text-muted">
                                              <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-2">{fieldName}:</span>
-                                             <span className="text-text">{val}</span>
+                                             <span className="text-text"><>{renderInline(val, `question-side-field-${fieldName}`)}</></span>
                                           </div>
                                        );
                                     })}
@@ -1772,7 +1814,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                     isLoadingAiOptions && "opacity-50 cursor-wait"
                                  )}
                               >
-                                 {opt}
+                                 <>{renderInline(opt, `option-${i}`)}</>
                               </button>
                            );
                         })}
@@ -1845,9 +1887,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            <div key="term" className={clsx("relative flex flex-col", termClass)}>
                               {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
                                  <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
-                                    Answer: {settings.answerWithDefinition
-                                       ? (currentCard.content.length > 50 ? currentCard.content.substring(0, 50) + '...' : currentCard.content)
-                                       : currentCard.term[0]}
+                                    <span>Answer: </span>
+                                    <>{renderInline(settings.answerWithDefinition ? currentCard.content : currentCard.term[0], 'retype-answer')}</>
                                  </div>
                               )}
                               <RichInput
@@ -2035,7 +2076,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      <div className="flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 bg-green/10 border border-green/20 p-3 rounded-lg">
                         <div className="text-green font-bold flex items-center gap-2">
                            Correct!
-                           {feedback.correction && <span className="text-muted font-normal text-sm">(Accepted: {feedback.correction})</span>}
+                           {feedback.correction && (
+                              <span className="text-muted font-normal text-sm">
+                                 (Accepted: <>{renderInline(feedback.correction, 'accepted-correction')}</>)
+                              </span>
+                           )}
                         </div>
                         <button onClick={() => handleOverride(false)} className="text-xs text-muted hover:text-text underline">
                            Actually, I was wrong (O)
@@ -2047,10 +2092,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
                         <div className="flex items-center justify-between bg-red/10 border border-red/20 p-3 rounded-lg">
                            <div className="text-red font-bold flex flex-col">
-                              <span>{feedback.message}</span>
+                              {renderFeedbackMessage(feedback.message)}
                               {currentCard.year && <span className="text-sm opacity-80">Year: {currentCard.year}</span>}
                               {currentCard.customFields?.map(f => (
-                                 <span key={f.name} className="text-sm opacity-80">{f.name}: {f.value}</span>
+                                 <span key={f.name} className="text-sm opacity-80">
+                                    {f.name}: <>{renderInline(f.value, `feedback-custom-${f.name}`)}</>
+                                 </span>
                               ))}
                            </div>
                            <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
@@ -2284,7 +2331,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         {currentCard.content && (
                            <div>
                               <div className="text-xs text-muted mb-1 uppercase">Definition</div>
-                              <div className="text-sm text-text line-clamp-4">{currentCard.content}</div>
+                              <div className="text-sm text-text line-clamp-4"><>{renderInline(currentCard.content, 'mixup-current-definition')}</></div>
                            </div>
                         )}
                         {currentCard.year && (
@@ -2312,7 +2359,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  {matchedCard.content && (
                                     <div>
                                        <div className="text-xs text-muted mb-1 uppercase">Definition</div>
-                                       <div className="text-sm text-text line-clamp-4">{matchedCard.content}</div>
+                                       <div className="text-sm text-text line-clamp-4"><>{renderInline(matchedCard.content, 'mixup-matched-definition')}</></div>
                                     </div>
                                  )}
                                  {matchedCard.year && (

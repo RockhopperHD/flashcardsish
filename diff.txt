@@ -1,0 +1,600 @@
+diff --git a/App.tsx b/App.tsx
+index 434bb71..63b2e9f 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -263,7 +263,6 @@ const SettingsModal: React.FC<{
+       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
+       exportData: "Download all your flashcard sets, folders, and settings as a JSON file for backup or transfer.",
+       dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone.",
+-      batchLength: "Set the number of cards in a batch, which is a repeated round, before new cards are introduced. If this number exceeds half the number of cards in your set, this is overridden by half the number of cards in your set.",
+       shuffleCards: "When in Learn mode, shuffle terms so they don't appear in the same order as they are listed in the set.",
+       brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen.",
+       importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
+@@ -645,28 +644,6 @@ const SettingsModal: React.FC<{
+                         {/* Auto Advance */}
+                         <SettingRow id="autoAdvanceOnAnswer" label="Auto-Advance on Answer" settingKey="autoAdvanceOnAnswer" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+ 
+-                        {/* Batch Length */}
+-                        <TooltipWrapper id="batchLength" tooltip={tooltips.batchLength} settings={settings}>
+-                           <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+-                              <div className="flex items-center justify-between">
+-                                 <span className="font-medium text-text">Batch Length</span>
+-                                 <input
+-                                    type="number"
+-                                    min={3}
+-                                    max={50}
+-                                    value={settings.batchLength}
+-                                    onChange={(e) => {
+-                                       const val = parseInt(e.target.value);
+-                                       if (!isNaN(val) && val >= 3 && val <= 50) {
+-                                          onUpdate({ ...settings, batchLength: val });
+-                                       }
+-                                    }}
+-                                    className="w-16 py-1 px-2 text-center bg-panel border border-outline rounded-lg text-sm font-bold text-text focus:border-accent focus:outline-none"
+-                                 />
+-                              </div>
+-                           </div>
+-                        </TooltipWrapper>
+-
+                         {/* Brutal Mode */}
+                         <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+ 
+@@ -1181,7 +1158,6 @@ const App: React.FC = () => {
+       mode: 'standard',
+       answerWithDefinition: false,
+       hideTooltips: false,
+-      batchLength: 10,
+       shuffleCards: true,
+       brutalMode: false,
+       autoCloseImageWindow: false,
+diff --git a/components/Game.tsx b/components/Game.tsx
+index cc290c5..08d3791 100644
+--- a/components/Game.tsx
++++ b/components/Game.tsx
+@@ -62,6 +62,22 @@ const BATCH_MESSAGES_NEEDS_WORK = [
+    "Keep pushing!"
+ ];
+ 
++const getAutoBatchSize = (cardCount: number): number => {
++   if (cardCount <= 0) return 0;
++   if (cardCount <= 2) return 1;
++
++   const halfDeck = Math.floor(cardCount / 2);
++   const target =
++      cardCount <= 20
++         ? halfDeck
++         : cardCount <= 60
++            ? Math.round(cardCount * 0.4)
++            : Math.round(cardCount * 0.3);
++   const clampedTarget = Math.max(5, Math.min(25, target));
++
++   return Math.min(cardCount, halfDeck, clampedTarget);
++};
++
+ // Helper Component for Rendering Edit Fields
+ const renderEditField = (
+    fieldDef: CustomFieldDefinition,
+@@ -461,9 +477,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+ 
+    // Calculate effective batch size
+    const effectiveBatchSize = useMemo(() => {
+-      const halfDeck = Math.floor(baseCards.length / 2);
+-      return Math.min(settings.batchLength, halfDeck, baseCards.length);
+-   }, [settings.batchLength, baseCards.length]);
++      return getAutoBatchSize(baseCards.length);
++   }, [baseCards.length]);
+ 
+    // Derived Order (for Zen mode)
+    const activeQueue = useMemo(() => {
+@@ -834,7 +849,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+          setFeedback({
+             type: 'correct',
+             correction: (settings.forgiveSpellingErrors && result.bestDist > 0)
+-               ? (settings.answerWithDefinition ? currentCard.content.substring(0, 50) + '...' : (result as ReturnType<typeof checkAnswer>).bestTerm)
++               ? (settings.answerWithDefinition ? currentCard.content : (result as ReturnType<typeof checkAnswer>).bestTerm)
+                : undefined
+          });
+       } else {
+@@ -870,7 +885,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+          } else {
+             // Standard Incorrect Feedback
+             let msg = settings.answerWithDefinition
+-               ? `Answer: ${currentCard.content.length > 100 ? currentCard.content.substring(0, 100) + '...' : currentCard.content}`
++               ? `Answer: ${currentCard.content}`
+                : `Answer: ${currentCard.term.join(' / ')}`;
+             if (currentCard.year && !result.isYearMatch && isMainAnswerMatch) {
+                msg = `${settings.answerWithDefinition ? 'Definition' : 'Term'} correct, but year is ${currentCard.year}`;
+@@ -1286,6 +1301,33 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+ 
+    const isInteractive = feedback.type === 'idle' || feedback.type === 'retype_needed';
+ 
++   const renderFeedbackMessage = (message: string) => {
++      const answerPrefix = 'Answer: ';
++      const correctAnswerPrefix = 'Correct Answer: ';
++
++      if (message.startsWith(correctAnswerPrefix)) {
++         const answerText = message.slice(correctAnswerPrefix.length);
++         return (
++            <span>
++               {correctAnswerPrefix}
++               <>{renderInline(answerText, 'feedback-correct-answer')}</>
++            </span>
++         );
++      }
++
++      if (message.startsWith(answerPrefix)) {
++         const answerText = message.slice(answerPrefix.length);
++         return (
++            <span>
++               {answerPrefix}
++               <>{renderInline(answerText, 'feedback-answer')}</>
++            </span>
++         );
++      }
++
++      return <span>{message}</span>;
++   };
++
+    // BREAK SCREEN
+    if (showBatchBreak && subMode === 'batch') {
+       // Calculation for motivation
+@@ -1495,7 +1537,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                      ) : (
+                         <>
+                            <span className="px-2 py-1 bg-accent/10 rounded text-xs font-bold text-accent">
+-                              Batch Size: {effectiveBatchSize}
++                              Auto Batch Size: {effectiveBatchSize}
+                            </span>
+                         </>
+                      )}
+@@ -1694,7 +1736,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                                        return (
+                                           <div key={fieldName} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm font-medium text-muted">
+                                              <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-2">{fieldName}:</span>
+-                                             <span className="text-text">{val}</span>
++                                             <span className="text-text"><>{renderInline(val, `question-side-field-${fieldName}`)}</></span>
+                                           </div>
+                                        );
+                                     })}
+@@ -1772,7 +1814,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                                     isLoadingAiOptions && "opacity-50 cursor-wait"
+                                  )}
+                               >
+-                                 {opt}
++                                 <>{renderInline(opt, `option-${i}`)}</>
+                               </button>
+                            );
+                         })}
+@@ -1845,9 +1887,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                            <div key="term" className={clsx("relative flex flex-col", termClass)}>
+                               {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
+                                  <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
+-                                    Answer: {settings.answerWithDefinition
+-                                       ? (currentCard.content.length > 50 ? currentCard.content.substring(0, 50) + '...' : currentCard.content)
+-                                       : currentCard.term[0]}
++                                    <span>Answer: </span>
++                                    <>{renderInline(settings.answerWithDefinition ? currentCard.content : currentCard.term[0], 'retype-answer')}</>
+                                  </div>
+                               )}
+                               <RichInput
+@@ -2035,7 +2076,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                      <div className="flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 bg-green/10 border border-green/20 p-3 rounded-lg">
+                         <div className="text-green font-bold flex items-center gap-2">
+                            Correct!
+-                           {feedback.correction && <span className="text-muted font-normal text-sm">(Accepted: {feedback.correction})</span>}
++                           {feedback.correction && (
++                              <span className="text-muted font-normal text-sm">
++                                 (Accepted: <>{renderInline(feedback.correction, 'accepted-correction')}</>)
++                              </span>
++                           )}
+                         </div>
+                         <button onClick={() => handleOverride(false)} className="text-xs text-muted hover:text-text underline">
+                            Actually, I was wrong (O)
+@@ -2047,10 +2092,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2">
+                         <div className="flex items-center justify-between bg-red/10 border border-red/20 p-3 rounded-lg">
+                            <div className="text-red font-bold flex flex-col">
+-                              <span>{feedback.message}</span>
++                              {renderFeedbackMessage(feedback.message)}
+                               {currentCard.year && <span className="text-sm opacity-80">Year: {currentCard.year}</span>}
+                               {currentCard.customFields?.map(f => (
+-                                 <span key={f.name} className="text-sm opacity-80">{f.name}: {f.value}</span>
++                                 <span key={f.name} className="text-sm opacity-80">
++                                    {f.name}: <>{renderInline(f.value, `feedback-custom-${f.name}`)}</>
++                                 </span>
+                               ))}
+                            </div>
+                            <button onClick={() => handleOverride(true)} className="text-xs text-muted hover:text-text underline">
+@@ -2284,7 +2331,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                         {currentCard.content && (
+                            <div>
+                               <div className="text-xs text-muted mb-1 uppercase">Definition</div>
+-                              <div className="text-sm text-text line-clamp-4">{currentCard.content}</div>
++                              <div className="text-sm text-text line-clamp-4"><>{renderInline(currentCard.content, 'mixup-current-definition')}</></div>
+                            </div>
+                         )}
+                         {currentCard.year && (
+@@ -2312,7 +2359,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
+                                  {matchedCard.content && (
+                                     <div>
+                                        <div className="text-xs text-muted mb-1 uppercase">Definition</div>
+-                                       <div className="text-sm text-text line-clamp-4">{matchedCard.content}</div>
++                                       <div className="text-sm text-text line-clamp-4"><>{renderInline(matchedCard.content, 'mixup-matched-definition')}</></div>
+                                     </div>
+                                  )}
+                                  {matchedCard.year && (
+diff --git a/components/StartMenu.tsx b/components/StartMenu.tsx
+index cd680eb..aca11d4 100644
+--- a/components/StartMenu.tsx
++++ b/components/StartMenu.tsx
+@@ -713,6 +713,7 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
+     </div>
+   );
+ };
++
+ // Warning Modal
+ const WarningModal: React.FC<{
+   isOpen: boolean;
+@@ -951,7 +952,7 @@ const FieldRowComponent: React.FC<{
+         {/* Delete button - top right corner */}
+         <button
+           onClick={() => remove(index)}
+-          className="absolute top-0 right-0 z-10 w-5 h-5 flex items-center justify-center bg-panel border border-outline rounded-full text-muted hover:text-red hover:border-red hover:bg-red hover:text-bg transition-all shadow-sm opacity-0 group-hover/field-row:opacity-100 focus:opacity-100"
++          className="absolute top-0 right-0 z-10 w-5 h-5 flex items-center justify-center bg-panel border border-outline rounded-full text-muted hover:text-white hover:border-red hover:bg-red transition-colors shadow-sm"
+           title="Delete field"
+         >
+           <X size={10} />
+@@ -1152,7 +1153,6 @@ const SetConfigurationModal: React.FC<{
+       document.addEventListener('mousedown', handleClickOutside);
+       return () => document.removeEventListener('mousedown', handleClickOutside);
+     }, []);
+-    const [activeLabelSide, setActiveLabelSide] = useState<"term" | "def" | null>(null);
+ 
+     // Reset mode on open
+     useEffect(() => {
+@@ -1359,61 +1359,72 @@ const SetConfigurationModal: React.FC<{
+           </div>
+ 
+           <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+-            <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
+-
+-            <p className="text-text mb-8 text-sm leading-relaxed">
+-              You can tailor your flashcards set by renaming the main fields and
+-              adding up to 4 custom fields per side. <br /> <br />
+-              If you're repeating the same type of data in every card, like what category something falls into, this feature allows you to make the entry process for every one of those consistent. Regardless of how many custom fields you specify, leaving them blank or on their neutral option means that card won't ask for or have data for that custom field.
+-              <br /> <br /> Custom fields can be text, a number, a choice between two custom options, or a choice between true or false. <strong>You most likely want to put custom fields on the term side.</strong>
++            <h4 className="text-lg font-bold text-text mb-2">Rename Sides</h4>
++            <p className="text-text mb-6 text-sm leading-relaxed">
++              You can optionally change the name of the Terms and Definitions sides. This is purely cosmetic and doesn't affect "gameplay" at all.
+             </p>
+ 
+-            <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
+-              <div className="grid md:grid-cols-2 gap-8">
+-                {/* Term Side */}
+-                <Droppable droppableId="term">
+-                  {(provided, snapshot) => (
+-                    <div
+-                      className={clsx(
+-                        "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
+-                        snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+-                      )}
+-                      ref={provided.innerRef}
+-                      {...provided.droppableProps}
+-                    >
+-                      <div className="uppercase text-xs font-bold text-muted tracking-widest">
+-                        Terms Side
+-                      </div>
++            <div className="grid md:grid-cols-2 gap-8">
++              <div className="space-y-3">
++                <div className="uppercase text-xs font-bold text-muted tracking-widest">
++                  Term Side
++                </div>
++                <div className="flex items-center gap-2 relative">
++                  <input
++                    value={termLabel}
++                    onChange={(e) => setTermLabel(e.target.value)}
++                    className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
++                    placeholder="Term"
++                  />
++                </div>
++              </div>
+ 
+-                      <div className="flex items-center gap-2 relative">
+-                        <HelperTooltip
+-                          show={activeLabelSide === "term"}
+-                          hideTooltips={settings.hideTooltips}
+-                          text={
+-                            <span>
+-                              When you’re studying <b>Terms</b>, we’ll call the{" "}
+-                              <b>Terms</b> side this word. You can put a language here, a
+-                              special title, or anything else.
+-                            </span>
+-                          }
+-                        />
+-                        <input
+-                          value={termLabel}
+-                          onChange={(e) => setTermLabel(e.target.value)}
+-                          onFocus={() => setActiveLabelSide("term")}
+-                          onBlur={() => setActiveLabelSide(null)}
+-                          className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+-                          placeholder="Term"
+-                        />
+-                      </div>
++              <div className="space-y-3">
++                <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
++                  Definition Side
++                </div>
++                <div className="flex items-center gap-2 relative">
++                  <input
++                    value={definitionLabel}
++                    onChange={(e) => setDefinitionLabel(e.target.value)}
++                    className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
++                    placeholder="Definition"
++                  />
++                </div>
++              </div>
++            </div>
++
++            <div className="mt-8 pt-6 border-t border-outline/50">
++              <h4 className="text-lg font-bold text-text mb-2">Custom Fields</h4>
++              <p className="text-text mb-8 text-sm leading-relaxed">
++                Add up to 4 custom fields per side for repeated information like
++                category, date, source, or metadata. Leaving a field blank means
++                that card won&apos;t require that field.
++                <br /> <br />
++                Custom fields can be text, number, a two-option choice, or
++                true/false.
++              </p>
+ 
+-                      <div>
+-                        <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+-                          Custom Fields
+-                          <span className="text-xs font-normal text-muted">
++              <DragDropContext onDragEnd={onDragEnd} onDragStart={onDragStart}>
++                <div className="grid md:grid-cols-2 gap-8">
++                  {/* Term Side */}
++                  <Droppable droppableId="term">
++                    {(provided, snapshot) => (
++                      <div
++                        className={clsx(
++                          "space-y-4 rounded-xl transition-colors",
++                          snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
++                        )}
++                        ref={provided.innerRef}
++                        {...provided.droppableProps}
++                      >
++                        <div className="uppercase text-xs font-bold text-muted tracking-widest flex items-center justify-between">
++                          <span>{(termLabel || "Term")} Side Custom Fields</span>
++                          <span className="text-xs font-normal tracking-normal normal-case">
+                             {termSideFields.length}/4
+                           </span>
+-                        </label>
++                        </div>
++
+                         <div className="flex flex-col gap-1 min-h-[50px]">
+                           {termSideFields.map((field, i) => (
+                             <Draggable
+@@ -1452,59 +1463,32 @@ const SetConfigurationModal: React.FC<{
+                               onClick={addTermField}
+                               className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                             >
+-                              <Plus size={14} /> Add Field
++                              <Plus size={14} /> Add {(termLabel || "Term")} Field
+                             </button>
+                           )}
+                         </div>
+                       </div>
+-                    </div>
+-                  )}
+-                </Droppable>
+-
+-                {/* Definition Side */}
+-                <Droppable droppableId="def">
+-                  {(provided, snapshot) => (
+-                    <div
+-                      className={clsx(
+-                        "space-y-4 rounded-xl transition-colors min-h-[200px] p-2",
+-                        snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
+-                      )}
+-                      ref={provided.innerRef}
+-                      {...provided.droppableProps}
+-                    >
+-                      <div className="uppercase text-xs font-bold text-muted tracking-widest text-right">
+-                        Definitions Side
+-                      </div>
+-
+-                      <div className="flex items-center gap-2 relative">
+-                        <HelperTooltip
+-                          show={activeLabelSide === "def"}
+-                          hideTooltips={settings.hideTooltips}
+-                          text={
+-                            <span>
+-                              When you’re studying <b>Definitions</b>, we’ll call the{" "}
+-                              <b>Definitions</b> side this word. You can put a language
+-                              here, a special title, or anything else.
+-                            </span>
+-                          }
+-                        />
+-                        <input
+-                          value={definitionLabel}
+-                          onChange={(e) => setDefinitionLabel(e.target.value)}
+-                          onFocus={() => setActiveLabelSide("def")}
+-                          onBlur={() => setActiveLabelSide(null)}
+-                          className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-3 text-lg focus:border-accent outline-none font-bold text-accent placeholder-accent/30 transition-colors"
+-                          placeholder="Definition"
+-                        />
+-                      </div>
++                    )}
++                  </Droppable>
+ 
+-                      <div>
+-                        <label className="text-sm font-bold text-text mb-2 block flex justify-between">
+-                          Custom Fields
+-                          <span className="text-xs font-normal text-muted">
++                  {/* Definition Side */}
++                  <Droppable droppableId="def">
++                    {(provided, snapshot) => (
++                      <div
++                        className={clsx(
++                          "space-y-4 rounded-xl transition-colors",
++                          snapshot.isDraggingOver ? "bg-accent/5 border-2 border-dashed border-accent/30" : "border-2 border-transparent"
++                        )}
++                        ref={provided.innerRef}
++                        {...provided.droppableProps}
++                      >
++                        <div className="uppercase text-xs font-bold text-muted tracking-widest flex items-center justify-between">
++                          <span>{(definitionLabel || "Definition")} Side Custom Fields</span>
++                          <span className="text-xs font-normal tracking-normal normal-case">
+                             {defSideFields.length}/4
+                           </span>
+-                        </label>
++                        </div>
++
+                         <div className="flex flex-col gap-1 min-h-[50px]">
+                           {defSideFields.map((field, i) => (
+                             <Draggable
+@@ -1543,16 +1527,16 @@ const SetConfigurationModal: React.FC<{
+                               onClick={addDefField}
+                               className="w-full py-2 border border-dashed border-outline rounded-lg text-sm text-muted hover:text-accent hover:border-accent transition-colors flex items-center justify-center gap-2"
+                             >
+-                              <Plus size={14} /> Add Field
++                              <Plus size={14} /> Add {(definitionLabel || "Definition")} Field
+                             </button>
+                           )}
+                         </div>
+                       </div>
+-                    </div>
+-                  )}
+-                </Droppable>
+-              </div>
+-            </DragDropContext>
++                    )}
++                  </Droppable>
++                </div>
++              </DragDropContext>
++            </div>
+ 
+             {/* Set Data Section */}
+             <div className="mt-8 pt-6 border-t border-outline/50">
+@@ -1655,38 +1639,8 @@ const SetConfigurationModal: React.FC<{
+ 
+             <div className="mt-8 pt-6 border-t border-outline/50">
+               <h4 className="text-lg font-bold text-text mb-4">Misc.</h4>
+-              <div className="flex items-center justify-between flex-wrap gap-4">
+-                <div className="flex items-center gap-4">
+-                  <CursorTooltip
+-                    content="Adds an extra custom field for putting the year in. Goes on the term side."
+-                    isEnabled={!settings.hideTooltips}
+-                    tooltipClassName="w-80 max-w-[90vw]"
+-                  >
+-                    <label className="flex items-center gap-3 cursor-pointer select-none group">
+-                      <input
+-                        type="checkbox"
+-                        checked={showYear}
+-                        onChange={() => setShowYear(!showYear)}
+-                        className="hidden"
+-                      />
+-                      <div
+-                        className={clsx(
+-                          "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
+-                          showYear
+-                            ? "bg-accent border-accent"
+-                            : "border-outline group-hover:border-accent",
+-                        )}
+-                      >
+-                        {showYear && (
+-                          <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+-                        )}
+-                      </div>
+-                      <div className="text-sm font-bold text-text">
+-                        Enable Year Field
+-                      </div>
+-                    </label>
+-                  </CursorTooltip>
+-
++              <div className="flex flex-col gap-6">
++                <div className="flex items-center flex-wrap gap-4">
+                   <CursorTooltip
+                     content="Adds an image button to the term side of each card. When enabled, you can attach images to both sides of your flashcards."
+                     isEnabled={!settings.hideTooltips}
+@@ -1724,26 +1678,27 @@ const SetConfigurationModal: React.FC<{
+                     </label>
+                   </CursorTooltip>
+                 </div>
+-
+-                <button
+-                  onClick={() => {
+-                    // Filter out blank fields before closing
+-                    const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
+-                    const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
+-
+-                    if (cleanTermFields.length !== termSideFields.length) {
+-                      setTermSideFields(cleanTermFields);
+-                    }
+-                    if (cleanDefFields.length !== defSideFields.length) {
+-                      setDefSideFields(cleanDefFields);
+-                    }
+-
+-                    onClose();
+-                  }}
+-                  className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
+-                >
+-                  OK
+-                </button>
++                <div className="pt-6 border-t border-outline/50 flex justify-end">
++                  <button
++                    onClick={() => {
++                      // Filter out blank fields before closing
++                      const cleanTermFields = termSideFields.filter(f => f.name.trim() !== "");
++                      const cleanDefFields = defSideFields.filter(f => f.name.trim() !== "");
++
++                      if (cleanTermFields.length !== termSideFields.length) {
++                        setTermSideFields(cleanTermFields);
++                      }
++                      if (cleanDefFields.length !== defSideFields.length) {
++                        setDefSideFields(cleanDefFields);
++                      }
++
++                      onClose();
++                    }}
++                    className="px-6 py-2.5 bg-accent text-bg font-bold rounded-xl hover:bg-accent/90 transition-colors duration-150"
++                  >
++                    OK
++                  </button>
++                </div>
+               </div>
+             </div>
+           </div>
+diff --git a/storageV2.ts b/storageV2.ts
+index cb06a26..6f7711d 100644
+--- a/storageV2.ts
++++ b/storageV2.ts
+@@ -37,7 +37,6 @@ export const DEFAULT_SETTINGS: Settings = {
+     starredOnly: false,
+     answerWithDefinition: false,
+     mode: 'standard',
+-    batchLength: 10,
+     shuffleCards: true,
+     brutalMode: false,
+     autoCloseImageWindow: false,
+@@ -177,6 +176,8 @@ const createDefaultStructure = (): StructureFile => ({
+ const deepMerge = <T extends object>(base: T, updates: Partial<T>): T => {
+     const result = { ...base };
+     for (const key of Object.keys(updates) as (keyof T)[]) {
++        // Keep settings schema clean by ignoring unknown keys from older configs.
++        if (!(key in base)) continue;
+         if (updates[key] !== undefined) {
+             if (typeof base[key] === 'object' && !Array.isArray(base[key]) && base[key] !== null) {
+                 result[key] = deepMerge(base[key] as object, updates[key] as object) as T[keyof T];
+diff --git a/types.ts b/types.ts
+index 92ce78a..860e15d 100644
+--- a/types.ts
++++ b/types.ts
+@@ -72,7 +72,6 @@ export interface Settings {
+   mode: 'standard' | 'multiple_choice' | 'ai_random_choice';
+   answerWithDefinition: boolean;
+   hideTooltips: boolean;
+-  batchLength: number; // Batch mode: number of cards per batch (default 10)
+   shuffleCards: boolean; // Shuffle cards in Learn mode (default true)
+   brutalMode: boolean; // Zen mode: if wrong at 1/2 mastery, reset to 0/2 (default false)
+   autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
