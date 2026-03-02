@@ -128,6 +128,10 @@ export interface CorruptionReport {
     error?: string;
 }
 
+interface WriteOptions {
+    ignoreConflicts?: boolean;
+}
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -796,7 +800,7 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
 /**
  * Write a flashcard set file
  */
-export const writeFlashcardSet = async (cardSet: CardSet): Promise<void> => {
+export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions): Promise<void> => {
     const file = setToFile(cardSet);
 
     // Cache locally
@@ -813,9 +817,15 @@ export const writeFlashcardSet = async (cardSet: CardSet): Promise<void> => {
     try {
         const folderId = await ensureDriveFolder();
         const setsFolderId = await ensureSetsFolder(folderId);
-        await googleDrive.writeFile(setsFolderId, `${cardSet.id}.flashcards`, JSON.stringify(file, null, 2));
+        await googleDrive.writeFile(
+            setsFolderId,
+            `${cardSet.id}.flashcards`,
+            JSON.stringify(file, null, 2),
+            { ignoreConflicts: options?.ignoreConflicts }
+        );
     } catch (error) {
         console.error(`[StorageV2] Failed to write set ${cardSet.id}:`, error);
+        throw error;
     }
 };
 

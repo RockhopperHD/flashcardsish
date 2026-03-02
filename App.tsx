@@ -14,7 +14,7 @@ import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadAllUserData, saveSettings, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
+import { saveLibrary, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
 import { sanitizeStrings } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
@@ -24,13 +24,10 @@ import { CursorTooltip } from './components/CursorTooltip';
 import { CorruptionNotification, CorruptionPopup } from './components/CorruptionNotification';
 import { AiSetupModal } from './components/AiSetupModal';
 import { OnboardingTour } from './components/OnboardingTour';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 // UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
 // import { UiAuditPanel } from './components/UiAuditPanel';
 
-const LIBRARY_KEY = 'flashcard-library-v3';
-const FOLDERS_KEY = 'flashcard-folders-v1';
-const SETTINGS_KEY = 'flashcard-settings-v2';
-const STATS_KEY = 'flashcard-stats-v1';
 const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
 const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
 
@@ -50,6 +47,29 @@ const normalizeLoadedSet = (set: CardSet): CardSet => {
       isSessionActive: false,
       sourceSetIds: undefined
    };
+};
+
+interface FlashcardsishExportFile {
+   exportedAt: string;
+   version: 'flashcardsish-export-v1';
+   librarySets?: CardSet[];
+   folders?: Folder[];
+   settings?: Partial<Settings>;
+   stats?: { lifetimeCorrect?: number };
+   tags?: Tag[];
+}
+
+const parseExportData = (raw: string): FlashcardsishExportFile => {
+   const parsed = JSON.parse(raw);
+   if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Backup file is not valid JSON data.');
+   }
+
+   if (parsed.version !== 'flashcardsish-export-v1') {
+      throw new Error('Unsupported backup version. Expected flashcardsish-export-v1.');
+   }
+
+   return parsed as FlashcardsishExportFile;
 };
 
 const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
@@ -171,6 +191,7 @@ const SettingsModal: React.FC<{
    onOpenKeybinds: () => void;
    onDeleteData: () => void;
    onExportData: () => void;
+   onImportData: (file: File) => Promise<void>;
    onResetSettings: () => void;
    onStartOnboarding: () => void;
    librarySets: CardSet[];
@@ -184,11 +205,13 @@ const SettingsModal: React.FC<{
    onUpdateTags: (tags: Tag[]) => void;
    forceAiSetupOpen?: boolean;
    onOpenPrivacy?: () => void;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onResetSettings, onStartOnboarding, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen, onOpenPrivacy }) => {
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen, onOpenPrivacy }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+   const [isImportingBackup, setIsImportingBackup] = useState(false);
+   const backupImportInputRef = useRef<HTMLInputElement>(null);
 
    // AI State
    const [apiKeyInput, setApiKeyInput] = useState('');
@@ -203,6 +226,22 @@ const SettingsModal: React.FC<{
    const answerStyleRef = useRef<HTMLDivElement>(null);
 
    const TAG_COLORS: string[] = ['red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan', 'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose', 'slate', 'gray', 'zinc', 'neutral', 'stone'];
+
+   const handleImportBackupFile = async (file: File | null) => {
+      if (!file) return;
+
+      setIsImportingBackup(true);
+      try {
+         await onImportData(file);
+      } catch (error) {
+         console.error('[SettingsModal] Backup import failed:', error);
+      } finally {
+         setIsImportingBackup(false);
+         if (backupImportInputRef.current) {
+            backupImportInputRef.current.value = '';
+         }
+      }
+   };
 
    // Reset activeTab when initialTab changes (e.g., opening from different triggers)
    React.useEffect(() => {
@@ -1014,12 +1053,46 @@ const SettingsModal: React.FC<{
                            <span className="font-medium text-blue block mb-3 flex items-center gap-2">
                               <Download size={18} /> Export Data
                            </span>
-                           <button
-                              onClick={onExportData}
-                              className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/20 transition-colors text-sm"
-                           >
-                              Export All My Data (JSON)
-                           </button>
+                           <div className="space-y-2">
+                              <button
+                                 onClick={onExportData}
+                                 className="w-full flex items-center justify-center gap-2 py-2 text-blue border border-blue/30 rounded-lg font-bold hover:bg-blue/20 transition-colors text-sm"
+                              >
+                                 Export All My Data (JSON)
+                              </button>
+                              <button
+                                 onClick={() => backupImportInputRef.current?.click()}
+                                 disabled={isImportingBackup}
+                                 className={clsx(
+                                    "w-full flex items-center justify-center gap-2 py-2 border rounded-lg font-bold transition-colors text-sm",
+                                    isImportingBackup
+                                       ? "text-muted border-outline cursor-wait"
+                                       : "text-blue border-blue/30 hover:bg-blue/20"
+                                 )}
+                              >
+                                 {isImportingBackup ? (
+                                    <>
+                                       <Loader2 size={15} className="animate-spin" />
+                                       Restoring Backup...
+                                    </>
+                                 ) : (
+                                    <>
+                                       <Upload size={15} />
+                                       Restore Backup (JSON)
+                                    </>
+                                 )}
+                              </button>
+                              <input
+                                 ref={backupImportInputRef}
+                                 type="file"
+                                 accept=".json,application/json"
+                                 className="hidden"
+                                 onChange={(e) => {
+                                    const file = e.target.files?.[0] || null;
+                                    void handleImportBackupFile(file);
+                                 }}
+                              />
+                           </div>
                         </div>
 
                         {/* Danger Zone */}
@@ -1250,6 +1323,7 @@ const App: React.FC = () => {
 
    // Cloud sync status: 'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'
    const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'>('idle');
+   const [cloudConflictSets, setCloudConflictSets] = useState<string[]>([]);
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
    // Cloud loading state (pulling sets from Drive)
@@ -1343,6 +1417,26 @@ const App: React.FC = () => {
       }
    };
 
+   const handleKeepCloudVersion = async () => {
+      setCloudConflictSets([]);
+      await syncCloudData();
+   };
+
+   const handleOverwriteCloudVersion = async () => {
+      if (!user) return;
+
+      setCloudSyncStatus('saving');
+      const result = await saveLibrary(librarySets, { ignoreConflicts: true });
+      if (result.savedToCloud) {
+         setCloudConflictSets([]);
+         setCloudSyncStatus('saved');
+         if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+         cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
+      } else {
+         setCloudSyncStatus('error');
+      }
+   };
+
    const handleLogin = async (keepSignedIn: boolean = true) => {
       try {
          await googleDrive.signIn(keepSignedIn);
@@ -1355,6 +1449,7 @@ const App: React.FC = () => {
    const handleLogout = async () => {
       await googleDrive.signOut();
       setUser(null);
+      setCloudConflictSets([]);
       window.location.reload();
    };
 
@@ -1452,12 +1547,51 @@ const App: React.FC = () => {
       }
    };
 
+   const handleImportData = async (file: File): Promise<void> => {
+      const shouldReplace = window.confirm(
+         'Restore this backup and replace your current local data? This will overwrite sets, folders, tags, settings, and stats on this device.'
+      );
+      if (!shouldReplace) return;
+
+      try {
+         const content = await file.text();
+         const parsed = parseExportData(content);
+
+         const importedSets = Array.isArray(parsed.librarySets)
+            ? parsed.librarySets.map(set => normalizeLoadedSet(set))
+            : [];
+         const importedFolders = Array.isArray(parsed.folders) ? parsed.folders : [];
+         const importedTags = Array.isArray(parsed.tags) ? parsed.tags : [];
+         const importedSettings = parsed.settings ? { ...DEFAULT_SETTINGS, ...parsed.settings } : { ...DEFAULT_SETTINGS };
+         const importedStats = typeof parsed.stats?.lifetimeCorrect === 'number'
+            ? parsed.stats.lifetimeCorrect
+            : 0;
+
+         setLibrarySets(importedSets);
+         setFolders(importedFolders);
+         setTags(importedTags);
+         setSettings(importedSettings);
+         setLifetimeCorrect(importedStats);
+         setCloudConflictSets([]);
+         setGameState(GameState.MENU);
+         setDetailSetId(null);
+         setActiveSetId(null);
+
+         alert(`Backup restored: ${importedSets.length} set${importedSets.length === 1 ? '' : 's'} imported.`);
+      } catch (error) {
+         const message = error instanceof Error ? error.message : 'Unknown backup import failure.';
+         alert(`Could not restore backup: ${message}`);
+         throw error;
+      }
+   };
+
    const handleExportData = () => {
       const exportData = {
          exportedAt: new Date().toISOString(),
          version: 'flashcardsish-export-v1',
          librarySets: librarySets,
          folders: folders,
+         tags: tags,
          settings: settings,
          stats: { lifetimeCorrect }
       };
@@ -1527,58 +1661,32 @@ const App: React.FC = () => {
          try {
             console.log("[App] Starting initial data load...");
 
-            // 1. Load Sets
-            const idbSets = await loadLibrary();
-            let setsToUse = idbSets;
+            const [
+               loadedSets,
+               loadedFoldersData,
+               loadedSettingsData,
+               loadedStatsData,
+               loadedTagsData
+            ] = await Promise.all([
+               loadLibrary(),
+               loadFolders(),
+               loadSettings(),
+               loadStats(),
+               loadTags()
+            ]);
 
-            // Rescue Strategy for LocalStorage
-            if (!setsToUse || setsToUse.length === 0) {
-               const localLibrary = localStorage.getItem(LIBRARY_KEY);
-               if (localLibrary) {
-                  try {
-                     const parsed = JSON.parse(localLibrary);
-                     if (Array.isArray(parsed) && parsed.length > 0) {
-                        setsToUse = parsed;
-                     }
-                  } catch (e) { console.error("[App] Error parsing local library:", e); }
-               }
-            }
+            const setsToUse = Array.isArray(loadedSets) ? loadedSets : [];
+            const sanitizedSets = setsToUse.map(s => normalizeLoadedSet(s));
+            setLibrarySets(sanitizedSets);
+            setFolders(Array.isArray(loadedFoldersData) ? loadedFoldersData : []);
+            setTags(Array.isArray(loadedTagsData) ? loadedTagsData : []);
+            setSettings(prev => ({ ...prev, ...loadedSettingsData }));
+            setLifetimeCorrect(typeof loadedStatsData?.lifetimeCorrect === 'number' ? loadedStatsData.lifetimeCorrect : 0);
 
-            if (setsToUse && setsToUse.length > 0) {
-               const sanitizedSets = setsToUse.map(s => normalizeLoadedSet(s));
+            if (sanitizedSets.length > 0) {
                console.log("[App] Loaded", sanitizedSets.length, "sets from storage");
-               setLibrarySets(sanitizedSets);
             } else {
                console.warn("[App] No sets found in storage - starting with empty library");
-            }
-
-            // 2. Load Folders
-            const savedFolders = localStorage.getItem(FOLDERS_KEY);
-            if (savedFolders) {
-               try {
-                  const parsedFolders = JSON.parse(savedFolders);
-                  if (Array.isArray(parsedFolders)) setFolders(parsedFolders);
-               } catch (e) { }
-            }
-
-            // 3. Load Settings
-            const savedSettings = localStorage.getItem(SETTINGS_KEY);
-            if (savedSettings) {
-               try {
-                  const s = JSON.parse(savedSettings);
-                  setSettings(prev => ({ ...prev, ...s }));
-               } catch (e) { }
-            }
-
-            // 4. Load Stats
-            const savedStats = localStorage.getItem(STATS_KEY);
-            if (savedStats) {
-               try {
-                  const parsedStats = JSON.parse(savedStats);
-                  if (parsedStats && typeof parsedStats.lifetimeCorrect === 'number') {
-                     setLifetimeCorrect(parsedStats.lifetimeCorrect);
-                  }
-               } catch (e) { }
             }
 
             console.log("[App] Initial data load complete.");
@@ -1617,7 +1725,15 @@ const App: React.FC = () => {
          if (user) setCloudSyncStatus('saving');
 
          saveLibrary(librarySets).then(result => {
+            if (result.conflicts && result.conflicts.length > 0) {
+               setCloudConflictSets(result.conflicts);
+               setCloudSyncStatus('error');
+               if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+               return;
+            }
+
             if (result.savedToCloud) {
+               setCloudConflictSets([]);
                setCloudSyncStatus('saved');
                // Transition to faded after 3 seconds, but DO NOT disappear (don't set to idle)
                if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
@@ -1629,6 +1745,7 @@ const App: React.FC = () => {
                cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
             } else {
                // No user / saved locally only
+               setCloudConflictSets([]);
                setCloudSyncStatus('idle');
             }
          });
@@ -1659,7 +1776,7 @@ const App: React.FC = () => {
    }, [settings, isLibraryLoaded]);
 
    useEffect(() => {
-      localStorage.setItem(STATS_KEY, JSON.stringify({ lifetimeCorrect }));
+      saveStats({ lifetimeCorrect });
    }, [lifetimeCorrect]);
 
    useEffect(() => {
@@ -2014,6 +2131,7 @@ const App: React.FC = () => {
             onOpenKeybinds={() => setIsKeybindsModalOpen(true)}
             onDeleteData={handleDeleteData}
             onExportData={handleExportData}
+            onImportData={handleImportData}
             onResetSettings={handleResetSettings}
             onStartOnboarding={handleStartOnboarding}
             librarySets={librarySets}
@@ -2259,6 +2377,33 @@ const App: React.FC = () => {
             </div>
          </header>
 
+         {user && cloudConflictSets.length > 0 && (
+            <div className="px-6 pt-4">
+               <div className="max-w-5xl mx-auto bg-yellow/10 border border-yellow/40 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div className="text-sm text-text">
+                     <span className="font-bold text-yellow">Cloud conflict detected.</span>{' '}
+                     {cloudConflictSets.length === 1
+                        ? `Set "${cloudConflictSets[0]}" was updated on another device.`
+                        : `${cloudConflictSets.length} sets were updated on another device.`}
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <button
+                        onClick={handleKeepCloudVersion}
+                        className="px-3 py-2 text-xs font-bold border border-outline rounded-lg hover:border-accent hover:text-accent transition-colors"
+                     >
+                        Keep Cloud Version
+                     </button>
+                     <button
+                        onClick={handleOverwriteCloudVersion}
+                        className="px-3 py-2 text-xs font-bold bg-yellow text-bg rounded-lg hover:bg-yellow/90 transition-colors"
+                     >
+                        Overwrite Cloud
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
+
          <main className="flex-grow p-6 md:p-8 max-w-5xl mx-auto w-full">
             {gameState === GameState.MENU && (
                <StartMenu
@@ -2297,6 +2442,7 @@ const App: React.FC = () => {
                   homeNavigationNonce={menuHomeClickNonce}
                   hasCompletedOnboarding={hasCompletedOnboarding}
                   onStartOnboardingTour={handleStartOnboarding}
+                  signedInUserName={user?.name || user?.email?.split('@')[0] || null}
                />
             )}
 
@@ -2489,4 +2635,8 @@ const App: React.FC = () => {
 };
 
 const root = createRoot(document.getElementById('root')!);
-root.render(<App />)
+root.render(
+   <AppErrorBoundary>
+      <App />
+   </AppErrorBoundary>
+)

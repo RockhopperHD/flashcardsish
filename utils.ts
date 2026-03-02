@@ -673,7 +673,20 @@ export const parseInput = (text: string): Partial<Card>[] => {
   }
 };
 
-export const generateId = () => Math.random().toString(36).substr(2, 9);
+export const generateId = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const randomHex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    return `id-${randomHex}`;
+  }
+
+  return `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
 
 export const downloadFile = (filename: string, content: string, type: 'text' | 'json') => {
   const mime = type === 'json' ? 'application/json' : 'text/plain';

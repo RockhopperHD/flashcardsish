@@ -1,0 +1,18 @@
+{
+  "name": "Flashcardsish",
+  "short_name": "Flashcardsish",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0806",
+  "theme_color": "#0b0806",
+  "description": "A lightweight flashcards app to create, study, and sync sets.",
+  "icons": [
+    {
+      "src": "/images/tudio.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

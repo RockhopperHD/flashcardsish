@@ -35,6 +35,7 @@ import {
   HardDrive,
   CheckCircle2,
   BookOpen,
+  Search,
 } from "lucide-react";
 import { FloatingToolbar } from "./FloatingToolbar";
 import {
@@ -107,6 +108,7 @@ interface StartMenuProps {
   homeNavigationNonce?: number;
   hasCompletedOnboarding?: boolean;
   onStartOnboardingTour?: () => void;
+  signedInUserName?: string | null;
 }
 
 interface BuilderRow {
@@ -157,29 +159,55 @@ interface AutosaveDraft {
   savedAt: number;
 }
 
-const GREETINGS = [
-  "What are we learning next?",
-  "Who's excited to study?!",
-  "You got this!",
-  "Step 1 is studying.",
-  "Lock in.",
-  "One more set?",
-  "What's up?",
-  "All you.",
-  "Greatness incoming?",
-  "Hey, you're here.",
-  "Welcome... or welcome back.",
-  "Ready?",
-  "You're in the right place.",
-  "Onward.",
-  "Heyo.",
-  "Flashcards! Hurrah!",
-  "Flashcardsish!",
-  "'SET' it up. Haha, get it?",
-  "Practice makes... good.",
-  "Working hard... or hardly working?",
-  "What'll it be?",
+type SplashGreeting = {
+  text: string;
+  colorful?: boolean;
+};
+
+const GREETINGS: SplashGreeting[] = [
+  { text: "What are we learning next?" },
+  { text: "Who's excited to study?!" },
+  { text: "<name> appears!" },
+  { text: "You got this, <name>." },
+  { text: "I believe in <name>!" },
+  { text: "You got this!" },
+  { text: "Step 1 is studying." },
+  { text: "Lock in." },
+  { text: "One more set?" },
+  { text: "What's up?" },
+  { text: "All you." },
+  { text: "Greatness incoming?" },
+  { text: "Hey, you're here." },
+  { text: "Welcome... or welcome back." },
+  { text: "Ready?" },
+  { text: "Oh, didn't see you there." },
+  { text: "You're in the right place." },
+  { text: "Go team you!" },
+  { text: "Onward." },
+  { text: "To infinity and beyond!" },
+  { text: "Heyo." },
+  { text: "Flashcards! Hurrah!" },
+  { text: "Flashcardsish!" },
+  { text: "'SET' it up. Haha, get it?" },
+  { text: "Practice makes... good." },
+  { text: "Working hard... or hardly working?" },
+  { text: "What'll it be?" },
+  { text: "You can't be <h=b>blue</h> now!", colorful: true },
+  { text: "Be **bold**!", colorful: true },
+  { text: "Keep it <h=g>fresh</h>.", colorful: true },
+  { text: "Need a <h=r>memory boost</h>?", colorful: true },
+  { text: "This one is <h=y>important</h>.", colorful: true },
 ];
+
+const LIBRARY_SORT_OPTIONS: Array<{
+  value: "recent" | "name_asc" | "name_desc" | "cards_desc";
+  label: string;
+}> = [
+    { value: "recent", label: "Most Recent" },
+    { value: "name_asc", label: "Name (A-Z)" },
+    { value: "name_desc", label: "Name (Z-A)" },
+    { value: "cards_desc", label: "Most Cards" },
+  ];
 
 // Unsaved Changes Modal
 const UnsavedChangesModal: React.FC<{
@@ -532,7 +560,7 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
               className="text-2xl text-text"
               style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
             >
-              Formatting Guide
+              Formatting and Raw Text Guide
             </h2>
             <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
               <X size={24} />
@@ -541,11 +569,13 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8">
-          {/* Markdown Basics */}
+          <p className="text-sm text-muted">
+            Use this reference while building cards. Visual Editor and Raw Text mode both support these patterns.
+          </p>
+
+          {/* Core Formatting */}
           <div>
-            <h4 className="text-lg font-bold mb-3 text-text">
-              Markdown Basics
-            </h4>
+            <h4 className="text-lg font-bold mb-3 text-text">Core Formatting</h4>
             <div className="bg-panel-2 border border-outline rounded-xl overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-panel">
@@ -561,15 +591,11 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                 <tbody className="divide-y divide-outline">
                   <tr>
                     <td className="px-4 py-3 font-mono text-muted">**bold**</td>
-                    <td className="px-4 py-3 text-right text-text">
-                      <strong>bold</strong>
-                    </td>
+                    <td className="px-4 py-3 text-right text-text"><strong>bold</strong></td>
                   </tr>
                   <tr>
                     <td className="px-4 py-3 font-mono text-muted">*italic*</td>
-                    <td className="px-4 py-3 text-right text-text">
-                      <em>italic</em>
-                    </td>
+                    <td className="px-4 py-3 text-right text-text"><em>italic</em></td>
                   </tr>
                   <tr>
                     <td className="px-4 py-3 font-mono text-muted">`code`</td>
@@ -583,9 +609,7 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                     <td className="px-4 py-3 font-mono text-muted">
                       ~~strikethrough~~
                     </td>
-                    <td className="px-4 py-3 text-right text-text">
-                      <s>strikethrough</s>
-                    </td>
+                    <td className="px-4 py-3 text-right text-text"><s>strikethrough</s></td>
                   </tr>
                   <tr>
                     <td className="px-4 py-3 font-mono text-muted">
@@ -601,6 +625,14 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                     </td>
                     <td className="px-4 py-3 text-right text-text">
                       <span className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)' }}>slab</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-4 py-3 font-mono text-muted">- Bullet item</td>
+                    <td className="px-4 py-3 text-right text-text">
+                      <ul className="list-disc list-inside inline-block">
+                        <li>Bullet item</li>
+                      </ul>
                     </td>
                   </tr>
                   <tr>
@@ -690,27 +722,36 @@ const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
             </div>
           </div>
 
-          {/* Raw Text Tips */}
+          {/* Raw Text Patterns */}
           <div>
-            <h4 className="text-lg font-bold mb-3 text-text">
-              Raw Text Extras
-            </h4>
-            <div className="bg-panel-2 border border-outline rounded-xl p-4 text-sm space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <span className="text-muted font-bold text-accent">
-                  Image Link
-                </span>
-                <span className="font-mono text-text text-right">
-                  ... ||| http://link/image.jpg
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <span className="text-muted font-bold text-accent">Year</span>
-                <span className="font-mono text-text text-right">
-                  ... /// Year
-                </span>
-              </div>
+            <h4 className="text-lg font-bold mb-3 text-text">Raw Text Patterns</h4>
+            <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted space-y-1">
+              <div>Term / Definition</div>
+              <div>Term / Definition /// Year</div>
+              <div>Term / Definition /// Year ||| https://image-url</div>
+              <div>{'>'} Bullet content appended to previous card</div>
             </div>
+            <ul className="mt-4 space-y-2 text-sm text-muted">
+              <li className="flex items-start gap-2">
+                <ChevronDown size={14} className="text-accent shrink-0 mt-0.5 rotate-[-90deg]" />
+                <span>Card separators are configurable in Raw Text Import. Common options are blank lines, <code className="bg-panel px-1 rounded">&&&</code>, or <code className="bg-panel px-1 rounded">;;;</code>.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ChevronDown size={14} className="text-accent shrink-0 mt-0.5 rotate-[-90deg]" />
+                <span>Term/definition and year separators are configurable too, so you can match your source text format.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <ChevronDown size={14} className="text-accent shrink-0 mt-0.5 rotate-[-90deg]" />
+                <span>Start with simple cards, then enrich with images, tags, and custom fields in the Visual Editor.</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-panel-2 border border-outline rounded-xl p-4">
+            <h4 className="font-bold text-text mb-2">Quick Tip</h4>
+            <p className="text-sm text-muted">
+              Use the builder&apos;s <strong className="text-text">WYSIWYG</strong> toggle to switch between raw markdown and rendered preview.
+            </p>
           </div>
         </div>
       </div>
@@ -1158,6 +1199,13 @@ const SetConfigurationModal: React.FC<{
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    useEffect(() => {
+      if (!isTagDropdownOpen) return;
+      const closeDropdown = () => setIsTagDropdownOpen(false);
+      window.addEventListener('scroll', closeDropdown, true);
+      return () => window.removeEventListener('scroll', closeDropdown, true);
+    }, [isTagDropdownOpen]);
+
     // Reset mode on open
     useEffect(() => {
       if (isOpen) {
@@ -1165,6 +1213,18 @@ const SetConfigurationModal: React.FC<{
         setIsTagDropdownOpen(false);
       }
     }, [isOpen, initialMode]);
+
+    useEffect(() => {
+      if (!isOpen) {
+        setIsTagDropdownOpen(false);
+      }
+    }, [isOpen]);
+
+    useEffect(() => {
+      if (mode !== "config") {
+        setIsTagDropdownOpen(false);
+      }
+    }, [mode]);
 
     if (!isOpen) return null;
 
@@ -1295,6 +1355,7 @@ const SetConfigurationModal: React.FC<{
     };
 
     const handleClose = () => {
+      setIsTagDropdownOpen(false);
       // Filter out fields with empty names
       const filteredTerm = termSideFields.filter((f) => f.name.trim() !== "");
       const filteredDef = defSideFields.filter((f) => f.name.trim() !== "");
@@ -2458,6 +2519,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   homeNavigationNonce,
   hasCompletedOnboarding = false,
   onStartOnboardingTour,
+  signedInUserName,
 }) => {
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -2774,12 +2836,38 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [newFolderColor, setNewFolderColor] =
     useState<Folder["color"]>("brown");
   const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [librarySearchQuery, setLibrarySearchQuery] = useState("");
+  const [librarySortMode, setLibrarySortMode] = useState<"recent" | "name_asc" | "name_desc" | "cards_desc">("recent");
+  const [isLibrarySortOpen, setIsLibrarySortOpen] = useState(false);
+  const [activeLibraryTagFilter, setActiveLibraryTagFilter] = useState<string | null>(null);
+  const librarySortRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (view === "menu") {
       setCurrentFolderId(null);
     }
+    setIsLibrarySortOpen(false);
   }, [homeNavigationNonce, view]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        librarySortRef.current &&
+        !librarySortRef.current.contains(event.target as Node)
+      ) {
+        setIsLibrarySortOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside, true);
+    return () => document.removeEventListener("mousedown", handleClickOutside, true);
+  }, []);
+
+  useEffect(() => {
+    if (!isLibrarySortOpen) return;
+    const closeSort = () => setIsLibrarySortOpen(false);
+    window.addEventListener("scroll", closeSort, true);
+    return () => window.removeEventListener("scroll", closeSort, true);
+  }, [isLibrarySortOpen]);
 
   useEffect(() => {
     if (!uiAuditRequest) return;
@@ -3055,24 +3143,100 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   // Derived Lists
   const currentFolder = folders.find((f) => f.id === currentFolderId);
+  const tagsById = useMemo(() => new Map(tags.map((tag) => [tag.id, tag])), [tags]);
+  const normalizedLibrarySearch = librarySearchQuery.trim().toLowerCase();
+  const includeAllSetsAtRoot =
+    !currentFolderId && (normalizedLibrarySearch.length > 0 || !!activeLibraryTagFilter);
 
   // If in a folder, show sets in that folder.
   // If at root, show root sets (no folderId) AND folders.
   // Multistudy sets are always at root in their own section.
 
   // Separate local and cloud sets
+  const rootCloudSets = includeAllSetsAtRoot
+    ? librarySets.filter((s) => !s.isMultistudy && !s.isLocalOnly)
+    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && !s.isLocalOnly);
+  const rootLocalSets = includeAllSetsAtRoot
+    ? librarySets.filter((s) => !s.isMultistudy && s.isLocalOnly)
+    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && s.isLocalOnly);
+
   const cloudSets = currentFolderId
     ? librarySets.filter((s) => s.folderId === currentFolderId && !s.isLocalOnly)
-    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && !s.isLocalOnly);
+    : rootCloudSets;
 
   const localSets = currentFolderId
     ? librarySets.filter((s) => s.folderId === currentFolderId && s.isLocalOnly)
-    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && s.isLocalOnly);
+    : rootLocalSets;
+
+  const setMatchesLibraryFilters = useCallback(
+    (set: CardSet): boolean => {
+      if (activeLibraryTagFilter && !(set.tags || []).includes(activeLibraryTagFilter)) {
+        return false;
+      }
+
+      if (!normalizedLibrarySearch) return true;
+
+      const matchesName = set.name.toLowerCase().includes(normalizedLibrarySearch);
+      if (matchesName) return true;
+
+      const matchesTagName = (set.tags || []).some((tagId) =>
+        tagsById.get(tagId)?.name?.toLowerCase().includes(normalizedLibrarySearch)
+      );
+
+      return matchesTagName;
+    },
+    [activeLibraryTagFilter, normalizedLibrarySearch, tagsById]
+  );
+
+  const sortLibrarySets = useCallback(
+    (sets: CardSet[]): CardSet[] => {
+      const sorted = [...sets];
+      switch (librarySortMode) {
+        case "name_asc":
+          sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+          break;
+        case "name_desc":
+          sorted.sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: "base" }));
+          break;
+        case "cards_desc":
+          sorted.sort((a, b) => b.cards.length - a.cards.length || b.lastPlayed - a.lastPlayed);
+          break;
+        case "recent":
+        default:
+          sorted.sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
+          break;
+      }
+      return sorted;
+    },
+    [librarySortMode]
+  );
 
   // For compatibility, displayedSets shows cloud sets by default
-  const displayedSets = cloudSets;
+  const displayedSets = sortLibrarySets(cloudSets.filter(setMatchesLibraryFilters));
+  const displayedLocalSets = sortLibrarySets(localSets.filter(setMatchesLibraryFilters));
 
-  const displayedFolders = currentFolderId ? [] : folders;
+  const displayedFolders = currentFolderId || includeAllSetsAtRoot ? [] : folders;
+  const allVisibleSetIds = [...displayedSets, ...displayedLocalSets].map((set) => set.id);
+  const selectedVisibleCount = allVisibleSetIds.filter((id) => selectedSetIds.has(id)).length;
+  const activeTag = activeLibraryTagFilter ? tagsById.get(activeLibraryTagFilter) : undefined;
+  const selectedLibrarySortOption = LIBRARY_SORT_OPTIONS.find((option) => option.value === librarySortMode) || LIBRARY_SORT_OPTIONS[0];
+
+  const formatLastStudied = (timestamp?: number): string => {
+    if (!timestamp || timestamp <= 0) return "Never studied";
+
+    const diff = Date.now() - timestamp;
+    if (diff < 60_000) return "Last studied just now";
+    if (diff < 3_600_000) {
+      const mins = Math.floor(diff / 60_000);
+      return `Last studied ${mins} minute${mins === 1 ? "" : "s"} ago`;
+    }
+    if (diff < 86_400_000) {
+      const hours = Math.floor(diff / 3_600_000);
+      return `Last studied ${hours} hour${hours === 1 ? "" : "s"} ago`;
+    }
+    const days = Math.floor(diff / 86_400_000);
+    return `Last studied ${days} day${days === 1 ? "" : "s"} ago`;
+  };
 
   const multistudySets = librarySets.filter((s) => s.isMultistudy);
 
@@ -3094,11 +3258,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const handleSelectAll = () => {
-    if (selectedSetIds.size === displayedSets.length) {
-      setSelectedSetIds(new Set());
+    if (allVisibleSetIds.length === 0) return;
+
+    const next = new Set(selectedSetIds);
+    const isAllVisibleSelected = selectedVisibleCount === allVisibleSetIds.length;
+
+    if (isAllVisibleSelected) {
+      allVisibleSetIds.forEach((id) => next.delete(id));
     } else {
-      setSelectedSetIds(new Set(displayedSets.map((s) => s.id)));
+      allVisibleSetIds.forEach((id) => next.add(id));
     }
+
+    setSelectedSetIds(next);
   };
 
   const handleCreateFolder = () => {
@@ -3333,9 +3504,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const greeting = useMemo(
-    () => GREETINGS[Math.floor(Math.random() * GREETINGS.length)],
-    [],
+  const normalizedSignedInName = (signedInUserName || "").trim();
+  const greetingPool = useMemo(
+    () =>
+      GREETINGS.filter(
+        (entry) =>
+          normalizedSignedInName.length > 0 || !entry.text.includes("<name>"),
+      ),
+    [normalizedSignedInName],
+  );
+  const greeting = useMemo(() => {
+    const pool = greetingPool.length > 0 ? greetingPool : GREETINGS;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }, [greetingPool, homeNavigationNonce]);
+  const greetingText = useMemo(
+    () => greeting.text.replace(/<name>/gi, normalizedSignedInName),
+    [greeting, normalizedSignedInName],
   );
   const currentDate = new Date().toLocaleDateString("en-US", {
     month: "long",
@@ -4439,10 +4623,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         isOpen={showMarkdownHelp}
         onClose={() => setShowMarkdownHelp(false)}
       />
-      <MarkdownHelpModal
-        isOpen={showMarkdownHelp}
-        onClose={() => setShowMarkdownHelp(false)}
-      />
 
       <WarningModal
         isOpen={!!moveToLocalModal}
@@ -4486,10 +4666,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             </div>
             <div className="flex items-center justify-between">
               <h1
-                className="text-4xl text-text tracking-tight mb-2"
+                className={clsx(
+                  "text-4xl text-text tracking-tight mb-2 splash-greeting-text",
+                  greeting.colorful && "splash-greeting--colorful",
+                )}
                 style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
               >
-                {greeting}
+                {renderInline(greetingText, "home-greeting")}
               </h1>
             </div>
             <p className="text-muted text-lg">
@@ -4807,7 +4990,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
             {/* LIBRARY COLUMN */}
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-center gap-3 flex-wrap">
                 <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
                   {currentFolderId ? (
                     <button
@@ -4820,7 +5003,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     "Library"
                   )}
                 </h3>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {currentFolderId && (
                     <button
                       onClick={() => handleMultistudyFolder(currentFolderId)}
@@ -4845,13 +5028,89 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 </div>
               </div>
 
+              <div className="bg-panel border border-outline rounded-2xl p-3 flex flex-col md:flex-row md:items-center gap-3">
+                <label className="flex items-center gap-2 flex-1 min-w-[220px] bg-panel-2 border border-outline rounded-lg px-3 py-2">
+                  <Search size={14} className="text-muted" />
+                  <input
+                    value={librarySearchQuery}
+                    onChange={(e) => setLibrarySearchQuery(e.target.value)}
+                    placeholder="Search by set name or tag..."
+                    className="bg-transparent text-sm w-full outline-none text-text placeholder:text-muted"
+                  />
+                </label>
+
+                <div className="relative min-w-[170px]" ref={librarySortRef}>
+                  <button
+                    onClick={() => setIsLibrarySortOpen((prev) => !prev)}
+                    className="w-full bg-panel-2 border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent outline-none transition-colors flex items-center justify-between gap-2 hover:border-accent"
+                  >
+                    <span className="truncate text-text">{selectedLibrarySortOption.label}</span>
+                    <ChevronDown size={14} className={clsx("opacity-60 flex-shrink-0 transition-transform", isLibrarySortOpen && "rotate-180")} />
+                  </button>
+
+                  {isLibrarySortOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-full bg-panel border border-outline rounded-xl shadow-xl z-50 overflow-hidden animate-in zoom-in-95">
+                      {LIBRARY_SORT_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => {
+                            setLibrarySortMode(option.value);
+                            setIsLibrarySortOpen(false);
+                          }}
+                          className={clsx(
+                            "w-full text-left px-3 py-2 text-sm hover:bg-panel-2 transition-colors",
+                            librarySortMode === option.value
+                              ? "text-accent font-bold bg-accent/5"
+                              : "text-text"
+                          )}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {(librarySearchQuery || activeLibraryTagFilter) && (
+                  <button
+                    onClick={() => {
+                      setLibrarySearchQuery("");
+                      setActiveLibraryTagFilter(null);
+                      setIsLibrarySortOpen(false);
+                    }}
+                    className="px-3 py-2 text-xs font-bold border border-outline rounded-lg hover:border-accent hover:text-accent transition-colors"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+              </div>
+
+              {activeTag && (
+                <div className="flex items-center gap-2 pl-2">
+                  <span className="text-xs text-muted uppercase tracking-wider">Filtered by tag:</span>
+                  <button
+                    onClick={() => setActiveLibraryTagFilter(null)}
+                    className="flex items-center gap-1"
+                    title="Remove tag filter"
+                  >
+                    <TagPill tag={activeTag} />
+                    <X size={12} className="text-muted hover:text-red transition-colors" />
+                  </button>
+                </div>
+              )}
+
               {librarySets.length === 0 ? (
                 isCloudLoading || isProcessingFile ? (
                   <BreathingLoader />
                 ) : (
                   <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
-                    <p className="text-muted italic mb-4">
-                      Your library is empty.
+                    <p className="text-muted mb-2">
+                      Your library will appear here when you upload or create
+                      sets.
+                    </p>
+                    <p className="text-muted italic text-sm">
+                      "Sets are like life: they come, go, and are covered in
+                      colorful highlights." -Tudio, Flashcardsish mascot
                     </p>
                   </div>
                 )
@@ -4992,6 +5251,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               <div className="text-muted text-xs font-mono group-hover:text-accent/80 transition-colors">
                                 {set.cards.length} card{set.cards.length === 1 ? "" : "s"}
                               </div>
+                              <div
+                                className="text-muted text-[11px] mt-0.5 group-hover:text-accent/80 transition-colors"
+                                title={set.lastPlayed ? new Date(set.lastPlayed).toLocaleString() : "Never studied"}
+                              >
+                                {formatLastStudied(set.lastPlayed)}
+                              </div>
 
                               {/* Tags */}
                               {set.tags && set.tags.length > 0 && (
@@ -5000,7 +5265,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                     const tag = tags.find(t => t.id === tagId);
                                     if (!tag) return null;
                                     return (
-                                      <TagPill key={tagId} tag={tag} />
+                                      <button
+                                        key={tagId}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveLibraryTagFilter((prev) => (prev === tagId ? null : tagId));
+                                          if (currentFolderId) setCurrentFolderId(null);
+                                        }}
+                                        title={activeLibraryTagFilter === tagId ? "Clear tag filter" : `Filter by ${tag.name}`}
+                                      >
+                                        <TagPill
+                                          tag={tag}
+                                          className={activeLibraryTagFilter === tagId ? "ring-1 ring-accent" : ""}
+                                        />
+                                      </button>
                                     );
                                   })}
                                 </div>
@@ -5108,15 +5386,24 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     ))}
                   </div>
 
+                  {displayedSets.length === 0 &&
+                    displayedLocalSets.length === 0 &&
+                    displayedFolders.length === 0 &&
+                    (librarySearchQuery || activeLibraryTagFilter) && (
+                      <div className="border border-dashed border-outline rounded-2xl bg-panel/30 p-8 text-center">
+                        <p className="text-sm text-muted">No sets match your current library filters.</p>
+                      </div>
+                    )}
+
                   {/* Local Sets Section */}
-                  {localSets.length > 0 && !currentFolderId && (
+                  {displayedLocalSets.length > 0 && !currentFolderId && (
                     <div className="mt-10">
                       <h4 className="text-xs font-bold text-muted uppercase tracking-widest pl-2 mb-4 flex items-center gap-2">
                         <Download size={14} />
                         Local Storage Only
                       </h4>
                       <div className="space-y-3">
-                        {localSets.map((set) => (
+                        {displayedLocalSets.map((set) => (
                           <div key={set.id} className="relative group/row">
                             <div className="absolute -left-12 top-1/2 -translate-y-1/2 w-12 flex justify-center">
                               <div
@@ -5144,6 +5431,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                   <div className="text-muted text-xs font-mono group-hover:text-accent/80 transition-colors">
                                     {set.cards.length} card{set.cards.length === 1 ? "" : "s"}
                                   </div>
+                                  <div
+                                    className="text-muted text-[11px] mt-0.5 group-hover:text-accent/80 transition-colors"
+                                    title={set.lastPlayed ? new Date(set.lastPlayed).toLocaleString() : "Never studied"}
+                                  >
+                                    {formatLastStudied(set.lastPlayed)}
+                                  </div>
 
                                   {set.tags && set.tags.length > 0 && (
                                     <div className="flex flex-wrap gap-1 mt-2">
@@ -5151,7 +5444,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                         const tag = tags.find(t => t.id === tagId);
                                         if (!tag) return null;
                                         return (
-                                          <TagPill key={tagId} tag={tag} />
+                                          <button
+                                            key={tagId}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setActiveLibraryTagFilter((prev) => (prev === tagId ? null : tagId));
+                                              if (currentFolderId) setCurrentFolderId(null);
+                                            }}
+                                            title={activeLibraryTagFilter === tagId ? "Clear tag filter" : `Filter by ${tag.name}`}
+                                          >
+                                            <TagPill
+                                              tag={tag}
+                                              className={activeLibraryTagFilter === tagId ? "ring-1 ring-accent" : ""}
+                                            />
+                                          </button>
                                         );
                                       })}
                                     </div>
@@ -5437,7 +5743,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         {view === "builder" && (
           <div className="animate-in zoom-in-95 duration-300 space-y-6">
             <p className="text-sm text-text leading-relaxed max-w-4xl">
-              Use this menu to build your set. Use markdown to format your cards and buttons on screen to star cards or swap them. You can drag cards using the left-side handles to change their order. Use Set Configuration to adjust and add custom fields.
+              Build your set here. Use markdown for formatting, drag handles to reorder cards, and card actions to star, duplicate, or swap content. Open Set Configuration to rename labels, add year/custom fields, and tune import behavior.
             </p>
 
 

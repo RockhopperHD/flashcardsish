@@ -25,6 +25,7 @@ const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const BADGES_KEY = 'flashcard-badges-v1';
 const STATS_KEY = 'flashcard-stats-v1';
+const TAGS_KEY = 'flashcard-tags-v1';
 const DRIVE_FOLDER_ID_KEY = 'flashcardsish-drive-folder-id';
 const MIGRATION_DONE_KEY = 'flashcardsish-v2-migrated';
 
@@ -111,7 +112,10 @@ export const checkAndMigrate = async (): Promise<{
  * In V2, this saves each set as a separate .flashcards file
  * Returns { success, savedToCloud, error? } to enable UI feedback
  */
-export const saveLibrary = async (sets: CardSet[]): Promise<{ success: boolean; savedToCloud: boolean; error?: string }> => {
+export const saveLibrary = async (
+    sets: CardSet[],
+    options?: { ignoreConflicts?: boolean }
+): Promise<{ success: boolean; savedToCloud: boolean; error?: string; conflicts?: string[] }> => {
     // Always save locally first for speed
     try {
         await set(LIBRARY_KEY, sets);
@@ -130,6 +134,7 @@ export const saveLibrary = async (sets: CardSet[]): Promise<{ success: boolean; 
     const cloudSetIds = new Set(cloudSets.map(s => s.id));
 
     try {
+        const conflicts: string[] = [];
         // console.log(`[Storage] Saving ${cloudSets.length} sets to Google Drive...`);
 
         // Get current structure to track root sets
@@ -137,8 +142,25 @@ export const saveLibrary = async (sets: CardSet[]): Promise<{ success: boolean; 
 
         // Write eligible sets to Drive
         for (const cardSet of cloudSets) {
-            // console.log(`[Storage] Writing set "${cardSet.name}" (${cardSet.id})...`);
-            await storageV2.writeFlashcardSet(cardSet);
+            try {
+                // console.log(`[Storage] Writing set "${cardSet.name}" (${cardSet.id})...`);
+                await storageV2.writeFlashcardSet(cardSet, { ignoreConflicts: options?.ignoreConflicts });
+            } catch (error: any) {
+                if (error?.code === 'CLOUD_CONFLICT' || error?.name === 'DriveConflictError') {
+                    conflicts.push(cardSet.name || cardSet.id);
+                    continue;
+                }
+                throw error;
+            }
+        }
+
+        if (conflicts.length > 0 && !options?.ignoreConflicts) {
+            return {
+                success: false,
+                savedToCloud: false,
+                error: 'Cloud conflict detected',
+                conflicts
+            };
         }
 
         // Rebuild structure based on current cloud sets
@@ -449,13 +471,42 @@ export const loadBadges = async (): Promise<any[]> => {
 
 export const saveTags = async (tags: Tag[]) => {
     // Save locally
-    // localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
+    localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
 
     const user = await getUser();
     if (!user) return;
 
     // Save to V2
     await storageV2.updateTags(tags);
+};
+
+export const loadTags = async (): Promise<Tag[]> => {
+    const user = await getUser();
+
+    // Try local first
+    const local = localStorage.getItem(TAGS_KEY);
+    if (local) {
+        try {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed)) return parsed;
+        } catch (e) { }
+    }
+
+    if (!user) return [];
+
+    // Load from V2
+    try {
+        const { structure } = await storageV2.readStructure();
+        const tags = structure.tags || [];
+
+        // Cache locally
+        localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
+
+        return tags;
+    } catch (error) {
+        console.error('[Storage] Failed to load tags from V2:', error);
+        return [];
+    }
 };
 
 // ============================================================================

@@ -65,6 +65,17 @@
     }
 }
 
+.splash-greeting--colorful {
+    text-shadow:
+        1px 0 0 color-mix(in srgb, var(--red) 28%, transparent),
+        -1px 0 0 color-mix(in srgb, var(--blue) 28%, transparent),
+        0 1px 0 color-mix(in srgb, var(--green) 20%, transparent);
+}
+
+.splash-greeting-text strong {
+    font-weight: 900;
+}
+
 @keyframes signInOutline {
     0% {
         stroke-dashoffset: 320;

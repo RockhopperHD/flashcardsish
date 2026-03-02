@@ -538,158 +538,194 @@ const FormattingDemo: React.FC = () => {
 // ============================================
 
 export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
-    const [activeSection, setActiveSection] = useState<string>('welcome');
+    const [activeSection, setActiveSection] = useState<string>('overview');
 
     const sections: DocSection[] = [
         {
-            id: 'welcome',
-            title: 'Welcome! Why Flashcardsish?',
+            id: 'overview',
+            title: 'Overview',
             icon: <Sparkles size={20} />,
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        <strong className="text-accent">Flashcardsish</strong> is a modern, easy to use flashcards app with all of the features you need and additions that make it even more helpful. It's focused first on the whole learning experience that digital flashcards create while still being focused on your content.
+                        <strong className="text-accent">Flashcardsish</strong> is built for fast creation, focused study, and clean organization.
+                        You can stay minimal or go deep with custom fields, tags, folders, and sync.
                     </p>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Key Features</h3>
-
-                    <div className="grid md:grid-cols-2 gap-6 my-8">
+                    <div className="grid md:grid-cols-2 gap-6">
                         <div className="bg-panel-2 border border-outline rounded-xl p-5">
                             <h4 className="font-bold text-accent mb-2 flex items-center gap-2">
-                                <Cloud size={18} className="text-accent" /> Cloud Sync
+                                <Cloud size={18} /> Cloud Sync
                             </h4>
-                            <p className="text-sm text-muted">Sign in to sync your cards across devices for free.</p>
+                            <p className="text-sm text-muted">Optional Google sign-in for free cross-device sync.</p>
                             <div className="mt-4 flex justify-center">
                                 <CloudSyncDemo />
                             </div>
                         </div>
                         <div className="bg-panel-2 border border-outline rounded-xl p-5">
                             <h4 className="font-bold text-accent mb-2 flex items-center gap-2">
-                                <Calendar size={18} className="text-accent" /> Custom Fields
+                                <Calendar size={18} /> Flexible Cards
                             </h4>
-                            <p className="text-sm text-muted">Add fields for years, authors, categories, or anything else.</p>
+                            <p className="text-sm text-muted">Year fields, custom fields, images, and cue tags in one card model.</p>
                             <div className="mt-4 flex justify-center">
                                 <CustomFieldsDemo />
                             </div>
                         </div>
                         <div className="bg-panel-2 border border-outline rounded-xl p-5">
                             <h4 className="font-bold text-accent mb-2 flex items-center gap-2">
-                                <Download size={18} className="text-accent" /> Download Sets
+                                <Layers size={18} /> Multistudy
                             </h4>
-                            <p className="text-sm text-muted">Export sets as JSON files to backup, share, or edit.</p>
-                            <div className="mt-4 flex justify-center">
-                                <DownloadDemo />
-                            </div>
-                        </div>
-                        <div className="bg-panel-2 border border-outline rounded-xl p-5">
-                            <h4 className="font-bold text-accent mb-2 flex items-center gap-2">
-                                <Layers size={18} className="text-accent" /> Multistudy
-                            </h4>
-                            <p className="text-sm text-muted">Combine multiple sets into one session without merging.</p>
+                            <p className="text-sm text-muted">Study multiple sets at once without permanently merging them.</p>
                             <div className="mt-4 flex justify-center">
                                 <MultistudyDemo />
                             </div>
                         </div>
+                        <div className="bg-panel-2 border border-outline rounded-xl p-5">
+                            <h4 className="font-bold text-accent mb-2 flex items-center gap-2">
+                                <Download size={18} /> Backup + Portability
+                            </h4>
+                            <p className="text-sm text-muted">Export individual sets or full data so your content is portable.</p>
+                            <div className="mt-4 flex justify-center">
+                                <DownloadDemo />
+                            </div>
+                        </div>
                     </div>
-
-                    <ul className="space-y-3 text-muted">
-                        <li className="flex items-start gap-3">
-                            <Star className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span><strong className="text-text">Star Important Cards</strong> <span className="text-muted ml-auto">Mark cards for focused study sessions</span></span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Palette className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span><strong className="text-text">Format Your Cards</strong> <span className="text-muted ml-auto">Use bold, italic, and highlights</span></span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Code className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span><strong className="text-text">Open Source</strong> <span className="text-muted ml-auto">Fully transparent and community-driven</span></span>
-                        </li>
-                    </ul>
                 </div>
             )
         },
         {
-            id: 'getting-started',
-            title: 'Getting Started',
+            id: 'quick-start',
+            title: 'Quick Start',
             icon: <PlayCircle size={20} />,
+            content: (
+                <div className="space-y-8 text-text">
+                    <p className="text-lg leading-relaxed">
+                        New user flow: create a set, add cards, save, then study in Learn or Flashcards mode.
+                    </p>
+
+                    <div className="flex gap-4">
+                        <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">1</div>
+                        <div className="flex-1">
+                            <h4 className="font-bold text-lg mb-2">Create a Set</h4>
+                            <p className="text-muted mb-3">
+                                From the Library, choose <strong className="text-accent">Create</strong> and open the builder.
+                            </p>
+                            <div className="my-4 flex justify-center">
+                                <CardBuilderDemo />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                        <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">2</div>
+                        <div>
+                            <h4 className="font-bold text-lg mb-2">Add Terms and Definitions</h4>
+                            <p className="text-muted mb-2">At minimum, each card needs a term and a definition.</p>
+                            <ul className="space-y-2 text-muted text-sm">
+                                <li className="flex items-start gap-2">
+                                    <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
+                                    <span>Optional extras: year, images, custom fields, and tags.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
+                                    <span>Use formatting syntax to improve readability and scanning speed.</span>
+                                </li>
+                                <li className="flex items-start gap-2">
+                                    <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
+                                    <span>Star cards while building if you already know what needs extra review.</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4">
+                        <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">3</div>
+                        <div className="space-y-4">
+                            <h4 className="font-bold text-lg">Save and Study</h4>
+                            <p className="text-muted">
+                                Use <strong className="text-accent">Save to Library</strong>, then open the set and choose a study mode.
+                            </p>
+                            <div className="flex flex-wrap items-center gap-8">
+                                <AnswerDemo />
+                                <MasteryDemo />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-panel-2 border border-outline rounded-xl p-5">
+                        <h4 className="font-bold mb-2">Need a walkthrough?</h4>
+                        <p className="text-muted text-sm">
+                            Open Settings and run the guided onboarding tour to see the full flow step-by-step.
+                        </p>
+                    </div>
+                </div>
+            )
+        },
+        {
+            id: 'builder',
+            title: 'Builder & Card Design',
+            icon: <LayoutTemplate size={20} />,
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        Get up and running with Flashcardsish in just a few steps.
+                        The builder has two entry points: <strong className="text-accent">Visual Editor</strong> for structured editing,
+                        and <strong className="text-accent">Raw Text</strong> for bulk input.
                     </p>
 
-                    <div className="space-y-8">
-                        <div className="flex gap-4">
-                            <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">1</div>
-                            <div className="flex-1">
-                                <h4 className="font-bold text-lg mb-2">Create a Set</h4>
-                                <p className="text-muted mb-3">Click the <strong className="text-accent">+ Create</strong> button in the Library to open the set builder.</p>
-
-                                <div className="my-4 flex justify-center">
-                                    <CardBuilderDemo />
-                                </div>
-
-                                <p className="text-muted mb-3">Enter your terms and definitions. Each card has several optional features:</p>
-                                <ul className="space-y-2 text-muted text-sm ml-4">
-                                    <li className="flex items-start gap-2">
-                                        <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-text">Year Field</strong> - Add a date or year that you'll also need to answer</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-text">Custom Fields</strong> - Create your own fields like "Author", "Category", or anything else. These become additional required answers.</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-text">Images</strong> - Add an image URL to display alongside the definition</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-text">Formatting</strong> - Use **bold**, *italic*, highlights, and more in your definitions (see Formatting section)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <ChevronRight size={14} className="text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-text">Star</strong> - Mark important cards for focused study sessions later</span>
-                                    </li>
-                                </ul>
-                            </div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <h4 className="font-bold mb-2">Visual Editor</h4>
+                            <ul className="space-y-2 text-sm text-muted">
+                                <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Drag cards with the handle to reorder.</span></li>
+                                <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Use WYSIWYG to preview raw markdown versus rendered output.</span></li>
+                                <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Use inline actions to duplicate, swap sides, and star cards.</span></li>
+                            </ul>
                         </div>
-
-                        <div className="flex gap-4">
-                            <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">2</div>
-                            <div>
-                                <h4 className="font-bold text-lg mb-2">Start Studying</h4>
-                                <p className="text-muted mb-3">Open any set and click <strong className="text-accent">Learn</strong> to begin a study session.</p>
-                                <div className="my-4">
-                                    <AnswerDemo />
-                                </div>
-                                <p className="text-muted">Type your answer and press Enter. Get it right twice to master a card!</p>
-                            </div>
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <h4 className="font-bold mb-2">Set Configuration</h4>
+                            <ul className="space-y-2 text-sm text-muted">
+                                <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Rename “Term” and “Definition” labels for your subject.</span></li>
+                                <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Add year + up to multiple custom fields on either side.</span></li>
+                                <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Set tags and import behavior from one place.</span></li>
+                            </ul>
                         </div>
-
-
                     </div>
 
-
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="bg-panel-2 border border-outline rounded-xl p-5">
+                            <h4 className="font-bold mb-2 flex items-center gap-2"><Star size={16} className="text-yellow" /> Starred Focus</h4>
+                            <p className="text-sm text-muted mb-4">
+                                Star cards during editing so you can run quick focused sessions later.
+                            </p>
+                            <div className="flex justify-center">
+                                <StarDemo />
+                            </div>
+                        </div>
+                        <div className="bg-panel-2 border border-outline rounded-xl p-5">
+                            <h4 className="font-bold mb-2">Autosave Drafts</h4>
+                            <p className="text-sm text-muted">
+                                Builder work is autosaved and recoverable if you accidentally leave before finishing.
+                            </p>
+                        </div>
+                    </div>
                 </div>
             )
         },
         {
             id: 'formatting',
-            title: 'Formatting your Cards',
+            title: 'Formatting & Raw Text',
             icon: <FileText size={20} />,
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        Flashcardsish supports rich text formatting to make your cards more expressive and easier to read.
+                        Flashcardsish supports markdown-style formatting and raw-text set creation for fast editing.
                     </p>
 
                     <div className="my-6 flex justify-center">
                         <FormattingDemo />
                     </div>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Markdown Basics</h3>
+                    <h3 className="text-xl font-bold mt-8 mb-4">Formatting Syntax</h3>
                     <div className="bg-panel-2 border border-outline rounded-xl overflow-hidden">
                         <table className="w-full text-sm">
                             <thead className="bg-panel">
@@ -699,38 +735,15 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-outline">
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">**bold**</td>
-                                    <td className="px-4 py-3 text-right"><strong>bold</strong></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">*italic*</td>
-                                    <td className="px-4 py-3 text-right"><em>italic</em></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">`code`</td>
-                                    <td className="px-4 py-3 text-right"><code className="bg-panel px-1.5 py-0.5 rounded text-accent">code</code></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">~~strikethrough~~</td>
-                                    <td className="px-4 py-3 text-right"><s>strikethrough</s></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">__underline__</td>
-                                    <td className="px-4 py-3 text-right"><u>underline</u></td>
-                                </tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">**bold**</td><td className="px-4 py-3 text-right"><strong>bold</strong></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">*italic*</td><td className="px-4 py-3 text-right"><em>italic</em></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">`code`</td><td className="px-4 py-3 text-right"><code className="bg-panel px-1.5 py-0.5 rounded text-accent">code</code></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">__underline__</td><td className="px-4 py-3 text-right"><u>underline</u></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">~~strike~~</td><td className="px-4 py-3 text-right"><s>strike</s></td></tr>
                                 <tr>
                                     <td className="px-4 py-3 font-mono text-muted">[[slab]]</td>
                                     <td className="px-4 py-3 text-right">
-                                        <span className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)' }}>slab</span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">- Bullet</td>
-                                    <td className="px-4 py-3 text-right">
-                                        <ul className="list-disc list-inside inline-block">
-                                            <li>Bullet</li>
-                                        </ul>
+                                        <span className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 border border-slate-600" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)' }}>slab</span>
                                     </td>
                                 </tr>
                                 <tr>
@@ -747,9 +760,6 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     </div>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Highlights</h3>
-                    <p className="text-muted mb-4">
-                        Use colored highlights to emphasize important information:
-                    </p>
                     <div className="bg-panel-2 border border-outline rounded-xl overflow-hidden">
                         <table className="w-full text-sm">
                             <thead className="bg-panel">
@@ -759,233 +769,172 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-outline">
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">&lt;h=y&gt;yellow&lt;/h&gt;</td>
-                                    <td className="px-4 py-3 text-right"><span className="bg-yellow/20 text-yellow px-1 rounded">yellow</span></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">&lt;h=r&gt;red&lt;/h&gt;</td>
-                                    <td className="px-4 py-3 text-right"><span className="bg-red/20 text-red px-1 rounded">red</span></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">&lt;h=b&gt;blue&lt;/h&gt;</td>
-                                    <td className="px-4 py-3 text-right"><span className="bg-blue/20 text-blue px-1 rounded">blue</span></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">&lt;h=g&gt;green&lt;/h&gt;</td>
-                                    <td className="px-4 py-3 text-right"><span className="bg-green/20 text-green px-1 rounded">green</span></td>
-                                </tr>
-                                <tr>
-                                    <td className="px-4 py-3 font-mono text-muted">&lt;h=p&gt;purple&lt;/h&gt;</td>
-                                    <td className="px-4 py-3 text-right"><span className="bg-purple/20 text-purple px-1 rounded">purple</span></td>
-                                </tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">&lt;h=y&gt;...&lt;/h&gt;</td><td className="px-4 py-3 text-right"><span className="bg-yellow/20 text-yellow px-1 rounded">yellow</span></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">&lt;h=r&gt;...&lt;/h&gt;</td><td className="px-4 py-3 text-right"><span className="bg-red/20 text-red px-1 rounded">red</span></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">&lt;h=b&gt;...&lt;/h&gt;</td><td className="px-4 py-3 text-right"><span className="bg-blue/20 text-blue px-1 rounded">blue</span></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">&lt;h=g&gt;...&lt;/h&gt;</td><td className="px-4 py-3 text-right"><span className="bg-green/20 text-green px-1 rounded">green</span></td></tr>
+                                <tr><td className="px-4 py-3 font-mono text-muted">&lt;h=p&gt;...&lt;/h&gt;</td><td className="px-4 py-3 text-right"><span className="bg-purple/20 text-purple px-1 rounded">purple</span></td></tr>
                             </tbody>
                         </table>
                     </div>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Raw Text Mode</h3>
-                    <p className="text-muted mb-4">
-                        You can import sets from other apps or write your own in a text editor.
-                        Just click "Raw Text Import" in the Set Builder.
-                    </p>
-                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted">
+                    <h3 className="text-xl font-bold mt-8 mb-4">Raw Text Patterns</h3>
+                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted space-y-1">
                         <div>Term / Definition</div>
-                        <div>Next Term / Next Definition</div>
-                        <div>{">"} This will be a bullet point on the previous card</div>
+                        <div>Term / Definition /// Year</div>
+                        <div>Term / Definition /// Year ||| https://image-url</div>
+                        <div>{'>'} Bullet content to append to the previous card</div>
                     </div>
-                    <ul className="mt-4 space-y-2 text-muted text-sm">
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>When typing, separate term and definition with a symbol, character, or set of symbols (by default <code className="bg-panel-2 px-1 rounded">/</code>)</span></li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>Do the same for separating cards {"("}like using line breaks, written as <code className="bg-panel-2 px-1 rounded">\n</code>, or another symbol/set of symbols such as <code className="bg-panel-2 px-1 rounded">;;;</code>{")"}</span></li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span>When you're done, go to "Add" and create a new set from Raw Text, inputting the symbols you used. You'll use this as a baseline for editing your set further in the Visual Editor, or you can get started right away.</span></li>
-                    </ul>
+                    <p className="text-muted text-sm">
+                        You can customize separators in Raw Text Import, so you are not locked to <code className="bg-panel-2 px-1 rounded">/</code>,
+                        <code className="bg-panel-2 px-1 rounded ml-1">///</code>, or line breaks.
+                    </p>
                 </div>
-                /* I wrote in these bullets myself, AI was really bad at explaining this feature. */
             )
         },
         {
-            id: 'manage-sets',
-            title: 'Manage Sets',
+            id: 'study',
+            title: 'Study Modes & Mastery',
+            icon: <BookOpen size={20} />,
+            content: (
+                <div className="space-y-6 text-text">
+                    <p className="text-lg leading-relaxed">
+                        Choose your mode per session and tune strictness in Settings.
+                    </p>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <h4 className="font-bold mb-2">Learn Mode</h4>
+                            <p className="text-sm text-muted">
+                                Answer prompts directly. Works with spelling forgiveness, keybinds, starred filtering, and answer-style options.
+                            </p>
+                        </div>
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <h4 className="font-bold mb-2">Flashcards Mode</h4>
+                            <p className="text-sm text-muted">
+                                Traditional flip-through review for quick memorization runs.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="bg-panel-2 border border-outline rounded-xl p-5">
+                        <h4 className="font-bold mb-3">Mastery States</h4>
+                        <p className="text-sm text-muted mb-4">
+                            Cards progress as you answer correctly; mastery gives you an at-a-glance progress signal.
+                        </p>
+                        <MasteryDemo />
+                    </div>
+
+                    <h3 className="text-xl font-bold mt-8 mb-4">Answer Styles</h3>
+                    <ul className="space-y-2 text-muted">
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Standard:</strong> typed answer input.</span></li>
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Multiple Choice:</strong> manual option selection.</span></li>
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Random Choice:</strong> AI-powered option generation (requires AI key setup).</span></li>
+                    </ul>
+
+                    <h3 className="text-xl font-bold mt-8 mb-4">Multistudy vs Combine</h3>
+                    <div className="mb-4 flex justify-center">
+                        <MultistudyDemo />
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-4 text-sm">
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <div className="text-accent font-bold mb-1">Multistudy</div>
+                            <p className="text-muted">Temporary joint session from selected sets. Original sets stay intact.</p>
+                        </div>
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <div className="text-accent font-bold mb-1">Combine</div>
+                            <p className="text-muted">Creates a brand-new merged set you can keep and edit independently.</p>
+                        </div>
+                    </div>
+                </div>
+            )
+        },
+        {
+            id: 'library',
+            title: 'Library Organization',
             icon: <FolderOpen size={20} />,
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        Keep your flashcards organized with folders, starring, and easy duplication.
+                        Organize by folders, tags, stars, and batch actions so large libraries stay manageable.
                     </p>
 
                     <div className="my-6 flex justify-center">
                         <FolderDemo />
                     </div>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Organizing with Folders</h3>
-                    <p className="text-muted mb-4">
-                        Select multiple sets using the checkboxes, then use the action bar to:
-                    </p>
+                    <h3 className="text-xl font-bold mt-8 mb-4">Batch Actions</h3>
                     <ul className="space-y-3 text-muted">
                         <li className="flex items-center gap-3">
                             <FolderOpen className="text-accent shrink-0" size={18} />
-                            <strong className="text-text">Create Folder</strong>
-                            <span className="ml-auto text-right">Group selected sets into a new folder</span>
+                            <span><strong className="text-text">Create Folder</strong> from selected sets.</span>
                         </li>
                         <li className="flex items-center gap-3">
                             <ChevronDown className="text-accent shrink-0" size={18} />
-                            <strong className="text-text">Move to...</strong>
-                            <span className="ml-auto text-right">Move sets into an existing folder</span>
+                            <span><strong className="text-text">Move to...</strong> to re-organize sets quickly.</span>
+                        </li>
+                        <li className="flex items-center gap-3">
+                            <Layers className="text-accent shrink-0" size={18} />
+                            <span><strong className="text-text">Multistudy/Combine</strong> for multi-set workflows.</span>
                         </li>
                     </ul>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Set Actions</h3>
-                    <p className="text-muted mb-4">
-                        On each set card, you'll find quick action buttons:
-                    </p>
+                    <h3 className="text-xl font-bold mt-8 mb-4">Set-Level Actions</h3>
                     <div className="grid md:grid-cols-2 gap-4">
                         <div className="bg-panel-2 border border-outline rounded-xl p-4">
                             <h4 className="font-bold mb-2 flex items-center gap-2"><Pencil size={16} className="text-accent" /> Edit</h4>
-                            <p className="text-sm text-muted">Modify cards, add new ones, or restructure your set.</p>
+                            <p className="text-sm text-muted">Open the builder with the current set preloaded.</p>
                         </div>
                         <div className="bg-panel-2 border border-outline rounded-xl p-4">
                             <h4 className="font-bold mb-2 flex items-center gap-2"><Copy size={16} className="text-accent" /> Duplicate</h4>
-                            <p className="text-sm text-muted">Create a copy to experiment without affecting the original.</p>
+                            <p className="text-sm text-muted">Clone for alternate study styles or versions.</p>
                         </div>
                         <div className="bg-panel-2 border border-outline rounded-xl p-4">
                             <h4 className="font-bold mb-2 flex items-center gap-2"><Download size={16} className="text-accent" /> Export</h4>
-                            <p className="text-sm text-muted">Download as a .flashcards JSON file for backup or sharing.</p>
+                            <p className="text-sm text-muted">Download an individual <code className="bg-panel px-1 rounded">.flashcards</code> file.</p>
                         </div>
                         <div className="bg-panel-2 border border-outline rounded-xl p-4">
                             <h4 className="font-bold mb-2 flex items-center gap-2"><Trash2 size={16} className="text-red" /> Delete</h4>
-                            <p className="text-sm text-muted">Remove a set permanently (requires confirmation).</p>
+                            <p className="text-sm text-muted">Removes the set permanently after confirmation.</p>
                         </div>
                     </div>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">Importing Sets</h3>
-                    <p className="text-muted">
-                        Click <Upload className="inline text-accent" size={16} /> <strong className="text-accent">Import</strong> in the Library header to load a <code className="bg-panel-2 px-1 rounded">.flashcards</code> JSON file.
-                        This is great for sharing sets with friends or restoring backups.
-                    </p>
                 </div>
             )
         },
         {
-            id: 'multistudy',
-            title: 'Multistudy',
-            icon: <Layers size={20} />,
-            content: (
-                <div className="space-y-6 text-text">
-                    <p className="text-lg leading-relaxed">
-                        Combine multiple sets into one mega study session. Perfect for exam prep when you need to review
-                        everything at once.
-                    </p>
-
-                    <div className="my-6 flex justify-center">
-                        <MultistudyDemo />
-                    </div>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">How to Start a Multistudy</h3>
-                    <div className="space-y-4 text-muted">
-                        <div className="flex gap-4">
-                            <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">1</div>
-                            <div className="flex items-center">
-                                <span>Select <strong className="text-text">2 or more sets</strong> using the checkboxes in your Library</span>
-                            </div>
-                        </div>
-                        <div className="flex gap-4">
-                            <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">2</div>
-                            <div className="flex items-center">
-                                <span>Click the <strong className="text-accent">Multistudy</strong> button in the floating action bar</span>
-                            </div>
-                        </div>
-                        <div className="flex gap-4">
-                            <div className="w-10 h-10 rounded-full bg-accent text-bg flex items-center justify-center font-bold shrink-0">3</div>
-                            <div className="flex items-center">
-                                <span>All cards from selected sets are combined and shuffled into one session</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-panel-2 border border-outline rounded-xl p-5 mt-8">
-                        <h4 className="font-bold mb-3">Multistudy vs. Combine</h4>
-                        <div className="grid md:grid-cols-2 gap-4 text-sm">
-                            <div>
-                                <div className="text-accent font-bold mb-1">Multistudy</div>
-                                <p className="text-muted">Creates a temporary session. Cards remember their original sets. Great for quick review.</p>
-                            </div>
-                            <div>
-                                <div className="text-accent font-bold mb-1">Combine</div>
-                                <p className="text-muted">Creates a new permanent set in your Library. Cards are merged together with fresh mastery levels.</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">Visual Indicator</h3>
-                    <p className="text-muted">
-                        Multistudy sessions are marked with diagonal stripes so you can easily distinguish them from regular sessions in your
-                        Ongoing Sessions list.
-                    </p>
-                </div>
-            )
-        },
-        {
-            id: 'account',
-            title: 'Account Management',
+            id: 'sync-backup',
+            title: 'Sync, Backup & Privacy',
             icon: <User size={20} />,
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        Sign in to sync your flashcards across all your devices. Your data is securely stored and
-                        automatically synchronized.
+                        Google sign-in is optional. Use it for sync and image hosting; stay local if you prefer.
                     </p>
 
-                    <p className="text-muted">
-                        To keep things safe and simple, Flashcardsish uses Google sign-in. It's totally optional, but is great if you're studying between devices.
-                    </p>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">Signing In</h3>
-                    <p className="text-muted mb-4">
-                        Open <strong className="text-accent">Settings</strong> (gear icon) and click <strong className="text-accent">Login with Google</strong>.
-                        Your library will sync really fast (it's not a lot of data).
-                    </p>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">What Gets Synced?</h3>
+                    <h3 className="text-xl font-bold mt-8 mb-4">What Syncs</h3>
                     <ul className="space-y-3 text-muted">
-                        <li className="flex items-start gap-3">
-                            <Check className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span>All your flashcard sets and their content</span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Check className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span>Mastery progress for each card</span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Check className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span>Starred cards</span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Check className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span>Folders and organization</span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Check className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span>Ongoing study sessions</span>
-                        </li>
+                        <li className="flex items-start gap-3"><Check className="text-accent shrink-0 mt-0.5" size={18} /><span>Sets, cards, and card content</span></li>
+                        <li className="flex items-start gap-3"><Check className="text-accent shrink-0 mt-0.5" size={18} /><span>Mastery progress and starred state</span></li>
+                        <li className="flex items-start gap-3"><Check className="text-accent shrink-0 mt-0.5" size={18} /><span>Folders, tags, and ongoing sessions</span></li>
+                        <li className="flex items-start gap-3"><Check className="text-accent shrink-0 mt-0.5" size={18} /><span>Global settings relevant to study behavior</span></li>
                     </ul>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Managing Your Data</h3>
-                    <p className="text-muted mb-4">In Settings, you can:</p>
-                    <ul className="space-y-3 text-muted">
-                        <li className="flex items-start gap-3">
-                            <Download className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span><strong className="text-text">Export All Data</strong> <span className="ml-auto text-right">Download a complete backup of everything</span></span>
-                        </li>
-                        <li className="flex items-start gap-3">
-                            <Trash2 className="text-accent shrink-0 mt-0.5" size={18} />
-                            <span><strong className="text-text">Delete All Data</strong> <span className="ml-auto text-right">Permanently remove all your data (requires confirmation)</span></span>
-                        </li>
-                    </ul>
+                    <h3 className="text-xl font-bold mt-8 mb-4">Backup Options</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <h4 className="font-bold mb-2 flex items-center gap-2"><Download size={16} className="text-accent" /> Export All Data</h4>
+                            <p className="text-sm text-muted">Settings-level full backup for migration or recovery.</p>
+                        </div>
+                        <div className="bg-panel-2 border border-outline rounded-xl p-4">
+                            <h4 className="font-bold mb-2 flex items-center gap-2"><Upload size={16} className="text-accent" /> Import Set Files</h4>
+                            <p className="text-sm text-muted">Library-level import for shared <code className="bg-panel px-1 rounded">.flashcards</code> files.</p>
+                        </div>
+                    </div>
 
                     <div className="bg-panel-2 border border-outline rounded-xl p-5 mt-8">
                         <h4 className="font-bold text-accent mb-2 flex items-center gap-2"><User size={18} className="text-accent" /> Privacy Note</h4>
                         <p className="text-muted">
-                            We only store what's necessary for the app to function. We don't sell your data or show ads.
-                            Read our full <strong className="text-text">Privacy Policy</strong> in the footer.
+                            Flashcardsish does not use ads or sell user data. Check the in-app Privacy Policy for exact storage and deletion details.
                         </p>
                     </div>
                 </div>
@@ -993,23 +942,13 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
         },
         {
             id: 'open-source',
-            title: 'Open Source & Running Locally',
+            title: 'Open Source & Local Run',
             icon: <Code size={20} />,
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        Flashcardsish is open source under the <strong className="text-accent">CC BY-NC 4.0</strong> license.
-                        You can view the code, contribute, or run your own instance for non-commercial purposes.
+                        Flashcardsish is open source under <strong className="text-accent">CC BY-NC 4.0</strong>. You can inspect, fork, and run it locally.
                     </p>
-
-                    <div className="bg-panel-2 border border-outline rounded-xl p-4 mb-6">
-                        <p className="text-text font-bold mb-1 flex items-center gap-2">
-                            <Check size={18} className="text-accent" /> Free Forever
-                        </p>
-                        <p className="text-muted text-sm">
-                            There are no premium tiers, no hidden costs, and no ads.
-                        </p>
-                    </div>
 
                     <a
                         href="https://github.com/RockhopperHD/flashcardsish"
@@ -1018,44 +957,25 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                         className="inline-flex items-center gap-3 px-5 py-3 bg-panel-2 border border-outline rounded-xl hover:border-accent transition-colors"
                     >
                         <Github size={24} />
-                        <span className="font-bold">View on GitHub</span>
+                        <span className="font-bold">View Repository</span>
+                        <ExternalLink size={16} className="text-muted" />
                     </a>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Running Locally</h3>
-                    <p className="text-muted mb-4">Prerequisites: Node.js 18+ and npm</p>
-
-                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm space-y-3">
-                        <div>
-                            <span className="text-muted"># Clone the repository</span>
-                            <div className="text-text">git clone https://github.com/RockhopperHD/flashcardsish.git</div>
-                        </div>
-                        <div>
-                            <span className="text-muted"># Install dependencies</span>
-                            <div className="text-text">npm install</div>
-                        </div>
-                        <div>
-                            <span className="text-muted"># Start the dev server</span>
-                            <div className="text-text">npm run dev</div>
-                        </div>
+                    <h3 className="text-xl font-bold mt-8 mb-4">Run Locally</h3>
+                    <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm space-y-2">
+                        <div>git clone https://github.com/RockhopperHD/flashcardsish.git</div>
+                        <div>npm install</div>
+                        <div>npm run dev</div>
                     </div>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Environment Setup</h3>
-                    <p className="text-muted mb-4">
-                        For cloud sync to work locally, you'll need to set up Google Cloud OAuth credentials and configure the environment variables.
-                        See the <strong className="text-accent">README.md</strong> for detailed instructions.
-                    </p>
-
-                    <h3 className="text-xl font-bold mt-8 mb-4">Contributing</h3>
                     <p className="text-muted">
-                        Contributions are welcome! Feel free to open issues for bugs or feature requests,
-                        or submit pull requests. Please follow the existing code style and include tests where applicable.
+                        To enable cloud sync locally, configure Google OAuth credentials as described in the README.
                     </p>
 
                     <div className="bg-panel-2 border border-outline rounded-xl p-5 mt-8">
-                        <h4 className="font-bold mb-2 flex items-center gap-2"><FileText size={18} className="text-accent" /> License Details</h4>
+                        <h4 className="font-bold mb-2 flex items-center gap-2"><FileText size={18} className="text-accent" /> License</h4>
                         <p className="text-muted text-sm">
-                            This work is licensed under <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Creative Commons Attribution-NonCommercial 4.0 International</a>.
-                            You are free to share and adapt the material for non-commercial purposes with appropriate credit.
+                            Licensed under <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Creative Commons Attribution-NonCommercial 4.0</a>.
                         </p>
                     </div>
                 </div>
@@ -1068,15 +988,14 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
             content: (
                 <div className="space-y-6 text-text">
                     <p className="text-lg leading-relaxed">
-                        Have a question or want to say hi? You can find me here!
+                        Questions, bug reports, or feedback are welcome.
                     </p>
-
-                    <div className="grid md:grid-cols-2 gap-4 mt-6">
+                    <div className="grid md:grid-cols-2 gap-4">
                         <a href="mailto:owenw2023@gmail.com" className="flex flex-col items-center justify-center p-6 bg-panel-2 border border-outline rounded-xl hover:border-accent transition-all group">
                             <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                 <Mail size={24} className="text-accent" />
                             </div>
-                            <span className="font-bold text-lg mb-1">Email Me</span>
+                            <span className="font-bold text-lg mb-1">Email</span>
                             <span className="text-muted text-sm">owenw2023@gmail.com</span>
                         </a>
                         <a href="https://www.owenwhelan.com" target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center p-6 bg-panel-2 border border-outline rounded-xl hover:border-accent transition-all group">
@@ -1097,93 +1016,32 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
             content: (
                 <div className="space-y-6 text-text">
                     <div className="bg-panel-2 border border-outline rounded-xl p-8 text-center">
-                        <p className="text-muted font-medium mb-2 uppercase tracking-wide text-xs">Flashcardsish was built by</p>
-                        <h2
-                            className="text-3xl mb-4 text-text"
-                            style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
-                        >
+                        <p className="text-muted font-medium mb-2 uppercase tracking-wide text-xs">Created by</p>
+                        <h2 className="text-3xl mb-4 text-text" style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}>
                             Owen Whelan
                         </h2>
-
-                        <div className="text-left text-muted max-w-lg mx-auto mb-8 leading-relaxed">
-                            I work with education, language, technology and a few other things. I made Flashcardsish as an accessible alternative to other apps, with features I thought were lacking.
-                            <br /> I've used a bunch of flashcard apps before and I found that a lot of them lacked features that I thought were important. A lot of them are also... really expensive now. So I fixed that with Flashcardsish.
-                        </div>
-
-                        <div className="flex justify-center gap-4">
-                            <a
-                                href="https://github.com/RockhopperHD/flashcardsish"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-bg font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg shadow-accent/20"
-                            >
-                                <Github size={20} />
-                                GitHub Repo
-                            </a>
-                        </div>
+                        <p className="text-muted max-w-2xl mx-auto leading-relaxed">
+                            Flashcardsish was built as an accessible, no-ads alternative focused on practical study workflows.
+                        </p>
                     </div>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Built With</h3>
                     <ul className="space-y-3 text-muted">
-                        <li className="flex items-end justify-between gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 mb-0.5 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">React</strong>
-                            </div>
-                            <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">UI Framework</span>
-                        </li>
-                        <li className="flex items-end justify-between gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 mb-0.5 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">TypeScript</strong>
-                            </div>
-                            <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Type Safety</span>
-                        </li>
-                        <li className="flex items-end justify-between gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 mb-0.5 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">Tailwind CSS</strong>
-                            </div>
-                            <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Styling</span>
-                        </li>
-                        <li className="flex items-end justify-between gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 mb-0.5 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">Vite</strong>
-                            </div>
-                            <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Build Tool</span>
-                        </li>
-                        <li className="flex items-end justify-between gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 mb-0.5 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">Google Drive</strong>
-                            </div>
-                            <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Storage & Cloud Sync</span>
-                        </li>
-                        <li className="flex items-end justify-between gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 mb-0.5 shrink-0">
-                                <div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-                                <strong className="text-text">Lucide Icons</strong>
-                            </div>
-                            <div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" />
-                            <span className="text-muted text-sm text-right shrink-0 mb-0.5">Beautiful Icons</span>
-                        </li>
+                        <li className="flex items-end justify-between gap-2 overflow-hidden"><div className="flex items-center gap-2 mb-0.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /><strong className="text-text">React</strong></div><div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" /><span className="text-muted text-sm text-right shrink-0 mb-0.5">UI Framework</span></li>
+                        <li className="flex items-end justify-between gap-2 overflow-hidden"><div className="flex items-center gap-2 mb-0.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /><strong className="text-text">TypeScript</strong></div><div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" /><span className="text-muted text-sm text-right shrink-0 mb-0.5">Type Safety</span></li>
+                        <li className="flex items-end justify-between gap-2 overflow-hidden"><div className="flex items-center gap-2 mb-0.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /><strong className="text-text">Tailwind CSS</strong></div><div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" /><span className="text-muted text-sm text-right shrink-0 mb-0.5">Styling</span></li>
+                        <li className="flex items-end justify-between gap-2 overflow-hidden"><div className="flex items-center gap-2 mb-0.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /><strong className="text-text">Vite</strong></div><div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" /><span className="text-muted text-sm text-right shrink-0 mb-0.5">Build Tooling</span></li>
+                        <li className="flex items-end justify-between gap-2 overflow-hidden"><div className="flex items-center gap-2 mb-0.5 shrink-0"><div className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /><strong className="text-text">Google Drive</strong></div><div className="flex-1 border-b-2 border-dotted border-muted/30 mb-1.5 mx-1 min-w-[20px]" /><span className="text-muted text-sm text-right shrink-0 mb-0.5">Sync + Storage</span></li>
                     </ul>
                 </div>
             )
         }
     ];
 
-    const activeDoc = sections.find(s => s.id === activeSection);
+    const activeDoc = sections.find((s) => s.id === activeSection);
 
     return (
-        <div className="w-full max-w-5xl mx-auto pb-20 pt-8 px-6">
-            {/* Back Button */}
+        <div className="w-full max-w-6xl mx-auto pb-20 pt-8 px-6">
             <div className="flex items-center gap-4 mb-8">
                 <button
                     onClick={onBack}
@@ -1197,14 +1055,13 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
             </div>
 
             <div className="flex gap-8">
-                {/* Sidebar Navigation */}
-                <div className="w-64 shrink-0 hidden md:block">
+                <div className="w-72 shrink-0 hidden md:block">
                     <div className="sticky top-24">
                         <h3 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 px-2">
-                            How-To Guide
+                            Documentation
                         </h3>
                         <nav className="space-y-1">
-                            {sections.filter(s => s.id !== 'contact').map((section) => (
+                            {sections.map((section) => (
                                 <button
                                     key={section.id}
                                     onClick={() => setActiveSection(section.id)}
@@ -1215,64 +1072,38 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                                             : "text-muted hover:text-text hover:bg-panel-2"
                                     )}
                                 >
-                                    <span className={clsx(
-                                        "shrink-0",
-                                        activeSection === section.id ? "text-accent" : "text-muted"
-                                    )}>
+                                    <span className={clsx("shrink-0", activeSection === section.id ? "text-accent" : "text-muted")}>
                                         {section.icon}
                                     </span>
                                     <span className="font-medium truncate">{section.title}</span>
                                 </button>
                             ))}
                         </nav>
-
-                        {/* Email link in sidebar */}
-                        <div className="mt-8 pt-6 border-t border-outline">
-                            <button
-                                onClick={() => setActiveSection('contact')}
-                                className={clsx(
-                                    "w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors rounded-lg",
-                                    activeSection === 'contact'
-                                        ? "bg-accent/10 text-accent border border-accent/20"
-                                        : "text-muted hover:text-accent"
-                                )}
-                            >
-                                <Mail size={16} />
-                                <span>Contact</span>
-                            </button>
-                        </div>
                     </div>
                 </div>
 
-                {/* Main Content */}
                 <div className="flex-1 min-w-0">
-                    {/* Section Header */}
                     <div className="mb-8">
                         <div className="flex items-center gap-4 mb-2">
                             <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
                                 <span className="text-accent">{activeDoc?.icon}</span>
                             </div>
-                            <h1
-                                className="text-3xl text-text"
-                                style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
-                            >
+                            <h1 className="text-3xl text-text" style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}>
                                 {activeDoc?.title}
                             </h1>
                         </div>
                     </div>
 
-                    {/* Content */}
                     <div className="bg-panel border border-outline rounded-2xl p-8">
                         {activeDoc?.content}
                     </div>
 
-                    {/* Mobile: Section Selector */}
                     <div className="md:hidden mt-6">
                         <label className="text-xs font-bold text-muted uppercase tracking-widest mb-2 block">
                             Jump to Section
                         </label>
                         <select
-                            value={activeSection || ''}
+                            value={activeSection}
                             onChange={(e) => setActiveSection(e.target.value)}
                             className="w-full bg-panel-2 border border-outline rounded-xl px-4 py-3 text-text font-medium focus:outline-none focus:border-accent"
                         >

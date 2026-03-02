@@ -36,11 +36,31 @@ export interface GoogleDriveUser {
     picture?: string;
 }
 
+export class DriveConflictError extends Error {
+    code = 'CLOUD_CONFLICT';
+    filename: string;
+    expectedModifiedTime: string;
+    actualModifiedTime: string;
+
+    constructor(filename: string, expectedModifiedTime: string, actualModifiedTime: string) {
+        super(`Cloud version changed for ${filename}. Please choose whether to keep cloud data or overwrite it.`);
+        this.name = 'DriveConflictError';
+        this.filename = filename;
+        this.expectedModifiedTime = expectedModifiedTime;
+        this.actualModifiedTime = actualModifiedTime;
+    }
+}
+
+interface WriteFileOptions {
+    ignoreConflicts?: boolean;
+}
+
 class GoogleDriveClient {
     private accessToken: string | null = null;
     private tokenClient: any = null;
     private gapiInitialized = false;
     private gisInitialized = false;
+    private fileModifiedAtCache = new Map<string, string>();
     private authChangeCallbacks: Array<(user: GoogleDriveUser | null) => void> = [];
     private currentUser: GoogleDriveUser | null = null;
     private rememberSession = true;
@@ -119,6 +139,20 @@ class GoogleDriveClient {
         sessionStorage.removeItem(TOKEN_KEY);
         sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
         sessionStorage.removeItem(USER_KEY);
+        this.fileModifiedAtCache.clear();
+    }
+
+    private getFileCacheKey(folderId: string, filename: string): string {
+        return `${folderId}::${filename}`;
+    }
+
+    private cacheFileModifiedTime(folderId: string, filename: string, modifiedTime?: string | null): void {
+        const cacheKey = this.getFileCacheKey(folderId, filename);
+        if (modifiedTime) {
+            this.fileModifiedAtCache.set(cacheKey, modifiedTime);
+        } else {
+            this.fileModifiedAtCache.delete(cacheKey);
+        }
     }
 
     private async initGapi(): Promise<void> {
@@ -591,14 +625,17 @@ class GoogleDriveClient {
         const response = await window.gapi.client.drive.files.list({
             q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
             spaces: 'drive',
-            fields: 'files(id)',
+            fields: 'files(id, modifiedTime)',
         });
 
         if (!response.result.files || response.result.files.length === 0) {
+            this.cacheFileModifiedTime(folderId, filename, null);
             return null;
         }
 
-        const fileId = response.result.files[0].id!;
+        const file = response.result.files[0];
+        const fileId = file.id!;
+        this.cacheFileModifiedTime(folderId, filename, file.modifiedTime);
         const fileResponse = await window.gapi.client.drive.files.get({
             fileId: fileId,
             alt: 'media',
@@ -610,7 +647,7 @@ class GoogleDriveClient {
     /**
      * Write content to a file in a folder (creates or updates)
      */
-    async writeFile(folderId: string, filename: string, content: string): Promise<string> {
+    async writeFile(folderId: string, filename: string, content: string, options?: WriteFileOptions): Promise<string> {
         await this.init();
 
         if (!this.accessToken) {
@@ -623,13 +660,23 @@ class GoogleDriveClient {
         const response = await window.gapi.client.drive.files.list({
             q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
             spaces: 'drive',
-            fields: 'files(id)',
+            fields: 'files(id, modifiedTime)',
         });
 
         if (response.result.files && response.result.files.length > 0) {
             // Update existing file
-            const fileId = response.result.files[0].id!;
+            const file = response.result.files[0];
+            const fileId = file.id!;
+            const currentModifiedTime = file.modifiedTime || '';
+            const cachedModifiedTime = this.fileModifiedAtCache.get(this.getFileCacheKey(folderId, filename));
+
+            if (!options?.ignoreConflicts && cachedModifiedTime && currentModifiedTime && cachedModifiedTime !== currentModifiedTime) {
+                throw new DriveConflictError(filename, cachedModifiedTime, currentModifiedTime);
+            }
+
             await this.uploadFileContent(fileId, blob);
+            const updatedMetadata = await window.gapi.client.drive.files.get({ fileId, fields: 'modifiedTime' });
+            this.cacheFileModifiedTime(folderId, filename, updatedMetadata.result.modifiedTime || null);
             return fileId;
         } else {
             // Create new file
@@ -639,7 +686,10 @@ class GoogleDriveClient {
                 parents: [folderId],
             };
             const file = await this.createFile(metadata, blob);
-            return file.id!;
+            const newFileId = file.id!;
+            const createdMetadata = await window.gapi.client.drive.files.get({ fileId: newFileId, fields: 'modifiedTime' });
+            this.cacheFileModifiedTime(folderId, filename, createdMetadata.result.modifiedTime || null);
+            return newFileId;
         }
     }
 
@@ -663,6 +713,7 @@ class GoogleDriveClient {
         if (response.result.files && response.result.files.length > 0) {
             const fileId = response.result.files[0].id!;
             await window.gapi.client.drive.files.delete({ fileId });
+            this.cacheFileModifiedTime(folderId, filename, null);
             // console.log(`[GoogleDrive] Deleted file: ${filename}`);
         }
     }
@@ -718,6 +769,9 @@ class GoogleDriveClient {
                 fileId,
                 resource: { name: newFilename },
             });
+            this.cacheFileModifiedTime(folderId, oldFilename, null);
+            const updatedMetadata = await window.gapi.client.drive.files.get({ fileId, fields: 'modifiedTime' });
+            this.cacheFileModifiedTime(folderId, newFilename, updatedMetadata.result.modifiedTime || null);
             // console.log(`[GoogleDrive] Renamed file: ${oldFilename} -> ${newFilename}`);
         }
     }
