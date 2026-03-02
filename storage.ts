@@ -1,5 +1,5 @@
 import { get, set, del } from 'idb-keyval';
-import { CardSet, Folder, Settings, SetMetadata, Tag } from './types';
+import { Card, CardSet, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import * as storageV2 from './storageV2';
 
@@ -36,6 +36,21 @@ export {
     resetSettingsToDefault,
     updateLastUsedSets
 } from './storageV2';
+
+export interface CloudConflictDetail {
+    setId: string;
+    setName: string;
+    localCardCount: number;
+    cloudCardCount: number;
+    cardsAddedLocally: number;
+    cardsDeletedLocally: number;
+    cardsEditedLocally: number;
+    addedCardLabels: string[];
+    deletedCardLabels: string[];
+    editedCardLabels: string[];
+    localModifiedAt?: string;
+    cloudModifiedAt?: string;
+}
 
 // ============================================================================
 // HELPERS
@@ -115,7 +130,7 @@ export const checkAndMigrate = async (): Promise<{
 export const saveLibrary = async (
     sets: CardSet[],
     options?: { ignoreConflicts?: boolean; folders?: Folder[] }
-): Promise<{ success: boolean; savedToCloud: boolean; error?: string; conflicts?: string[] }> => {
+): Promise<{ success: boolean; savedToCloud: boolean; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] }> => {
     // Always save locally first for speed
     try {
         await set(LIBRARY_KEY, sets);
@@ -134,6 +149,7 @@ export const saveLibrary = async (
 
     try {
         const conflicts: string[] = [];
+        const conflictDetails: CloudConflictDetail[] = [];
         // console.log(`[Storage] Saving ${cloudSets.length} sets to Google Drive...`);
 
         // Get current structure to track root sets
@@ -147,6 +163,18 @@ export const saveLibrary = async (
             } catch (error: any) {
                 if (error?.code === 'CLOUD_CONFLICT' || error?.name === 'DriveConflictError') {
                     conflicts.push(cardSet.name || cardSet.id);
+                    try {
+                        const { set: cloudSet } = await storageV2.readFlashcardSet(cardSet.id, true);
+                        conflictDetails.push(buildConflictDetail(cardSet, cloudSet, {
+                            localModifiedAt: error?.expectedModifiedTime,
+                            cloudModifiedAt: error?.actualModifiedTime
+                        }));
+                    } catch {
+                        conflictDetails.push(buildConflictDetail(cardSet, null, {
+                            localModifiedAt: error?.expectedModifiedTime,
+                            cloudModifiedAt: error?.actualModifiedTime
+                        }));
+                    }
                     continue;
                 }
                 throw error;
@@ -158,7 +186,8 @@ export const saveLibrary = async (
                 success: false,
                 savedToCloud: false,
                 error: 'Cloud conflict detected',
-                conflicts
+                conflicts,
+                conflictDetails
             };
         }
 
@@ -195,6 +224,79 @@ export const saveLibrary = async (
         console.error('[Storage] Failed to save library to Google Drive:', msg);
         return { success: true, savedToCloud: false, error: msg };
     }
+};
+
+const describeCard = (card: Card): string => {
+    const termText = Array.isArray(card.term) ? card.term.join(' / ').trim() : '';
+    if (termText) return termText.slice(0, 80);
+    const contentText = (card.content || '').trim();
+    if (contentText) return contentText.slice(0, 80);
+    return card.id;
+};
+
+const normalizedCardSignature = (card: Card): string => {
+    const normalizedCustomFields = (card.customFields || [])
+        .map(field => ({ name: field.name || '', value: field.value || '' }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    return JSON.stringify({
+        term: Array.isArray(card.term) ? card.term : [],
+        content: card.content || '',
+        year: card.year || '',
+        image: card.image || '',
+        termImage: card.termImage || '',
+        tags: [...(card.tags || [])].sort(),
+        customFields: normalizedCustomFields,
+        star: !!card.star
+    });
+};
+
+const buildConflictDetail = (
+    localSet: CardSet,
+    cloudSet: CardSet | null,
+    options?: { localModifiedAt?: string; cloudModifiedAt?: string }
+): CloudConflictDetail => {
+    const localCards = localSet.cards || [];
+    const cloudCards = cloudSet?.cards || [];
+
+    const localById = new Map(localCards.map(card => [card.id, card]));
+    const cloudById = new Map(cloudCards.map(card => [card.id, card]));
+
+    const addedLocally: Card[] = [];
+    const deletedLocally: Card[] = [];
+    const editedLocally: Card[] = [];
+
+    for (const [cardId, localCard] of localById.entries()) {
+        const cloudCard = cloudById.get(cardId);
+        if (!cloudCard) {
+            addedLocally.push(localCard);
+            continue;
+        }
+        if (normalizedCardSignature(localCard) !== normalizedCardSignature(cloudCard)) {
+            editedLocally.push(localCard);
+        }
+    }
+
+    for (const [cardId, cloudCard] of cloudById.entries()) {
+        if (!localById.has(cardId)) {
+            deletedLocally.push(cloudCard);
+        }
+    }
+
+    return {
+        setId: localSet.id,
+        setName: localSet.name || cloudSet?.name || localSet.id,
+        localCardCount: localCards.length,
+        cloudCardCount: cloudCards.length,
+        cardsAddedLocally: addedLocally.length,
+        cardsDeletedLocally: deletedLocally.length,
+        cardsEditedLocally: editedLocally.length,
+        addedCardLabels: addedLocally.slice(0, 6).map(describeCard),
+        deletedCardLabels: deletedLocally.slice(0, 6).map(describeCard),
+        editedCardLabels: editedLocally.slice(0, 6).map(describeCard),
+        localModifiedAt: options?.localModifiedAt,
+        cloudModifiedAt: options?.cloudModifiedAt
+    };
 };
 
 /**

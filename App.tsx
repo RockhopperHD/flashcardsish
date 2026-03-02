@@ -14,8 +14,8 @@ import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
-import { sanitizeStrings } from './storageV2';
+import { saveLibrary, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, CloudConflictDetail } from './storage';
+import { sanitizeStrings, readFlashcardSet, readStructure } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
@@ -33,15 +33,19 @@ const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v
 
 const normalizeLoadedSet = (set: CardSet): CardSet => {
    const sanitized = sanitizeSet(sanitizeStrings(set));
-   const hasSourceSetIds = Array.isArray(sanitized.sourceSetIds) && sanitized.sourceSetIds.length > 0;
+   // Local-only sets should always live in the Local section at root.
+   const normalized = sanitized.isLocalOnly && sanitized.folderId
+      ? { ...sanitized, folderId: undefined }
+      : sanitized;
+   const hasSourceSetIds = Array.isArray(normalized.sourceSetIds) && normalized.sourceSetIds.length > 0;
 
-   if (!sanitized.isMultistudy || hasSourceSetIds) return sanitized;
+   if (!normalized.isMultistudy || hasSourceSetIds) return normalized;
 
    return {
-      ...sanitized,
-      name: sanitized.name.endsWith(LEGACY_MULTISTUDY_SUFFIX)
-         ? sanitized.name
-         : `${sanitized.name}${LEGACY_MULTISTUDY_SUFFIX}`,
+      ...normalized,
+      name: normalized.name.endsWith(LEGACY_MULTISTUDY_SUFFIX)
+         ? normalized.name
+         : `${normalized.name}${LEGACY_MULTISTUDY_SUFFIX}`,
       // Legacy multistudy sessions are preserved as regular snapshots to avoid sync collisions.
       isMultistudy: false,
       isSessionActive: false,
@@ -70,6 +74,13 @@ const parseExportData = (raw: string): FlashcardsishExportFile => {
    }
 
    return parsed as FlashcardsishExportFile;
+};
+
+const formatConflictTimestamp = (value?: string): string => {
+   if (!value) return 'Unknown';
+   const date = new Date(value);
+   if (Number.isNaN(date.getTime())) return value;
+   return date.toLocaleString();
 };
 
 const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
@@ -1324,7 +1335,9 @@ const App: React.FC = () => {
 
    // Cloud sync status: 'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'
    const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'>('idle');
-   const [cloudConflictSets, setCloudConflictSets] = useState<string[]>([]);
+   const [cloudConflicts, setCloudConflicts] = useState<CloudConflictDetail[]>([]);
+   const [isConflictDetailsOpen, setIsConflictDetailsOpen] = useState(false);
+   const [conflictResolutionAction, setConflictResolutionAction] = useState<'idle' | 'keeping' | 'overwriting'>('idle');
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
    const cloudSaveInFlightRef = useRef(false);
    const pendingLibrarySaveRef = useRef<{
@@ -1337,6 +1350,17 @@ const App: React.FC = () => {
    const [isCloudLoading, setIsCloudLoading] = useState(false);
    const syncInProgressRef = useRef(false);
    const hasSyncedOnceRef = useRef(false);
+   const latestCloudConflictsRef = useRef<CloudConflictDetail[]>([]);
+
+   useEffect(() => {
+      latestCloudConflictsRef.current = cloudConflicts;
+   }, [cloudConflicts]);
+
+   const waitForBackgroundSyncIdle = async () => {
+      while (cloudSaveInFlightRef.current || syncInProgressRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 50));
+      }
+   };
 
    const flushPendingLibrarySave = async () => {
       if (cloudSaveInFlightRef.current) return;
@@ -1355,14 +1379,27 @@ const App: React.FC = () => {
          });
 
          if (result.conflicts && result.conflicts.length > 0 && !payload.ignoreConflicts) {
-            setCloudConflictSets(result.conflicts);
+            setCloudConflicts(result.conflictDetails || result.conflicts.map((setName, idx) => ({
+               setId: `unknown-${idx}`,
+               setName,
+               localCardCount: 0,
+               cloudCardCount: 0,
+               cardsAddedLocally: 0,
+               cardsDeletedLocally: 0,
+               cardsEditedLocally: 0,
+               addedCardLabels: [],
+               deletedCardLabels: [],
+               editedCardLabels: []
+            })));
+            setIsConflictDetailsOpen(true);
             setCloudSyncStatus('error');
             if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
             return;
          }
 
          if (result.savedToCloud) {
-            setCloudConflictSets([]);
+            setCloudConflicts([]);
+            setIsConflictDetailsOpen(false);
             setCloudSyncStatus('saved');
             if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
             cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
@@ -1371,7 +1408,8 @@ const App: React.FC = () => {
             if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
             cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
          } else {
-            setCloudConflictSets([]);
+            setCloudConflicts([]);
+            setIsConflictDetailsOpen(false);
             setCloudSyncStatus('idle');
          }
       } finally {
@@ -1482,31 +1520,79 @@ const App: React.FC = () => {
    };
 
    const handleKeepCloudVersion = async () => {
+      if (!user) return;
+      if (conflictResolutionAction !== 'idle') return;
+
+      const conflictsToResolve = latestCloudConflictsRef.current;
+      if (conflictsToResolve.length === 0) return;
+
+      setConflictResolutionAction('keeping');
       pendingLibrarySaveRef.current = null;
-      while (cloudSaveInFlightRef.current) {
-         await new Promise(resolve => setTimeout(resolve, 50));
+      await waitForBackgroundSyncIdle();
+
+      try {
+         setCloudSyncStatus('saving');
+         const conflictIds = new Set(conflictsToResolve.map(conflict => conflict.setId));
+         const cloudById = new Map<string, CardSet>();
+
+         const { structure } = await readStructure(true);
+         const cloudFolderBySetId = new Map<string, string | undefined>();
+         structure.rootSets.forEach(setId => cloudFolderBySetId.set(setId, undefined));
+         structure.folders.forEach(folder => {
+            folder.setIds.forEach(setId => cloudFolderBySetId.set(setId, folder.id));
+         });
+
+         for (const conflictId of conflictIds) {
+            const { set } = await readFlashcardSet(conflictId, true);
+            if (!set) continue;
+            const normalized = normalizeLoadedSet({
+               ...set,
+               folderId: cloudFolderBySetId.get(conflictId)
+            });
+            cloudById.set(conflictId, normalized);
+         }
+
+         setLibrarySets(prev =>
+            prev.map(localSet => {
+               if (!conflictIds.has(localSet.id)) return localSet;
+               return cloudById.get(localSet.id) ?? localSet;
+            })
+         );
+
+         setFolders(structure.folders);
+
+         setCloudConflicts([]);
+         setIsConflictDetailsOpen(false);
+         setCloudSyncStatus('saved');
+         if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+         cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
+      } finally {
+         setConflictResolutionAction('idle');
       }
-      setCloudConflictSets([]);
-      await syncCloudData();
    };
 
    const handleOverwriteCloudVersion = async () => {
       if (!user) return;
+      if (conflictResolutionAction !== 'idle') return;
 
-      while (cloudSaveInFlightRef.current) {
-         await new Promise(resolve => setTimeout(resolve, 50));
-      }
+      setConflictResolutionAction('overwriting');
       pendingLibrarySaveRef.current = null;
+      await waitForBackgroundSyncIdle();
 
-      setCloudSyncStatus('saving');
-      const result = await saveLibrary(librarySets, { ignoreConflicts: true, folders });
-      if (result.savedToCloud) {
-         setCloudConflictSets([]);
-         setCloudSyncStatus('saved');
-         if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
-         cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
-      } else {
-         setCloudSyncStatus('error');
+      try {
+         setCloudSyncStatus('saving');
+         const result = await saveLibrary(librarySets, { ignoreConflicts: true, folders });
+         if (result.savedToCloud) {
+            setCloudConflicts([]);
+            setIsConflictDetailsOpen(false);
+            setCloudSyncStatus('saved');
+            if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+            cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
+         } else {
+            setCloudSyncStatus('error');
+         }
+      } finally {
+         setConflictResolutionAction('idle');
       }
    };
 
@@ -1522,7 +1608,8 @@ const App: React.FC = () => {
    const handleLogout = async () => {
       await googleDrive.signOut();
       setUser(null);
-      setCloudConflictSets([]);
+      setCloudConflicts([]);
+      setIsConflictDetailsOpen(false);
       window.location.reload();
    };
 
@@ -1645,7 +1732,8 @@ const App: React.FC = () => {
          setTags(importedTags);
          setSettings(importedSettings);
          setLifetimeCorrect(importedStats);
-         setCloudConflictSets([]);
+         setCloudConflicts([]);
+         setIsConflictDetailsOpen(false);
          setGameState(GameState.MENU);
          setDetailSetId(null);
          setActiveSetId(null);
@@ -2427,29 +2515,71 @@ const App: React.FC = () => {
             </div>
          </header>
 
-         {user && cloudConflictSets.length > 0 && (
+         {user && cloudConflicts.length > 0 && (
             <div className="px-6 pt-4">
-               <div className="max-w-5xl mx-auto bg-yellow/10 border border-yellow/40 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                  <div className="text-sm text-text">
-                     <span className="font-bold text-yellow">Cloud conflict detected.</span>{' '}
-                     {cloudConflictSets.length === 1
-                        ? `Set "${cloudConflictSets[0]}" was updated on another device.`
-                        : `${cloudConflictSets.length} sets were updated on another device.`}
+               <div className="max-w-5xl mx-auto bg-yellow/10 border border-yellow/40 rounded-2xl p-4 space-y-3">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                     <div className="text-sm text-text">
+                        <span className="font-bold text-yellow">Cloud conflict detected.</span>{' '}
+                        {cloudConflicts.length === 1
+                           ? `Set "${cloudConflicts[0].setName}" differs between local and cloud.`
+                           : `${cloudConflicts.length} sets differ between local and cloud.`}
+                     </div>
+                     <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                           onClick={() => setIsConflictDetailsOpen(prev => !prev)}
+                           className="px-3 py-2 text-xs font-bold border border-outline rounded-lg hover:border-accent hover:text-accent transition-colors"
+                        >
+                           {isConflictDetailsOpen ? 'Hide Differences' : 'View Differences'}
+                        </button>
+                        <button
+                           onClick={handleKeepCloudVersion}
+                           disabled={conflictResolutionAction !== 'idle'}
+                           className="px-3 py-2 text-xs font-bold border border-outline rounded-lg hover:border-accent hover:text-accent transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                           {conflictResolutionAction === 'keeping' ? 'Applying Cloud...' : 'Keep Cloud Version'}
+                        </button>
+                        <button
+                           onClick={handleOverwriteCloudVersion}
+                           disabled={conflictResolutionAction !== 'idle'}
+                           className="px-3 py-2 text-xs font-bold bg-yellow text-bg rounded-lg hover:bg-yellow/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                           {conflictResolutionAction === 'overwriting' ? 'Overwriting Cloud...' : 'Overwrite Cloud'}
+                        </button>
+                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                     <button
-                        onClick={handleKeepCloudVersion}
-                        className="px-3 py-2 text-xs font-bold border border-outline rounded-lg hover:border-accent hover:text-accent transition-colors"
-                     >
-                        Keep Cloud Version
-                     </button>
-                     <button
-                        onClick={handleOverwriteCloudVersion}
-                        className="px-3 py-2 text-xs font-bold bg-yellow text-bg rounded-lg hover:bg-yellow/90 transition-colors"
-                     >
-                        Overwrite Cloud
-                     </button>
-                  </div>
+
+                  {isConflictDetailsOpen && (
+                     <div className="space-y-2 pt-1">
+                        {cloudConflicts.map((conflict) => (
+                           <div key={conflict.setId} className="rounded-xl border border-yellow/30 bg-panel/40 p-3 text-xs text-text space-y-1.5">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                 <span className="font-bold text-sm text-yellow">{conflict.setName}</span>
+                                 <span className="text-muted">
+                                    Local {conflict.localCardCount} cards | Cloud {conflict.cloudCardCount} cards
+                                 </span>
+                              </div>
+                              <div className="flex flex-wrap gap-3">
+                                 <span className="text-emerald-300">+{conflict.cardsAddedLocally} added locally</span>
+                                 <span className="text-red-300">-{conflict.cardsDeletedLocally} deleted locally</span>
+                                 <span className="text-blue-300">~{conflict.cardsEditedLocally} edited locally</span>
+                              </div>
+                              {conflict.addedCardLabels.length > 0 && (
+                                 <div className="text-muted">Added locally: {conflict.addedCardLabels.join(', ')}</div>
+                              )}
+                              {conflict.deletedCardLabels.length > 0 && (
+                                 <div className="text-muted">Deleted locally: {conflict.deletedCardLabels.join(', ')}</div>
+                              )}
+                              {conflict.editedCardLabels.length > 0 && (
+                                 <div className="text-muted">Edited locally: {conflict.editedCardLabels.join(', ')}</div>
+                              )}
+                              <div className="text-muted">
+                                 Local version: {formatConflictTimestamp(conflict.localModifiedAt)} | Cloud version: {formatConflictTimestamp(conflict.cloudModifiedAt)}
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  )}
                </div>
             </div>
          )}

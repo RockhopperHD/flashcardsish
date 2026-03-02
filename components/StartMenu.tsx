@@ -3156,17 +3156,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const rootCloudSets = includeAllSetsAtRoot
     ? librarySets.filter((s) => !s.isMultistudy && !s.isLocalOnly)
     : librarySets.filter((s) => !s.isMultistudy && !s.folderId && !s.isLocalOnly);
-  const rootLocalSets = includeAllSetsAtRoot
-    ? librarySets.filter((s) => !s.isMultistudy && s.isLocalOnly)
-    : librarySets.filter((s) => !s.isMultistudy && !s.folderId && s.isLocalOnly);
+  const rootLocalSets = librarySets.filter((s) => !s.isMultistudy && s.isLocalOnly);
 
   const cloudSets = currentFolderId
     ? librarySets.filter((s) => s.folderId === currentFolderId && !s.isLocalOnly)
     : rootCloudSets;
 
-  const localSets = currentFolderId
-    ? librarySets.filter((s) => s.folderId === currentFolderId && s.isLocalOnly)
-    : rootLocalSets;
+  const localSets = currentFolderId ? [] : rootLocalSets;
 
   const setMatchesLibraryFilters = useCallback(
     (set: CardSet): boolean => {
@@ -4498,8 +4494,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const set = librarySets.find(s => s.id === setId);
     if (!set) return;
 
-    // Update the set's isLocalOnly flag
-    const updatedSet = { ...set, isLocalOnly: toLocal };
+    // Local-only sets belong in the root Local section (not cloud folders).
+    const updatedSet = { ...set, isLocalOnly: toLocal, folderId: toLocal ? undefined : set.folderId };
 
     // If moving to cloud, we need to ensure it gets uploaded
     // If moving to local, we need to delete from cloud
@@ -5121,7 +5117,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                       {displayedFolders.map((folder) => {
                         const folderSets = librarySets.filter(
-                          (s) => s.folderId === folder.id,
+                          (s) => s.folderId === folder.id && !s.isLocalOnly,
                         );
                         const colorMap = {
                           brown: "bg-accent/20 border-accent text-accent",
