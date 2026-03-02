@@ -4140,15 +4140,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           termRaw = termRaw.replace(tagRegex, "").trim();
         }
 
+        const normalizedCustomFields = row.customFields
+          .map((f) => ({ name: (f.name || "").trim(), value: f.value ?? "" }))
+          .filter((f) => f.name.length > 0);
+
         return {
           id: generateId(),
           term: [termRaw],
           content: row.def.trim(),
           year: row.year.trim(),
           image: row.image,
-          customFields: row.customFields.filter(f =>
-            [...termSideFields, ...defSideFields].some(def => def.name === f.name)
-          ),
+          customFields: normalizedCustomFields.length > 0 ? normalizedCustomFields : undefined,
           mastery: 0,
           star: row.star,
           tags: tags,
@@ -4251,17 +4253,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           termRaw = termRaw.replace(tagRegex, "").trim();
         }
 
+        const normalizedCustomFields = row.customFields
+          .map((f) => ({ name: (f.name || "").trim(), value: f.value ?? "" }))
+          .filter((f) => f.name.length > 0);
+
         return {
           id: generateId(),
           term: [termRaw],
           content: row.def.trim(),
           year: row.year.trim(),
           image: row.image,
-          customFields: row.customFields.filter((f) =>
-            [...termSideFields, ...defSideFields].some(
-              (def) => def.name === f.name,
-            ),
-          ),
+          customFields: normalizedCustomFields.length > 0 ? normalizedCustomFields : undefined,
           mastery: 0,
           star: row.star,
           tags: tags,

@@ -83,6 +83,119 @@ const formatConflictTimestamp = (value?: string): string => {
    return date.toLocaleString();
 };
 
+const dedupeStrings = (values: string[] = []): string[] => Array.from(new Set(values));
+
+const normalizeStringArrayForSignature = (values: string[] = []): string[] =>
+   Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+
+const normalizeCustomFieldsForSignature = (fields: { name: string; value: string }[] = []) =>
+   fields
+      .map(field => ({ name: field.name || '', value: field.value || '' }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.value.localeCompare(b.value));
+
+const cardContentSignature = (card: CardSet['cards'][number]): string => JSON.stringify({
+   term: Array.isArray(card.term) ? card.term : [],
+   content: card.content || '',
+   year: card.year || '',
+   image: card.image || '',
+   termImage: card.termImage || '',
+   customFields: normalizeCustomFieldsForSignature(card.customFields || []),
+   tags: normalizeStringArrayForSignature(card.tags || [])
+});
+
+const mergeSetWithoutLosingCards = (localSet: CardSet, cloudSet: CardSet): CardSet => {
+   const cloudCards = cloudSet.cards || [];
+   const localCards = localSet.cards || [];
+   const localById = new Map(localCards.map((card, index) => [card.id, { card, index }]));
+   const localSignatureBuckets = new Map<string, number[]>();
+   localCards.forEach((card, index) => {
+      const signature = cardContentSignature(card);
+      const bucket = localSignatureBuckets.get(signature) ?? [];
+      bucket.push(index);
+      localSignatureBuckets.set(signature, bucket);
+   });
+   const consumedLocalIndexes = new Set<number>();
+   const localContentPreferred = (localSet.lastPlayed || 0) > (cloudSet.lastPlayed || 0);
+
+   const mergeProgressFields = (
+      preferredContent: CardSet['cards'][number],
+      localCard: CardSet['cards'][number],
+      cloudCard: CardSet['cards'][number]
+   ): CardSet['cards'][number] => ({
+      ...preferredContent,
+      // Keep study state from whichever side progressed further.
+      mastery: Math.max(localCard.mastery || 0, cloudCard.mastery || 0),
+      star: Boolean(localCard.star || cloudCard.star),
+      originalSetId: preferredContent.originalSetId || localCard.originalSetId || cloudCard.originalSetId,
+      originalSetName: preferredContent.originalSetName || localCard.originalSetName || cloudCard.originalSetName
+   });
+
+   const mergedCards = cloudCards.map(cloudCard => {
+      const localBySameId = localById.get(cloudCard.id);
+      if (localBySameId && !consumedLocalIndexes.has(localBySameId.index)) {
+         consumedLocalIndexes.add(localBySameId.index);
+         const localCard = localBySameId.card;
+         const contentChanged = cardContentSignature(localCard) !== cardContentSignature(cloudCard);
+         const preferredContent = localContentPreferred && contentChanged
+            ? localCard
+            : cloudCard;
+         return mergeProgressFields(preferredContent, localCard, cloudCard);
+      }
+
+      const signature = cardContentSignature(cloudCard);
+      const signatureBucket = localSignatureBuckets.get(signature);
+      if (signatureBucket && signatureBucket.length > 0) {
+         let matchedIndex: number | undefined;
+         while (signatureBucket.length > 0 && matchedIndex === undefined) {
+            const candidate = signatureBucket.shift();
+            if (candidate === undefined) break;
+            if (!consumedLocalIndexes.has(candidate)) {
+               matchedIndex = candidate;
+            }
+         }
+         if (matchedIndex !== undefined) {
+            consumedLocalIndexes.add(matchedIndex);
+            const localCard = localCards[matchedIndex];
+            return mergeProgressFields(cloudCard, localCard, cloudCard);
+         }
+      }
+
+      return cloudCard;
+   });
+
+   const localOnlyCards = localCards.filter((_, index) => !consumedLocalIndexes.has(index));
+   mergedCards.push(...localOnlyCards);
+
+   const useLocalMetadata = (localSet.lastPlayed || 0) > (cloudSet.lastPlayed || 0);
+   const metadataSource = useLocalMetadata ? localSet : cloudSet;
+
+   return normalizeLoadedSet({
+      ...cloudSet,
+      name: metadataSource.name,
+      sourceId: metadataSource.sourceId ?? cloudSet.sourceId,
+      version: metadataSource.version ?? cloudSet.version,
+      termLabel: metadataSource.termLabel ?? cloudSet.termLabel,
+      definitionLabel: metadataSource.definitionLabel ?? cloudSet.definitionLabel,
+      termSideFields: metadataSource.termSideFields ?? cloudSet.termSideFields,
+      defSideFields: metadataSource.defSideFields ?? cloudSet.defSideFields,
+      enableTermCards: metadataSource.enableTermCards ?? cloudSet.enableTermCards,
+      customFieldNames: dedupeStrings([
+         ...(cloudSet.customFieldNames || []),
+         ...(localSet.customFieldNames || [])
+      ]),
+      tags: dedupeStrings([...(cloudSet.tags || []), ...(localSet.tags || [])]),
+      isMultistudy: metadataSource.isMultistudy ?? cloudSet.isMultistudy,
+      sourceSetIds: metadataSource.sourceSetIds ?? cloudSet.sourceSetIds,
+      lastPlayed: Math.max(localSet.lastPlayed || 0, cloudSet.lastPlayed || 0),
+      elapsedTime: Math.max(localSet.elapsedTime || 0, cloudSet.elapsedTime || 0),
+      topStreak: Math.max(localSet.topStreak || 0, cloudSet.topStreak || 0),
+      isSessionActive: Boolean(localSet.isSessionActive || cloudSet.isSessionActive),
+      isLocalOnly: false,
+      folderId: cloudSet.folderId ?? (localSet.isLocalOnly ? undefined : localSet.folderId),
+      cards: mergedCards
+   });
+};
+
 const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
    const [localVal, setLocalVal] = useState(value.toString());
    const [error, setError] = useState<string | null>(null);
@@ -1464,14 +1577,9 @@ const App: React.FC = () => {
                      // Set only exists in cloud, add it
                      merged.push(cloudSet);
                   } else {
-                     // Set exists in both, use the most recently played version
+                     // Set exists in both: merge cards with no-loss strategy.
                      const localSet = merged[localIndex];
-                     if (cloudSet.lastPlayed > localSet.lastPlayed) {
-                        console.log(`[Sync] Updating set "${localSet.name}" with newer cloud version`);
-                        merged[localIndex] = cloudSet;
-                     } else {
-                        console.log(`[Sync] Keeping local version of "${localSet.name}" (it's newer than cloud)`);
-                     }
+                     merged[localIndex] = mergeSetWithoutLosingCards(localSet, cloudSet);
                   }
                });
 
