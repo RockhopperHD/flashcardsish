@@ -34,6 +34,7 @@ import {
   Minus,
   HardDrive,
   CheckCircle2,
+  BookOpen,
 } from "lucide-react";
 import { FloatingToolbar } from "./FloatingToolbar";
 import {
@@ -104,6 +105,8 @@ interface StartMenuProps {
   onUiAuditHandled?: () => void;
   onHomeScreenActiveChange?: (isActive: boolean) => void;
   homeNavigationNonce?: number;
+  hasCompletedOnboarding?: boolean;
+  onStartOnboardingTour?: () => void;
 }
 
 interface BuilderRow {
@@ -135,6 +138,7 @@ export type UiAuditRequest =
 
 const BUILDER_STORAGE_KEY = "flashcard-builder-rows";
 const AUTOSAVE_DRAFT_KEY = "flashcardsish-autosave-draft";
+const ONBOARDING_PROMPT_DISMISSED_KEY = "flashcardsish-onboarding-prompt-dismissed-v1";
 const UI_AUDIT_ID = "__ui-audit__";
 
 interface AutosaveDraft {
@@ -1832,7 +1836,7 @@ const BuilderRowItem: React.FC<{
 
     // Global Mouse Up Listener for external releases (e.g. drag selection ending outside input)
     useEffect(() => {
-      if (!isEditingTerm && !isEditingDef) return;
+      if (wysiwyg || (!isEditingTerm && !isEditingDef)) return;
 
       const handleGlobalMouseUp = (e: MouseEvent) => {
         const selection = window.getSelection();
@@ -1862,7 +1866,7 @@ const BuilderRowItem: React.FC<{
 
       window.addEventListener('mouseup', handleGlobalMouseUp);
       return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-    }, [isEditingTerm, isEditingDef]);
+    }, [isEditingTerm, isEditingDef, wysiwyg]);
 
     const applyFormat = (type: string, value?: string) => {
       if (!activeToolbarRef.current) return;
@@ -1881,20 +1885,34 @@ const BuilderRowItem: React.FC<{
 
     // Auto-focus textarea when entering edit mode
     useEffect(() => {
-      if (isEditingDef && defInputRef.current) {
+      if (!isEditingDef) return;
+
+      if (wysiwyg) {
+        textareaRef.current?.focus();
+        return;
+      }
+
+      if (defInputRef.current) {
         defInputRef.current.focus();
       }
-    }, [isEditingDef]);
+    }, [isEditingDef, wysiwyg]);
 
     // Auto-focus term input when entering edit mode
     useEffect(() => {
-      if (isEditingTerm && termInputRef.current) {
+      if (!isEditingTerm) return;
+
+      if (wysiwyg) {
+        termTextareaRef.current?.focus();
+        return;
+      }
+
+      if (termInputRef.current) {
         termInputRef.current.focus();
       }
-    }, [isEditingTerm]);
+    }, [isEditingTerm, wysiwyg]);
 
     // Handle Term Keydown (Tab to Def)
-    const handleTermKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement>) => {
+    const handleTermKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement | HTMLTextAreaElement>) => {
       if (e.key === "Tab" && !e.shiftKey) {
         if (tabSelectsEverythingInBuilder) return;
         e.preventDefault();
@@ -1906,7 +1924,7 @@ const BuilderRowItem: React.FC<{
     };
 
     // Handle Definition Keydown (Bullets & Tab)
-    const handleDefKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement>) => {
+    const handleDefKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement | HTMLTextAreaElement>) => {
       if (e.key === "Enter") {
         // Auto-list handling for RichInput? 
         // For now, let's keep it simple. RichInput splits text by divs/p logic.
@@ -2060,21 +2078,37 @@ const BuilderRowItem: React.FC<{
 
               {isEditingTerm ? (
                 <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
-                  <RichInput
-                    id={`term-${row.id}`}
-                    ref={termInputRef}
-                    value={row.term}
-                    onChange={(val) => updateRow(row.id, "term", val)}
-                    onBlur={() => {
-                      setToolbarVisible(false);
-                      setIsEditingTerm(false);
-                    }}
-                    onMouseUp={(e) => handleSelectionChange(e, "term")}
-                    onKeyUp={(e) => handleSelectionChange(e, "term")}
-                    onKeyDown={handleTermKeyDown}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full"
-                    placeholder="Enter term..."
-                  />
+                  {wysiwyg ? (
+                    <textarea
+                      id={`term-${row.id}`}
+                      ref={termTextareaRef}
+                      value={row.term}
+                      onChange={(e) => updateRow(row.id, "term", e.target.value)}
+                      onBlur={() => {
+                        setToolbarVisible(false);
+                        setIsEditingTerm(false);
+                      }}
+                      onKeyDown={handleTermKeyDown}
+                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full resize-none"
+                      placeholder="Enter term..."
+                    />
+                  ) : (
+                    <RichInput
+                      id={`term-${row.id}`}
+                      ref={termInputRef}
+                      value={row.term}
+                      onChange={(val) => updateRow(row.id, "term", val)}
+                      onBlur={() => {
+                        setToolbarVisible(false);
+                        setIsEditingTerm(false);
+                      }}
+                      onMouseUp={(e) => handleSelectionChange(e, "term")}
+                      onKeyUp={(e) => handleSelectionChange(e, "term")}
+                      onKeyDown={handleTermKeyDown}
+                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full"
+                      placeholder="Enter term..."
+                    />
+                  )}
                 </div>
               ) : (
                 <div
@@ -2082,9 +2116,13 @@ const BuilderRowItem: React.FC<{
                   tabIndex={0}
                   onFocus={() => {
                     saveHistory();
+                    setToolbarVisible(false);
                     setIsEditingTerm(true);
                   }}
-                  onClick={() => setIsEditingTerm(true)}
+                  onClick={() => {
+                    setToolbarVisible(false);
+                    setIsEditingTerm(true);
+                  }}
                   className={clsx(
                     "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-normal flex-1 h-full",
                     row.term
@@ -2092,7 +2130,7 @@ const BuilderRowItem: React.FC<{
                       : "border-outline text-muted italic",
                   )}
                 >
-                  {row.term ? (wysiwyg ? renderMarkdown(termData.body) : termData.body) : "Enter term..."}
+                  {row.term ? (wysiwyg ? termData.body : renderMarkdown(termData.body)) : "Enter term..."}
                 </div>
               )}
 
@@ -2173,29 +2211,48 @@ const BuilderRowItem: React.FC<{
               </div>
               {isEditingDef ? (
                 <div className="bg-panel-2 border border-accent rounded-xl min-h-[50px] relative p-1 shadow-sm flex-1 flex h-full">
-                  <RichInput
-                    ref={defInputRef}
-                    value={row.def}
-                    onChange={(val) => updateRow(row.id, "def", val)}
-                    onBlur={() => {
-                      setToolbarVisible(false);
-                      setIsEditingDef(false);
-                    }}
-                    onMouseUp={(e) => handleSelectionChange(e, "def")}
-                    onKeyUp={(e) => handleSelectionChange(e, "def")}
-                    onKeyDown={handleDefKeyDown}
-                    className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full"
-                    placeholder="Enter definition..."
-                  />
+                  {wysiwyg ? (
+                    <textarea
+                      ref={textareaRef}
+                      value={row.def}
+                      onChange={(e) => updateRow(row.id, "def", e.target.value)}
+                      onBlur={() => {
+                        setToolbarVisible(false);
+                        setIsEditingDef(false);
+                      }}
+                      onKeyDown={handleDefKeyDown}
+                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full resize-none"
+                      placeholder="Enter definition..."
+                    />
+                  ) : (
+                    <RichInput
+                      ref={defInputRef}
+                      value={row.def}
+                      onChange={(val) => updateRow(row.id, "def", val)}
+                      onBlur={() => {
+                        setToolbarVisible(false);
+                        setIsEditingDef(false);
+                      }}
+                      onMouseUp={(e) => handleSelectionChange(e, "def")}
+                      onKeyUp={(e) => handleSelectionChange(e, "def")}
+                      onKeyDown={handleDefKeyDown}
+                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full"
+                      placeholder="Enter definition..."
+                    />
+                  )}
                 </div>
               ) : (
                 <div
                   tabIndex={0}
                   onFocus={() => {
                     saveHistory();
+                    setToolbarVisible(false);
                     setIsEditingDef(true);
                   }}
-                  onClick={() => setIsEditingDef(true)}
+                  onClick={() => {
+                    setToolbarVisible(false);
+                    setIsEditingDef(true);
+                  }}
                   className={clsx(
                     "w-full min-h-[50px] px-4 py-3 text-base bg-panel-2 border rounded-xl cursor-text hover:border-accent/50 transition-colors focus:outline-none focus:border-accent leading-relaxed break-words font-normal text-text flex-1 h-full",
                     row.def
@@ -2204,7 +2261,7 @@ const BuilderRowItem: React.FC<{
                   )}
                 >
                   {row.def
-                    ? (wysiwyg ? renderMarkdown(defData.body) : defData.body)
+                    ? (wysiwyg ? defData.body : renderMarkdown(defData.body))
                     : "Enter definition..."}
                 </div>
               )}
@@ -2255,7 +2312,7 @@ const BuilderRowItem: React.FC<{
 
         </div>
         <FloatingToolbar
-          visible={toolbarVisible}
+          visible={!wysiwyg && toolbarVisible}
           position={toolbarPos}
           onFormat={applyFormat}
         />
@@ -2297,23 +2354,14 @@ const CustomFieldInput: React.FC<{
         >
           {field.name}
         </label>
-        <div className="flex w-full bg-panel-2 border border-outline rounded-lg p-1 relative h-[38px]">
-          <div
-            className="absolute top-1 bottom-1 bg-accent rounded transition-all duration-300 ease-out shadow-sm"
-            style={{
-              width: "calc((100% - 8px) / 3)",
-              left: `calc(4px + (100% - 8px) / 3 * ${val === optionA ? 0 : val === optionB ? 2 : 1
-                })`,
-            }}
-          />
-
+        <div className="flex flex-row gap-1.5 w-full bg-transparent p-0 relative">
           <button
             onClick={() => handleCustomChange(optionA)}
             className={clsx(
-              "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
+              "flex-1 text-center px-2 py-2 rounded-lg border text-sm transition-all font-medium leading-relaxed break-words whitespace-normal min-w-0",
               val === optionA
-                ? "text-bg"
-                : "text-muted hover:text-text",
+                ? "bg-accent border-accent text-bg shadow-sm"
+                : "bg-panel-2 border-outline text-text hover:border-accent/50"
             )}
             title={optionA}
           >
@@ -2323,22 +2371,23 @@ const CustomFieldInput: React.FC<{
           <button
             onClick={() => handleCustomChange("")}
             className={clsx(
-              "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
+              "flex-shrink-0 flex items-center justify-center px-3 py-2 rounded-lg border text-sm transition-all font-medium",
               !val || (val !== optionA && val !== optionB)
-                ? "text-bg"
-                : "text-muted hover:text-text",
+                ? "bg-accent/10 border-accent text-accent shadow-sm"
+                : "bg-panel-2 border-transparent text-muted hover:text-text hover:bg-panel-2"
             )}
+            title="Clear Selection"
           >
-            <Minus size={14} strokeWidth={3} />
+            <Minus size={14} strokeWidth={2.5} />
           </button>
 
           <button
             onClick={() => handleCustomChange(optionB)}
             className={clsx(
-              "flex-1 relative z-10 flex items-center justify-center font-bold text-xs transition-colors",
+              "flex-1 text-center px-2 py-2 rounded-lg border text-sm transition-all font-medium leading-relaxed break-words whitespace-normal min-w-0",
               val === optionB
-                ? "text-bg"
-                : "text-muted hover:text-text",
+                ? "bg-accent border-accent text-bg shadow-sm"
+                : "bg-panel-2 border-outline text-text hover:border-accent/50"
             )}
             title={optionB}
           >
@@ -2407,6 +2456,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onUiAuditHandled,
   onHomeScreenActiveChange,
   homeNavigationNonce,
+  hasCompletedOnboarding = false,
+  onStartOnboardingTour,
 }) => {
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [isProcessingFile, setIsProcessingFile] = useState(false);
@@ -2806,6 +2857,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autosaveFadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showDraftRecoveryBanner, setShowDraftRecoveryBanner] = useState(false);
+  const [showOnboardingPromptBanner, setShowOnboardingPromptBanner] = useState(false);
   const draftRecoveryDataRef = useRef<AutosaveDraft | null>(null);
 
   // Autosave: save draft to localStorage (debounced - 2s after last change)
@@ -2939,6 +2991,33 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setView("builder");
     setShowDraftRecoveryBanner(false);
   }, [setAppliedTags]);
+
+  useEffect(() => {
+    if (hasCompletedOnboarding) {
+      setShowOnboardingPromptBanner(false);
+      return;
+    }
+
+    try {
+      const dismissed = localStorage.getItem(ONBOARDING_PROMPT_DISMISSED_KEY) === "true";
+      setShowOnboardingPromptBanner(!dismissed);
+    } catch (e) {
+      setShowOnboardingPromptBanner(true);
+    }
+  }, [hasCompletedOnboarding]);
+
+  const dismissOnboardingPromptForSession = useCallback(() => {
+    setShowOnboardingPromptBanner(false);
+  }, []);
+
+  const dismissOnboardingPromptPermanently = useCallback(() => {
+    try {
+      localStorage.setItem(ONBOARDING_PROMPT_DISMISSED_KEY, "true");
+    } catch (e) {
+      // Best effort
+    }
+    setShowOnboardingPromptBanner(false);
+  }, []);
 
   // Loading State for "Load Everything" strategy
   const [isBuilderReady, setIsBuilderReady] = useState(false);
@@ -4515,6 +4594,45 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
             )}
 
+            {showOnboardingPromptBanner && !hasCompletedOnboarding && (
+              <div className="mb-6 bg-panel border border-green/30 rounded-2xl p-5 shadow-lg animate-in slide-in-from-top-2 fade-in duration-500">
+                <div className="flex items-start gap-4">
+                  <div className="p-2.5 rounded-xl bg-green/10 border border-green/20 mt-0.5">
+                    <BookOpen size={20} className="text-green" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-bold text-text text-sm mb-1">Take a Quick Tour</h4>
+                    <p className="text-muted text-xs leading-relaxed">
+                      Hi friend! Are you new to Flashcardsish? Run the guided tutorial to make and study your first set in just a few steps. You can always check this out in settings later, too.
+                    </p>
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <button
+                        onClick={() => {
+                          setShowOnboardingPromptBanner(false);
+                          onStartOnboardingTour?.();
+                        }}
+                        className="px-4 py-1.5 bg-green text-bg font-bold text-xs rounded-lg hover:bg-green/90 transition-colors"
+                      >
+                        Start Tutorial
+                      </button>
+                      <button
+                        onClick={dismissOnboardingPromptForSession}
+                        className="px-4 py-1.5 text-muted hover:text-text text-xs font-bold transition-colors"
+                      >
+                        Later
+                      </button>
+                      <button
+                        onClick={dismissOnboardingPromptPermanently}
+                        className="px-4 py-1.5 text-muted hover:text-red text-xs font-bold transition-colors"
+                      >
+                        Don&apos;t Show Again
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ONGOING SESSIONS */}
             {ongoingSessions.length > 0 && (
               <div className="mb-8">
@@ -4719,6 +4837,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   </button>
                   <button
                     onClick={handleCreateNew}
+                    data-tour="menu-add-set"
                     className="flex items-center gap-2 px-4 py-2 bg-text text-bg rounded-lg text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-lg"
                   >
                     <Plus size={16} /> Add
@@ -4978,6 +5097,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           <div className="pt-2 mt-2 flex gap-2 relative z-10">
                             <button
                               onClick={() => onOpenSet(set)}
+                              data-tour="library-open-set"
                               className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
                             >
                               <ExternalLink size={14} /> Open
@@ -5119,6 +5239,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               <div className="pt-2 mt-2 flex gap-2 relative z-10">
                                 <button
                                   onClick={() => onOpenSet(set)}
+                                  data-tour="library-open-set"
                                   className="w-full px-4 py-2 bg-panel-2 border border-outline hover:border-accent text-text text-sm font-bold rounded-lg hover:bg-accent hover:text-bg transition-all flex items-center justify-center gap-2"
                                 >
                                   <ExternalLink size={14} /> Open
@@ -5326,6 +5447,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 <input
                   value={setName}
                   onChange={(e) => setSetName(e.target.value)}
+                  data-tour="builder-set-name"
                   placeholder="Set Name"
                   className="bg-panel-2 border border-outline rounded-xl px-4 py-2 text-text w-full md:w-auto min-w-[300px] focus:outline-none focus:border-accent transition-colors font-bold"
                 />
@@ -5336,28 +5458,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     content="Toggle whether the card previews are shown as Markdown or formatted."
                     isEnabled={!settings.hideTooltips}
                   >
-                    <label className="flex items-center gap-2 cursor-pointer select-none group">
+                    <label className="flex items-center gap-2 cursor-pointer select-none group" data-tour="builder-wysiwyg">
                       <div
                         className={clsx(
                           "w-5 h-5 rounded border-2 flex items-center justify-center transition-all",
-                          wysiwyg ? "bg-accent border-accent" : "border-outline group-hover:border-accent",
+                          !wysiwyg ? "bg-accent border-accent" : "border-outline group-hover:border-accent",
                         )}
                       >
-                        {wysiwyg && (
+                        {!wysiwyg && (
                           <div className="w-2.5 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
                         )}
                       </div>
                       <input
                         type="checkbox"
-                        checked={wysiwyg}
-                        onChange={(e) => setWysiwyg(e.target.checked)}
+                        checked={!wysiwyg}
+                        onChange={(e) => setWysiwyg(!e.target.checked)}
                         className="hidden"
                       />
                       <span className="text-sm font-bold text-muted group-hover:text-text transition-colors">WYSIWYG</span>
                     </label>
                   </CursorTooltip>
 
-                  <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1 mr-2 h-[38px]">
+                  <div className="flex items-center bg-panel-2 border border-outline rounded-lg p-1 mr-2 h-[38px]" data-tour="builder-history-controls">
                     <button
                       onClick={undo}
                       disabled={past.length === 0}
@@ -5381,6 +5503,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       setConfigModalMode("config");
                       setIsConfigModalOpen(true);
                     }}
+                    data-tour="builder-set-config"
                     className="flex items-center gap-2 px-3 py-2 rounded-lg bg-panel-2 border border-outline hover:border-accent text-sm font-bold text-muted hover:text-text transition-all"
                   >
                     <Settings2 size={16} />
@@ -5399,6 +5522,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   <div className="flex justify-end mb-2">
                     <button
                       onClick={() => setShowMarkdownHelp(true)}
+                      data-tour="builder-markdown-help"
                       className="text-xs text-muted hover:text-accent flex items-center gap-1"
                     >
                       <HelpCircle size={12} /> Formatting Help
@@ -5423,6 +5547,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <div
                               {...provided.droppableProps}
                               ref={provided.innerRef}
+                              data-tour="builder-card-list"
                               className="space-y-6"
                             >
                               {builderRows.map((row, index) => (
@@ -5469,6 +5594,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       </DragDropContext>
                       <button
                         onClick={addRow}
+                        data-tour="builder-add-card"
                         className="w-full py-4 border-2 border-dashed border-outline rounded-xl text-muted hover:text-accent hover:border-accent hover:bg-panel-2 transition-all flex items-center justify-center gap-2 text-sm font-bold mt-4"
                       >
                         <Plus size={16} /> Add Card
@@ -5481,6 +5607,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   <div className="flex justify-end mb-2">
                     <button
                       onClick={() => setShowMarkdownHelp(true)}
+                      data-tour="builder-markdown-help"
                       className="text-xs text-muted hover:text-accent flex items-center gap-1"
                     >
                       <HelpCircle size={12} /> Formatting Help
@@ -5501,7 +5628,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
             {/* 3. Footer Panel (Actions) */}
             <div className="bg-panel border border-outline rounded-2xl p-6 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex gap-2 w-full md:w-auto">
+              <div className="flex gap-2 w-full md:w-auto" data-tour="builder-export-tools">
                 <button
                   onClick={handleCopyCode}
                   className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 text-muted hover:text-text font-medium transition-colors rounded-lg hover:bg-panel-2"
@@ -5518,7 +5645,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 </button>
               </div>
 
-              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+              <div
+                className="flex flex-col md:flex-row gap-3 w-full md:w-auto"
+                data-tour="builder-save-study"
+                data-tour-has-card={builderRows.some((row) => row.term.trim() && row.def.trim()) ? "true" : "false"}
+              >
                 <div
                   className="relative"
                   onMouseEnter={() => setHoveredButton("save")}
@@ -5548,6 +5679,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         ? handleSaveToLibrary
                         : undefined
                     }
+                    data-tour="builder-save-library"
                     className={clsx(
                       "flex items-center justify-center gap-2 px-6 py-3 bg-panel-2 border border-outline rounded-xl font-bold text-text transition-all w-full md:w-auto",
                       missingRequirements.length > 0
@@ -5588,6 +5720,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         ? handleStartSessionNow
                         : undefined
                     }
+                    data-tour="builder-study-now"
                     className={clsx(
                       "flex items-center justify-center gap-2 px-8 py-3 rounded-xl font-bold transition-all shadow-lg w-full md:w-auto",
                       missingRequirements.length === 0

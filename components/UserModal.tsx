@@ -15,6 +15,7 @@ interface UserModalProps {
     onLogout: () => void;
     librarySets: CardSet[];
     onOpenSettings: () => void;
+    onOpenPrivacy?: () => void;
 }
 
 export const UserModal: React.FC<UserModalProps> = ({
@@ -25,7 +26,8 @@ export const UserModal: React.FC<UserModalProps> = ({
     onLogin,
     onLogout,
     librarySets,
-    onOpenSettings
+    onOpenSettings,
+    onOpenPrivacy
 }) => {
     React.useEffect(() => {
         if (!isOpen) return;
@@ -42,7 +44,7 @@ export const UserModal: React.FC<UserModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onMouseDown={onClose}>
             <div
                 className="bg-panel border border-outline rounded-2xl shadow-2xl animate-in zoom-in-95 w-full max-w-4xl p-6 relative overflow-hidden flex flex-col"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -82,7 +84,7 @@ export const UserModal: React.FC<UserModalProps> = ({
                         </div>
                     </div>
                 ) : (
-                    <SignInCard onLogin={onLogin} />
+                    <SignInCard onLogin={onLogin} onOpenPrivacy={onOpenPrivacy} />
                 )}
             </div>
         </div>

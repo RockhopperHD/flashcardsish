@@ -23,6 +23,7 @@ import { SignInCard } from './components/SignInCard';
 import { CursorTooltip } from './components/CursorTooltip';
 import { CorruptionNotification, CorruptionPopup } from './components/CorruptionNotification';
 import { AiSetupModal } from './components/AiSetupModal';
+import { OnboardingTour } from './components/OnboardingTour';
 // UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
 // import { UiAuditPanel } from './components/UiAuditPanel';
 
@@ -31,6 +32,7 @@ const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const STATS_KEY = 'flashcard-stats-v1';
 const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
+const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
 
 const normalizeLoadedSet = (set: CardSet): CardSet => {
    const sanitized = sanitizeSet(sanitizeStrings(set));
@@ -170,6 +172,7 @@ const SettingsModal: React.FC<{
    onDeleteData: () => void;
    onExportData: () => void;
    onResetSettings: () => void;
+   onStartOnboarding: () => void;
    librarySets: CardSet[];
    // User props for "You" tab
    user: GoogleDriveUser | null;
@@ -180,7 +183,8 @@ const SettingsModal: React.FC<{
    tags: Tag[];
    onUpdateTags: (tags: Tag[]) => void;
    forceAiSetupOpen?: boolean;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onResetSettings, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen }) => {
+   onOpenPrivacy?: () => void;
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onResetSettings, onStartOnboarding, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen, onOpenPrivacy }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
@@ -861,6 +865,21 @@ const SettingsModal: React.FC<{
                         {/* Dark Mode */}
                         <SettingRow id="darkMode" label="Dark Mode" settingKey="darkMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
+                        <div className="p-4 bg-green/5 rounded-xl border border-green/20 hover:border-green/40 transition-all">
+                           <span className="font-medium text-green block mb-3 flex items-center gap-2">
+                              <BookOpen size={18} /> Onboarding Tour
+                           </span>
+                           <p className="text-sm text-muted mb-3">
+                              Walk through creating and studying a set with highlighted in-app directions.
+                           </p>
+                           <button
+                              onClick={onStartOnboarding}
+                              className="w-full flex items-center justify-center gap-2 py-2 text-green border border-green/30 rounded-lg font-bold hover:bg-green/20 transition-colors text-sm"
+                           >
+                              Start Guided Tour
+                           </button>
+                        </div>
+
                         {/* AI Enabled Features */}
                         <div className="p-4 bg-purple/5 rounded-xl border border-purple/20 hover:border-purple/40 transition-all">
                            <span className="font-medium text-purple block mb-3 flex items-center gap-2">
@@ -1104,7 +1123,7 @@ const SettingsModal: React.FC<{
                               </div>
                            </>
                         ) : (
-                           <SignInCard onLogin={onLogin} />
+                           <SignInCard onLogin={onLogin} onOpenPrivacy={onOpenPrivacy} />
                         )}
                      </div>
                   )}
@@ -1166,6 +1185,10 @@ const App: React.FC = () => {
 
    // Modals
    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+   const [isOnboardingTourOpen, setIsOnboardingTourOpen] = useState(false);
+   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
+      return localStorage.getItem(ONBOARDING_TOUR_COMPLETED_KEY) === 'true';
+   });
    const [settingsInitialTab, setSettingsInitialTab] = useState<'set' | 'global' | 'you' | 'tags'>('set');
    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
 
@@ -1964,6 +1987,18 @@ const App: React.FC = () => {
       await resetSettingsToDefault();
    };
 
+   const handleStartOnboarding = () => {
+      setIsSettingsOpen(false);
+      setForceAiSetupOpen(false);
+      handleBackToMenu();
+      setIsOnboardingTourOpen(true);
+   };
+
+   const handleOnboardingComplete = () => {
+      setHasCompletedOnboarding(true);
+      localStorage.setItem(ONBOARDING_TOUR_COMPLETED_KEY, 'true');
+   };
+
    return (
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
@@ -1980,6 +2015,7 @@ const App: React.FC = () => {
             onDeleteData={handleDeleteData}
             onExportData={handleExportData}
             onResetSettings={handleResetSettings}
+            onStartOnboarding={handleStartOnboarding}
             librarySets={librarySets}
             user={user}
             lifetimeCorrect={lifetimeCorrect}
@@ -1992,8 +2028,14 @@ const App: React.FC = () => {
                setTags(newTags);
                saveTags(newTags);
             }}
+            onOpenPrivacy={() => setIsPrivacyOpen(true)}
          />
 
+         <OnboardingTour
+            isOpen={isOnboardingTourOpen}
+            onClose={() => setIsOnboardingTourOpen(false)}
+            onComplete={handleOnboardingComplete}
+         />
          <UserModal
             isOpen={isUserModalOpen}
             onClose={() => setIsUserModalOpen(false)}
@@ -2006,10 +2048,8 @@ const App: React.FC = () => {
                setIsUserModalOpen(false);
                setIsSettingsOpen(true);
             }}
+            onOpenPrivacy={() => setIsPrivacyOpen(true)}
          />
-
-
-
 
          <PrivacyPolicyModal
             isOpen={isPrivacyOpen}
@@ -2255,6 +2295,8 @@ const App: React.FC = () => {
                   onUiAuditHandled={() => setUiAuditRequest(null)}
                   onHomeScreenActiveChange={setIsHomeScreenActive}
                   homeNavigationNonce={menuHomeClickNonce}
+                  hasCompletedOnboarding={hasCompletedOnboarding}
+                  onStartOnboardingTour={handleStartOnboarding}
                />
             )}
 

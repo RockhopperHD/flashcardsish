@@ -3,10 +3,10 @@ import React from 'react';
 
 interface SignInCardProps {
     onLogin: (keepSignedIn: boolean) => void;
-    privacyPolicyUrl?: string; // Optional if we want to pass it
+    onOpenPrivacy?: () => void;
 }
 
-export const SignInCard: React.FC<SignInCardProps> = ({ onLogin }) => {
+export const SignInCard: React.FC<SignInCardProps> = ({ onLogin, onOpenPrivacy }) => {
     const [keepSignedIn, setKeepSignedIn] = React.useState(true);
 
     return (
@@ -42,7 +42,7 @@ export const SignInCard: React.FC<SignInCardProps> = ({ onLogin }) => {
                 <div className="text-sm text-muted leading-relaxed border-t border-outline/50 pt-4">
                     <p className="mb-2">
                         Flashcardsish files are optimized to be small, often a couple KB for most regular-sized sets.
-                        Flashcardsish ONLY uses Google Drive to store and read/write to this one file (<a href="#" className="underline hover:text-text">learn more</a>).
+                        Flashcardsish ONLY uses Google Drive to store and read/write to this one file (<button onClick={(e) => { e.preventDefault(); onOpenPrivacy?.(); }} className="underline hover:text-text cursor-pointer pb-0.5">learn more</button>).
                     </p>
                     <p>
                         You'll still be able to download and share individual sets as well as use Flashcardsish without an account.

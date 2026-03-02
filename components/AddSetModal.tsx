@@ -59,6 +59,7 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                             onStartScratch();
                             onClose();
                         }}
+                        data-tour="add-set-scratch"
                         className="group flex flex-col items-center justify-center p-8 bg-panel-2 border border-outline rounded-2xl hover:border-accent hover:bg-accent/5 transition-all outline-none"
                     >
                         <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mb-4">

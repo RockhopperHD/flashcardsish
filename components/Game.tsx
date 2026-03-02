@@ -200,7 +200,6 @@ const ABInput = ({
    const isTF = fieldDef.type === 'tf';
    const optionA = isTF ? 'True' : fieldDef.options?.a || 'A';
    const optionB = isTF ? 'False' : fieldDef.options?.b || 'B';
-   const isB = val === optionB;
 
    // Get keys from settings or defaults
    const leftKey1 = settings.learnModeLeftKey1 || (isTF ? 't' : 'a');
@@ -244,7 +243,7 @@ const ABInput = ({
       <div
          className={clsx(
             className,
-            "relative flex flex-col items-center justify-center p-4 bg-panel-2 border rounded-xl h-full transition-all outline-none",
+            "relative flex flex-col p-4 bg-panel-2 border rounded-xl h-full transition-all outline-none",
             (feedback.type === 'incorrect' || (feedback.type === 'retype_needed' && !isCorrect)) ? "border-red" : "border-outline",
             feedback.type === 'retype_needed' && isCorrect && "border-green bg-green/5",
             isFocused && "ring-2 ring-accent ring-offset-2 ring-offset-bg border-accent"
@@ -255,22 +254,20 @@ const ABInput = ({
          onKeyDown={handleKeyDown}
          ref={inputRef}
       >
-         <div className="text-xs font-bold text-muted uppercase mb-2">{fieldDef.name}</div>
-
          {/* Feedback Overlay */}
          {feedback.type === 'retype_needed' && !isCorrect && (
-            <div className="absolute -top-3 left-0 w-full text-center text-xs font-bold text-accent animate-in fade-in bg-bg px-2 border border-outline rounded-full mx-auto w-max max-w-[90%] truncate shadow-sm z-10">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-center text-[10px] font-bold text-bg bg-accent animate-in fade-in z-20 shadow-sm border border-accent rounded-full px-3 py-0.5 pointer-events-none">
                Incorrect
             </div>
          )}
 
-         {/* Selection Slider */}
-         <div className="flex w-full max-w-[200px] h-10 bg-bg border border-outline rounded-lg relative p-1 mb-2">
-            <div className={clsx(
-               "absolute top-1 bottom-1 w-[calc(50%-4px)] bg-accent rounded-md transition-all duration-200",
-               isB ? "left-[calc(50%)]" : "left-1",
-               !val && "opacity-0"
-            )} />
+         <div className="text-xs font-bold text-muted uppercase tracking-wider mb-2 text-center w-full truncate pointer-events-none">
+            {fieldDef.name}
+         </div>
+
+         <div className="flex flex-col gap-2 sm:gap-3 w-full flex-1">
+
+            {/* Option A Button */}
             <button
                onClick={() => {
                   if (!isInteractive) return;
@@ -278,10 +275,25 @@ const ABInput = ({
                   if (settings.autoAdvanceOnAnswer !== false) onNext();
                }}
                tabIndex={-1}
-               className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionA) ? "text-bg" : "text-muted")}
+               className={clsx(
+                  "group flex-1 relative flex flex-col items-center justify-center rounded-xl border-2 transition-all p-3 min-h-[60px]",
+                  val === optionA
+                     ? "bg-accent/10 border-accent text-accent shadow-sm scale-[1.02]"
+                     : "bg-bg border-outline text-text hover:border-accent/40 active:bg-bg/80 active:scale-95",
+                  !isInteractive && "opacity-50 cursor-not-allowed pointer-events-none"
+               )}
             >
-               {isTF ? "T" : optionA}
+               <div className="text-base sm:text-lg font-bold break-words whitespace-normal max-w-full px-4 text-center">
+                  {isTF ? "True" : optionA}
+               </div>
+
+               <div className="absolute top-2 right-2 flex items-center justify-center min-w-[20px] h-[20px] px-1 bg-panel border-b-2 border-outline rounded text-[10px] font-mono font-bold text-muted shadow-sm transition-all group-hover:border-accent group-hover:text-text group-active:border-b-0 group-active:translate-y-[2px]">
+                  <span className={showAltKey ? "hidden" : "inline"}>{formatKey(leftKey1)}</span>
+                  <span className={showAltKey ? "inline" : "hidden"}>{formatKey(leftKey2)}</span>
+               </div>
             </button>
+
+            {/* Option B Button */}
             <button
                onClick={() => {
                   if (!isInteractive) return;
@@ -289,44 +301,23 @@ const ABInput = ({
                   if (settings.autoAdvanceOnAnswer !== false) onNext();
                }}
                tabIndex={-1}
-               className={clsx("flex-1 relative z-10 text-xs font-bold transition-colors", (val === optionB) ? "text-bg" : "text-muted")}
+               className={clsx(
+                  "group flex-1 relative flex flex-col items-center justify-center rounded-xl border-2 transition-all p-3 min-h-[60px]",
+                  val === optionB
+                     ? "bg-accent/10 border-accent text-accent shadow-sm scale-[1.02]"
+                     : "bg-bg border-outline text-text hover:border-accent/40 active:bg-bg/80 active:scale-95",
+                  !isInteractive && "opacity-50 cursor-not-allowed pointer-events-none"
+               )}
             >
-               {isTF ? "F" : optionB}
+               <div className="text-base sm:text-lg font-bold break-words whitespace-normal max-w-full px-4 text-center">
+                  {isTF ? "False" : optionB}
+               </div>
+
+               <div className="absolute top-2 right-2 flex items-center justify-center min-w-[20px] h-[20px] px-1 bg-panel border-b-2 border-outline rounded text-[10px] font-mono font-bold text-muted shadow-sm transition-all group-hover:border-accent group-hover:text-text group-active:border-b-0 group-active:translate-y-[2px]">
+                  <span className={showAltKey ? "hidden" : "inline"}>{formatKey(rightKey1)}</span>
+                  <span className={showAltKey ? "inline" : "hidden"}>{formatKey(rightKey2)}</span>
+               </div>
             </button>
-         </div>
-
-         {/* Key Hint Overlay */}
-         <div className={clsx(
-            "h-6 flex items-center justify-between w-full max-w-[200px] px-2 transition-opacity duration-300",
-            isFocused ? "opacity-100" : "opacity-0"
-         )}>
-            {/* Left Key Hint */}
-            <div className="relative w-8 h-6 flex justify-center">
-               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-0 scale-90" : "opacity-100 scale-100")}>
-                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
-                     {formatKey(leftKey1)}
-                  </kbd>
-               </div>
-               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-100 scale-100" : "opacity-0 scale-90")}>
-                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
-                     {formatKey(leftKey2)}
-                  </kbd>
-               </div>
-            </div>
-
-            {/* Right Key Hint */}
-            <div className="relative w-8 h-6 flex justify-center">
-               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-0 scale-90" : "opacity-100 scale-100")}>
-                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
-                     {formatKey(rightKey1)}
-                  </kbd>
-               </div>
-               <div className={clsx("absolute transition-all duration-500", showAltKey ? "opacity-100 scale-100" : "opacity-0 scale-90")}>
-                  <kbd className="px-1.5 py-0.5 bg-panel-2 border-b-2 border-outline/50 rounded text-[10px] font-bold text-muted font-sans font-mono border border-b-2 border-outline/50 min-w-[20px] text-center">
-                     {formatKey(rightKey2)}
-                  </kbd>
-               </div>
-            </div>
          </div>
       </div>
    );
