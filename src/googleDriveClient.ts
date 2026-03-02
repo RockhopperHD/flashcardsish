@@ -671,7 +671,14 @@ class GoogleDriveClient {
             const cachedModifiedTime = this.fileModifiedAtCache.get(this.getFileCacheKey(folderId, filename));
 
             if (!options?.ignoreConflicts && cachedModifiedTime && currentModifiedTime && cachedModifiedTime !== currentModifiedTime) {
-                throw new DriveConflictError(filename, cachedModifiedTime, currentModifiedTime);
+                // Drive list responses can momentarily lag after writes.
+                // Re-check direct file metadata before raising a conflict.
+                const liveMetadata = await window.gapi.client.drive.files.get({ fileId, fields: 'modifiedTime' });
+                const liveModifiedTime = liveMetadata.result.modifiedTime || currentModifiedTime;
+
+                if (cachedModifiedTime !== liveModifiedTime) {
+                    throw new DriveConflictError(filename, cachedModifiedTime, liveModifiedTime);
+                }
             }
 
             await this.uploadFileContent(fileId, blob);

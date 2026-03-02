@@ -1224,6 +1224,7 @@ const App: React.FC = () => {
 
    const [user, setUser] = useState<GoogleDriveUser | null>(null);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
+   const latestLibrarySetsRef = useRef<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
    const [folders, setFolders] = useState<Folder[]>([]);
    const [tags, setTags] = useState<Tag[]>([]);
@@ -1325,11 +1326,74 @@ const App: React.FC = () => {
    const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'saved_faded' | 'error'>('idle');
    const [cloudConflictSets, setCloudConflictSets] = useState<string[]>([]);
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const cloudSaveInFlightRef = useRef(false);
+   const pendingLibrarySaveRef = useRef<{
+      sets: CardSet[];
+      folders: Folder[];
+      ignoreConflicts?: boolean;
+   } | null>(null);
 
    // Cloud loading state (pulling sets from Drive)
    const [isCloudLoading, setIsCloudLoading] = useState(false);
    const syncInProgressRef = useRef(false);
    const hasSyncedOnceRef = useRef(false);
+
+   const flushPendingLibrarySave = async () => {
+      if (cloudSaveInFlightRef.current) return;
+      const payload = pendingLibrarySaveRef.current;
+      if (!payload) return;
+
+      pendingLibrarySaveRef.current = null;
+      cloudSaveInFlightRef.current = true;
+
+      if (user) setCloudSyncStatus('saving');
+
+      try {
+         const result = await saveLibrary(payload.sets, {
+            ignoreConflicts: payload.ignoreConflicts,
+            folders: payload.folders
+         });
+
+         if (result.conflicts && result.conflicts.length > 0 && !payload.ignoreConflicts) {
+            setCloudConflictSets(result.conflicts);
+            setCloudSyncStatus('error');
+            if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+            return;
+         }
+
+         if (result.savedToCloud) {
+            setCloudConflictSets([]);
+            setCloudSyncStatus('saved');
+            if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+            cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
+         } else if (result.error) {
+            setCloudSyncStatus('error');
+            if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+            cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
+         } else {
+            setCloudConflictSets([]);
+            setCloudSyncStatus('idle');
+         }
+      } finally {
+         cloudSaveInFlightRef.current = false;
+         if (pendingLibrarySaveRef.current) {
+            void flushPendingLibrarySave();
+         }
+      }
+   };
+
+   const queueLibrarySave = (
+      setsSnapshot: CardSet[],
+      foldersSnapshot: Folder[],
+      options?: { ignoreConflicts?: boolean }
+   ) => {
+      pendingLibrarySaveRef.current = {
+         sets: [...setsSnapshot],
+         folders: foldersSnapshot.map(folder => ({ ...folder, setIds: [...folder.setIds] })),
+         ignoreConflicts: options?.ignoreConflicts
+      };
+      void flushPendingLibrarySave();
+   };
 
    // --- AUTH & CLOUD SYNC ---
 
@@ -1418,6 +1482,10 @@ const App: React.FC = () => {
    };
 
    const handleKeepCloudVersion = async () => {
+      pendingLibrarySaveRef.current = null;
+      while (cloudSaveInFlightRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 50));
+      }
       setCloudConflictSets([]);
       await syncCloudData();
    };
@@ -1425,8 +1493,13 @@ const App: React.FC = () => {
    const handleOverwriteCloudVersion = async () => {
       if (!user) return;
 
+      while (cloudSaveInFlightRef.current) {
+         await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      pendingLibrarySaveRef.current = null;
+
       setCloudSyncStatus('saving');
-      const result = await saveLibrary(librarySets, { ignoreConflicts: true });
+      const result = await saveLibrary(librarySets, { ignoreConflicts: true, folders });
       if (result.savedToCloud) {
          setCloudConflictSets([]);
          setCloudSyncStatus('saved');
@@ -1720,35 +1793,7 @@ const App: React.FC = () => {
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
-
-         // Show saving indicator if logged in
-         if (user) setCloudSyncStatus('saving');
-
-         saveLibrary(librarySets).then(result => {
-            if (result.conflicts && result.conflicts.length > 0) {
-               setCloudConflictSets(result.conflicts);
-               setCloudSyncStatus('error');
-               if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
-               return;
-            }
-
-            if (result.savedToCloud) {
-               setCloudConflictSets([]);
-               setCloudSyncStatus('saved');
-               // Transition to faded after 3 seconds, but DO NOT disappear (don't set to idle)
-               if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
-               cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
-            } else if (result.error) {
-               setCloudSyncStatus('error');
-               // Reset to idle after 5 seconds
-               if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
-               cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
-            } else {
-               // No user / saved locally only
-               setCloudConflictSets([]);
-               setCloudSyncStatus('idle');
-            }
-         });
+         queueLibrarySave(librarySets, folders);
       } else if (isLibraryLoaded && !hasCompletedInitialLoad.current) {
          console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save will be enabled in', (3000 - timeSinceMount), 'ms');
          hasCompletedInitialLoad.current = true;
@@ -1756,12 +1801,17 @@ const App: React.FC = () => {
    }, [librarySets, isLibraryLoaded]);
 
    useEffect(() => {
+      latestLibrarySetsRef.current = librarySets;
+   }, [librarySets]);
+
+   useEffect(() => {
       const timeSinceMount = Date.now() - mountTime.current;
       if (timeSinceMount < 3000) return;
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING folders');
-         saveFolders(folders);
+         saveFolders(folders, { skipCloud: true });
+         queueLibrarySave(latestLibrarySetsRef.current, folders);
       }
    }, [folders, isLibraryLoaded]);
 

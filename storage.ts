@@ -114,7 +114,7 @@ export const checkAndMigrate = async (): Promise<{
  */
 export const saveLibrary = async (
     sets: CardSet[],
-    options?: { ignoreConflicts?: boolean }
+    options?: { ignoreConflicts?: boolean; folders?: Folder[] }
 ): Promise<{ success: boolean; savedToCloud: boolean; error?: string; conflicts?: string[] }> => {
     // Always save locally first for speed
     try {
@@ -131,7 +131,6 @@ export const saveLibrary = async (
 
     // Filter out local-only sets for cloud storage
     const cloudSets = sets.filter(s => !s.isLocalOnly);
-    const cloudSetIds = new Set(cloudSets.map(s => s.id));
 
     try {
         const conflicts: string[] = [];
@@ -163,27 +162,30 @@ export const saveLibrary = async (
             };
         }
 
-        // Rebuild structure based on current cloud sets
-        // 1. Filter existing root sets to only include current cloud sets
-        let newRootSets = structure.rootSets.filter(id => cloudSetIds.has(id));
+        // Rebuild structure from the current in-memory set.folderId assignments.
+        // This prevents stale folder.setIds metadata from dropping moves.
+        const sourceFolders = options?.folders ?? structure.folders;
+        const folderIds = new Set(sourceFolders.map(folder => folder.id));
+        const folderMembership = new Map<string, string[]>();
+        const rootSets: string[] = [];
 
-        // 2. Filter folder contents
-        let newFolders = structure.folders.map(f => ({
-            ...f,
-            setIds: f.setIds.filter(id => cloudSetIds.has(id))
+        for (const cardSet of cloudSets) {
+            if (cardSet.folderId && folderIds.has(cardSet.folderId)) {
+                const bucket = folderMembership.get(cardSet.folderId) ?? [];
+                bucket.push(cardSet.id);
+                folderMembership.set(cardSet.folderId, bucket);
+                continue;
+            }
+            rootSets.push(cardSet.id);
+        }
+
+        const normalizedFolders = sourceFolders.map(folder => ({
+            ...folder,
+            setIds: folderMembership.get(folder.id) ?? []
         }));
 
-        // 3. Add any new cloud sets to root if they aren't in a folder
-        cloudSets.forEach(cardSet => {
-            const inFolder = newFolders.some(f => f.setIds.includes(cardSet.id));
-            if (!inFolder && !newRootSets.includes(cardSet.id)) {
-                newRootSets.push(cardSet.id);
-            }
-        });
-
-        // 4. Assign new structure
-        structure.rootSets = newRootSets;
-        structure.folders = newFolders;
+        structure.rootSets = rootSets;
+        structure.folders = normalizedFolders;
 
         await storageV2.writeStructure(structure);
         // console.log(`[Storage] Successfully saved ${cloudSets.length} sets to Google Drive`);
@@ -341,15 +343,25 @@ export const deleteSet = async (setId: string): Promise<void> => {
 // FOLDERS
 // ============================================================================
 
-export const saveFolders = async (folders: Folder[]) => {
+export const saveFolders = async (folders: Folder[], options?: { skipCloud?: boolean }) => {
     // Save locally
     localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
+
+    if (options?.skipCloud) return;
 
     const user = await getUser();
     if (!user) return;
 
-    // Save to V2 structure
-    await storageV2.updateFolders(folders);
+    // Preserve current set membership from cloud structure.
+    // Folder state in UI intentionally treats set.folderId as source of truth.
+    const { structure } = await storageV2.readStructure();
+    const existingSetIdsByFolder = new Map(structure.folders.map(folder => [folder.id, folder.setIds]));
+    const normalizedFolders = folders.map(folder => ({
+        ...folder,
+        setIds: existingSetIdsByFolder.get(folder.id) ?? []
+    }));
+
+    await storageV2.updateFolders(normalizedFolders);
 };
 
 export const loadFolders = async (): Promise<Folder[]> => {
