@@ -11,7 +11,7 @@ import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
 import { KeybindsModal } from './components/KeybindsModal';
-import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
+import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
 import { saveLibrary, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags } from './storage';
