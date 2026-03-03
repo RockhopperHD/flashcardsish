@@ -335,6 +335,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [feedback, setFeedback] = useState<FeedbackState>({ type: 'idle' });
    const [isEditOpen, setIsEditOpen] = useState(false);
    const [isShaking, setIsShaking] = useState(false);
+   const [confirmBlankSubmit, setConfirmBlankSubmit] = useState(false);
+
+   useEffect(() => {
+      setConfirmBlankSubmit(false);
+   }, [inputTerm, inputYear, inputCustom, currentId]);
 
    // Toolbar State
    const [toolbarVisible, setToolbarVisible] = useState(false);
@@ -755,7 +760,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       const currentCardKey = getCardKey(currentCard);
       // Check if any input is provided
       const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
-      if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) return;
+      if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) {
+         if (!confirmBlankSubmit) {
+            setConfirmBlankSubmit(true);
+            return;
+         }
+      }
 
       // Determine active definitions
       const activeFieldDefs = set.version && set.version >= 2
@@ -1812,7 +1822,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      </div>
                   </div>
                ) : (
-                  <div className={clsx("grid grid-cols-1 md:grid-cols-12 gap-4", isShaking && "animate-shake")}>
+                  <div className={clsx(
+                     "grid grid-cols-1 md:grid-cols-12 gap-x-4",
+                     feedback.type === 'retype_needed' ? "gap-y-8 pt-6" : "gap-y-4",
+                     isShaking && "animate-shake"
+                  )}>
                      {(() => {
                         const isAnsweringWithDef = settings.answerWithDefinition;
                         const inputLabel = isAnsweringWithDef ? (set.definitionLabel || 'Definition') : (set.termLabel || 'Term');
@@ -2043,9 +2057,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                            <button
                               onClick={handleAttempt}
                               ref={submitButtonRef}
-                              className="bg-accent text-bg font-extrabold px-10 py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg focus:ring-4 focus:ring-accent/30 outline-none"
+                              className={clsx(
+                                 "font-extrabold px-10 py-3 rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg outline-none focus:ring-4",
+                                 confirmBlankSubmit
+                                    ? "bg-red text-bg focus:ring-red/30"
+                                    : "bg-accent text-bg focus:ring-accent/30"
+                              )}
                            >
-                              Submit
+                              {confirmBlankSubmit ? "Sure?" : "Submit"}
                            </button>
                         </>
                      ) : (

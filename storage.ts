@@ -781,6 +781,7 @@ export const deleteAllUserData = async (): Promise<{ success: boolean; error?: s
     localStorage.removeItem(SETTINGS_KEY);
     localStorage.removeItem(BADGES_KEY);
     localStorage.removeItem(STATS_KEY);
+    localStorage.removeItem(TAGS_KEY);
     localStorage.removeItem(DRIVE_FOLDER_ID_KEY);
     localStorage.removeItem(MIGRATION_DONE_KEY);
 

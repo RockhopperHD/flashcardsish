@@ -578,7 +578,18 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
         if (cached) {
             const { data, hadError } = safeParseJSON<StructureFile>(cached, createDefaultStructure());
             if (!hadError) {
-                return { structure: data, wasCorrupted: false };
+                // Merge with defaults so newly-added fields are always present
+                const defaults = createDefaultStructure();
+                const merged: StructureFile = {
+                    ...defaults,
+                    ...data,
+                    stats: { ...defaults.stats, ...(data.stats || {}) },
+                    tags: data.tags ?? defaults.tags,
+                    badges: data.badges ?? defaults.badges,
+                    folders: data.folders ?? defaults.folders,
+                    rootSets: data.rootSets ?? defaults.rootSets,
+                };
+                return { structure: merged, wasCorrupted: false };
             }
         }
     }
@@ -606,10 +617,22 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
             return { structure: defaultStructure, wasCorrupted: true };
         }
 
-        // Cache locally
-        localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(data));
+        // Merge with defaults so newly-added fields are always present
+        const defaults = createDefaultStructure();
+        const merged: StructureFile = {
+            ...defaults,
+            ...data,
+            stats: { ...defaults.stats, ...(data.stats || {}) },
+            tags: data.tags ?? defaults.tags,
+            badges: data.badges ?? defaults.badges,
+            folders: data.folders ?? defaults.folders,
+            rootSets: data.rootSets ?? defaults.rootSets,
+        };
 
-        return { structure: data, wasCorrupted: false };
+        // Cache locally
+        localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(merged));
+
+        return { structure: merged, wasCorrupted: false };
     } catch (error) {
         console.error('[StorageV2] Failed to read structure:', error);
         return { structure: createDefaultStructure(), wasCorrupted: true };
