@@ -1835,6 +1835,11 @@ const BuilderRowItem: React.FC<{
     const [isEditingTerm, setIsEditingTerm] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const termTextareaRef = useRef<HTMLTextAreaElement>(null);
+    const autoResizeTextarea = (element: HTMLTextAreaElement | null) => {
+      if (!element) return;
+      element.style.height = "0px";
+      element.style.height = `${element.scrollHeight}px`;
+    };
 
     // Highlight Toolbar State
     const [toolbarVisible, setToolbarVisible] = useState(false);
@@ -1950,6 +1955,7 @@ const BuilderRowItem: React.FC<{
 
       if (wysiwyg) {
         textareaRef.current?.focus();
+        autoResizeTextarea(textareaRef.current);
         return;
       }
 
@@ -1964,6 +1970,7 @@ const BuilderRowItem: React.FC<{
 
       if (wysiwyg) {
         termTextareaRef.current?.focus();
+        autoResizeTextarea(termTextareaRef.current);
         return;
       }
 
@@ -1971,6 +1978,16 @@ const BuilderRowItem: React.FC<{
         termInputRef.current.focus();
       }
     }, [isEditingTerm, wysiwyg]);
+
+    useEffect(() => {
+      if (!wysiwyg) return;
+      autoResizeTextarea(termTextareaRef.current);
+    }, [row.term, wysiwyg]);
+
+    useEffect(() => {
+      if (!wysiwyg) return;
+      autoResizeTextarea(textareaRef.current);
+    }, [row.def, wysiwyg]);
 
     // Handle Term Keydown (Tab to Def)
     const handleTermKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement | HTMLTextAreaElement>) => {
@@ -2144,13 +2161,16 @@ const BuilderRowItem: React.FC<{
                       id={`term-${row.id}`}
                       ref={termTextareaRef}
                       value={row.term}
-                      onChange={(e) => updateRow(row.id, "term", e.target.value)}
+                      onChange={(e) => {
+                        updateRow(row.id, "term", e.target.value);
+                        autoResizeTextarea(e.currentTarget);
+                      }}
                       onBlur={() => {
                         setToolbarVisible(false);
                         setIsEditingTerm(false);
                       }}
                       onKeyDown={handleTermKeyDown}
-                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full resize-none"
+                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text resize-none overflow-hidden"
                       placeholder="Enter term..."
                     />
                   ) : (
@@ -2276,13 +2296,16 @@ const BuilderRowItem: React.FC<{
                     <textarea
                       ref={textareaRef}
                       value={row.def}
-                      onChange={(e) => updateRow(row.id, "def", e.target.value)}
+                      onChange={(e) => {
+                        updateRow(row.id, "def", e.target.value);
+                        autoResizeTextarea(e.currentTarget);
+                      }}
                       onBlur={() => {
                         setToolbarVisible(false);
                         setIsEditingDef(false);
                       }}
                       onKeyDown={handleDefKeyDown}
-                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text h-full resize-none"
+                      className="w-full bg-transparent border-none focus:outline-none px-4 py-3 text-base min-h-[40px] block leading-relaxed font-normal text-text resize-none overflow-hidden"
                       placeholder="Enter definition..."
                     />
                   ) : (
@@ -2525,7 +2548,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showAddSetModal, setShowAddSetModal] = useState(false);
   const [builderMode, setBuilderMode] = useState<"visual" | "raw">("visual"); // Deprecated?
-  const [wysiwyg, setWysiwyg] = useState(true);
+  const [wysiwyg, setWysiwyg] = useState(false);
   const [showWysiwygHelp, setShowWysiwygHelp] = useState(false);
   const [showMarkdownHelp, setShowMarkdownHelp] = useState(false);
   const modKeyLabel = getModifierKeyLabel();
@@ -2997,7 +3020,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   // Autosave: immediate save on beforeunload (safety net for tab close / battery die)
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (view !== "builder" && view !== "raw-text") return;
       const hasContent = builderRows.some((r) => r.term.trim() || r.def.trim()) || rawText.trim().length > 0;
       if (!hasContent && !setName.trim()) return;
@@ -3022,6 +3045,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       } catch (e) {
         // Best effort
       }
+
+      // Guard against closing while work is still in the builder.
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);

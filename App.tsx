@@ -31,6 +31,7 @@ import { AppErrorBoundary } from './components/AppErrorBoundary';
 const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
 const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
 const LIBRARY_LOCAL_FALLBACK_KEY = 'flashcard-library-v3';
+const LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY = 'flashcard-library-v3-updated-at';
 
 const normalizeLoadedSet = (set: CardSet): CardSet => {
    const sanitized = sanitizeSet(sanitizeStrings(set));
@@ -1489,6 +1490,7 @@ const App: React.FC = () => {
    const [conflictResolutionAction, setConflictResolutionAction] = useState<'idle' | 'keeping' | 'overwriting'>('idle');
    const cloudSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
    const cloudSaveInFlightRef = useRef(false);
+   const hasPendingLocalLibraryChangesRef = useRef(false);
    const pendingLibrarySaveRef = useRef<{
       sets: CardSet[];
       folders: Folder[];
@@ -1575,6 +1577,8 @@ const App: React.FC = () => {
          cloudSaveInFlightRef.current = false;
          if (pendingLibrarySaveRef.current) {
             void flushPendingLibrarySave();
+         } else {
+            hasPendingLocalLibraryChangesRef.current = false;
          }
       }
    };
@@ -1592,6 +1596,7 @@ const App: React.FC = () => {
       foldersSnapshot: Folder[],
       options?: { ignoreConflicts?: boolean; skipCloud?: boolean }
    ) => {
+      hasPendingLocalLibraryChangesRef.current = true;
       pendingLibrarySaveRef.current = {
          sets: cloneSetsForSave(setsSnapshot),
          folders: foldersSnapshot.map(folder => ({ ...folder, setIds: [...folder.setIds] })),
@@ -1962,17 +1967,46 @@ const App: React.FC = () => {
 
    // Browser closing protection
    useEffect(() => {
+      const writeLibraryLocalFallbackSnapshot = () => {
+         if (!isLibraryLoaded) return;
+         try {
+            localStorage.setItem(LIBRARY_LOCAL_FALLBACK_KEY, JSON.stringify(latestLibrarySetsRef.current));
+            localStorage.setItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY, String(Date.now()));
+         } catch (error) {
+            console.warn('[App] Failed to write local fallback snapshot during unload safety check:', error);
+         }
+      };
+
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-         if (cloudSyncStatus === 'saving') {
+         writeLibraryLocalFallbackSnapshot();
+
+         const hasPendingSave = (
+            cloudSyncStatus === 'saving' ||
+            cloudSaveInFlightRef.current ||
+            pendingLibrarySaveRef.current !== null ||
+            hasPendingLocalLibraryChangesRef.current
+         );
+
+         if (hasPendingSave) {
             e.preventDefault();
             e.returnValue = '';
             return '';
          }
       };
 
+      const handleVisibilityChange = () => {
+         if (document.visibilityState === 'hidden') {
+            writeLibraryLocalFallbackSnapshot();
+         }
+      };
+
       window.addEventListener('beforeunload', handleBeforeUnload);
-      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-   }, [cloudSyncStatus]);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+         window.removeEventListener('beforeunload', handleBeforeUnload);
+         document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+   }, [cloudSyncStatus, isLibraryLoaded]);
 
 
 
@@ -2034,27 +2068,24 @@ const App: React.FC = () => {
    const mountTime = useRef(Date.now());
 
    useEffect(() => {
-      const timeSinceMount = Date.now() - mountTime.current;
+      if (!isLibraryLoaded) return;
+
       const cloudWriteBlocked = Boolean(
          syncInProgressRef.current ||
          isCloudLoading ||
          (user && !hasSyncedOnceRef.current)
       );
 
-      // HARD RULE: No saves allowed for first 3 seconds after mount
-      if (timeSinceMount < 3000) {
-         console.log('[App] Save blocked - too soon after mount (', timeSinceMount, 'ms )');
+      if (!hasCompletedInitialLoad.current) {
+         hasCompletedInitialLoad.current = true;
+         console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save is now enabled.');
          return;
       }
 
-      if (isLibraryLoaded && hasCompletedInitialLoad.current) {
-         console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
-         queueLibrarySave(librarySets, folders, { skipCloud: cloudWriteBlocked });
-      } else if (isLibraryLoaded && !hasCompletedInitialLoad.current) {
-         console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save will be enabled in', (3000 - timeSinceMount), 'ms');
-         hasCompletedInitialLoad.current = true;
-         queueLibrarySave(librarySets, folders, { skipCloud: cloudWriteBlocked });
-      }
+      hasPendingLocalLibraryChangesRef.current = true;
+
+      console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
+      queueLibrarySave(librarySets, folders, { skipCloud: cloudWriteBlocked });
    }, [librarySets, isLibraryLoaded, isCloudLoading, user]);
 
    useEffect(() => {
@@ -2065,6 +2096,7 @@ const App: React.FC = () => {
       if (!isLibraryLoaded) return;
       try {
          localStorage.setItem(LIBRARY_LOCAL_FALLBACK_KEY, JSON.stringify(librarySets));
+         localStorage.setItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY, String(Date.now()));
       } catch (error) {
          console.warn('[App] Failed to write local fallback library cache:', error);
       }
@@ -2357,37 +2389,38 @@ const App: React.FC = () => {
 
 
    const handleRenameSession = (newName: string) => {
-      if (activeSession) {
-         const updated = { ...activeSession, name: newName };
-         setLibrarySets(prev => prev.map(s => s.id === activeSession.id ? updated : s));
+      if (activeSetId) {
+         setLibrarySets(prev => prev.map(s => s.id === activeSetId ? { ...s, name: newName } : s));
       }
       setIsRenaming(false);
    };
 
    const handleFinish = () => {
-      if (activeSession) {
+      if (activeSetId) {
          const now = Date.now();
          const delta = isTimerPaused ? 0 : (now - timerStart);
-         const finalSet = {
-            ...activeSession,
-            elapsedTime: activeSession.elapsedTime + delta,
-            lastPlayed: now
-         };
-         setLibrarySets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+         setLibrarySets(prev => prev.map(s => s.id === activeSetId
+            ? {
+               ...s,
+               elapsedTime: s.elapsedTime + delta,
+               lastPlayed: now
+            }
+            : s));
       }
       setGameState(GameState.WIN);
    };
 
    const handleBackToMenu = () => {
-      if (activeSession && gameState === GameState.PLAYING) {
+      if (activeSetId && gameState === GameState.PLAYING) {
          const now = Date.now();
          const delta = isTimerPaused ? 0 : (now - timerStart);
-         const finalSet = {
-            ...activeSession,
-            elapsedTime: activeSession.elapsedTime + delta,
-            lastPlayed: now
-         };
-         setLibrarySets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
+         setLibrarySets(prev => prev.map(s => s.id === activeSetId
+            ? {
+               ...s,
+               elapsedTime: s.elapsedTime + delta,
+               lastPlayed: now
+            }
+            : s));
       }
       setGameState(GameState.MENU);
       setActiveSetId(null);
@@ -2397,16 +2430,17 @@ const App: React.FC = () => {
 
    // Handle back from Learn mode to Set Detail
    const handleBackFromLearnToDetail = () => {
-      if (activeSession && gameState === GameState.PLAYING) {
+      if (activeSetId && gameState === GameState.PLAYING) {
          const now = Date.now();
          const delta = isTimerPaused ? 0 : (now - timerStart);
-         const finalSet = {
-            ...activeSession,
-            elapsedTime: activeSession.elapsedTime + delta,
-            lastPlayed: now
-         };
-         setLibrarySets(prev => prev.map(s => s.id === finalSet.id ? finalSet : s));
-         setDetailSetId(activeSession.id);
+         setLibrarySets(prev => prev.map(s => s.id === activeSetId
+            ? {
+               ...s,
+               elapsedTime: s.elapsedTime + delta,
+               lastPlayed: now
+            }
+            : s));
+         setDetailSetId(activeSetId);
       }
       setGameState(GameState.SET_DETAIL);
       setActiveSetId(null);

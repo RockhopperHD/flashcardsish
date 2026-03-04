@@ -21,6 +21,8 @@ import * as storageV2 from './storageV2';
  */
 
 const LIBRARY_KEY = 'flashcard-library-v3';
+const LIBRARY_LOCAL_UPDATED_AT_KEY = 'flashcard-library-v3-updated-at';
+const LIBRARY_IDB_UPDATED_AT_KEY = 'flashcard-library-v3-idb-updated-at';
 const FOLDERS_KEY = 'flashcard-folders-v1';
 const SETTINGS_KEY = 'flashcard-settings-v2';
 const BADGES_KEY = 'flashcard-badges-v1';
@@ -58,6 +60,29 @@ export interface CloudConflictDetail {
 
 const getUser = async (): Promise<GoogleDriveUser | null> => {
     return await googleDrive.getSession();
+};
+
+const parseTimestamp = (value: unknown): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) return parsed;
+    }
+    return 0;
+};
+
+const writeLibraryToIndexedDb = async (sets: CardSet[], timestamp: number): Promise<void> => {
+    await set(LIBRARY_KEY, sets);
+    await set(LIBRARY_IDB_UPDATED_AT_KEY, timestamp);
+};
+
+const writeLibraryToLocalFallback = (sets: CardSet[], timestamp: number): void => {
+    try {
+        localStorage.setItem(LIBRARY_KEY, JSON.stringify(sets));
+        localStorage.setItem(LIBRARY_LOCAL_UPDATED_AT_KEY, String(timestamp));
+    } catch (error) {
+        console.warn('[Storage] Failed to write local fallback library cache:', error);
+    }
 };
 
 // ============================================================================
@@ -132,11 +157,13 @@ export const saveLibrary = async (
     options?: { ignoreConflicts?: boolean; folders?: Folder[]; skipCloud?: boolean }
 ): Promise<{ success: boolean; savedToCloud: boolean; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] }> => {
     // Always save locally first for speed
+    const localWriteTimestamp = Date.now();
     try {
-        await set(LIBRARY_KEY, sets);
+        await writeLibraryToIndexedDb(sets, localWriteTimestamp);
     } catch (error) {
         console.error('Failed to save library to IndexedDB:', error);
     }
+    writeLibraryToLocalFallback(sets, localWriteTimestamp);
 
     const user = await getUser();
     if (!user || options?.skipCloud) {
@@ -318,19 +345,62 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
 
     // 1. Get Local Cache (we ALWAYS want this as base/fallback)
     let localSets: CardSet[] = [];
+    let indexedDbSets: CardSet[] = [];
+    let localStorageSets: CardSet[] = [];
+    let indexedDbUpdatedAt = 0;
+    let localStorageUpdatedAt = 0;
     try {
-        const cached = await get<CardSet[]>(LIBRARY_KEY);
-        if (cached && Array.isArray(cached)) {
-            localSets = cached;
-        } else {
-            // Fallback to localStorage
-            const local = localStorage.getItem(LIBRARY_KEY);
-            if (local) {
-                localSets = JSON.parse(local);
+        const [cachedSets, cachedUpdatedAt] = await Promise.all([
+            get<CardSet[]>(LIBRARY_KEY),
+            get<number>(LIBRARY_IDB_UPDATED_AT_KEY)
+        ]);
+
+        if (Array.isArray(cachedSets)) {
+            indexedDbSets = cachedSets;
+        }
+        indexedDbUpdatedAt = parseTimestamp(cachedUpdatedAt);
+    } catch (e) {
+        console.error('Failed to load library from IndexedDB:', e);
+    }
+
+    try {
+        const local = localStorage.getItem(LIBRARY_KEY);
+        if (local) {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed)) {
+                localStorageSets = parsed;
             }
         }
+        localStorageUpdatedAt = parseTimestamp(localStorage.getItem(LIBRARY_LOCAL_UPDATED_AT_KEY));
     } catch (e) {
-        console.error('Failed to load from IndexedDB/LocalStorage:', e);
+        console.error('Failed to load library from localStorage:', e);
+    }
+
+    const hasIndexedDbSnapshot = indexedDbSets.length > 0;
+    const hasLocalStorageSnapshot = localStorageSets.length > 0;
+    const shouldPreferLocalStorage = hasLocalStorageSnapshot && (
+        !hasIndexedDbSnapshot ||
+        localStorageUpdatedAt > indexedDbUpdatedAt ||
+        (localStorageUpdatedAt > 0 && indexedDbUpdatedAt === 0)
+    );
+
+    if (shouldPreferLocalStorage) {
+        localSets = localStorageSets;
+
+        // Keep IndexedDB aligned so future loads are consistent.
+        try {
+            await writeLibraryToIndexedDb(localSets, localStorageUpdatedAt || Date.now());
+        } catch (error) {
+            console.warn('[Storage] Failed to refresh IndexedDB cache from localStorage snapshot:', error);
+        }
+    } else if (hasIndexedDbSnapshot) {
+        localSets = indexedDbSets;
+
+        if (!hasLocalStorageSnapshot || indexedDbUpdatedAt > localStorageUpdatedAt) {
+            writeLibraryToLocalFallback(localSets, indexedDbUpdatedAt || Date.now());
+        }
+    } else if (hasLocalStorageSnapshot) {
+        localSets = localStorageSets;
     }
 
     // Safety-first boot behavior:
@@ -392,7 +462,9 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
         const finalSets = Array.from(mergedMap.values());
 
         // Cache merged result locally
-        await set(LIBRARY_KEY, finalSets);
+        const mergedWriteTimestamp = Date.now();
+        await writeLibraryToIndexedDb(finalSets, mergedWriteTimestamp);
+        writeLibraryToLocalFallback(finalSets, mergedWriteTimestamp);
 
         return finalSets;
     } catch (error) {
@@ -430,7 +502,9 @@ export const saveSet = async (cardSet: CardSet): Promise<void> => {
         } else {
             cached.push(cardSet);
         }
-        await set(LIBRARY_KEY, cached);
+        const localWriteTimestamp = Date.now();
+        await writeLibraryToIndexedDb(cached, localWriteTimestamp);
+        writeLibraryToLocalFallback(cached, localWriteTimestamp);
     } catch (e) {
         console.error('[Storage] Failed to update local cache:', e);
     }
@@ -445,7 +519,10 @@ export const deleteSet = async (setId: string): Promise<void> => {
     // Update local cache
     try {
         const cached = await get<CardSet[]>(LIBRARY_KEY) || [];
-        await set(LIBRARY_KEY, cached.filter(s => s.id !== setId));
+        const nextSets = cached.filter(s => s.id !== setId);
+        const localWriteTimestamp = Date.now();
+        await writeLibraryToIndexedDb(nextSets, localWriteTimestamp);
+        writeLibraryToLocalFallback(nextSets, localWriteTimestamp);
     } catch (e) {
         console.error('[Storage] Failed to update local cache:', e);
     }
@@ -764,7 +841,9 @@ export const loadAllUserData = async (): Promise<AllUserData | null> => {
         // Cache all loaded sets in IndexedDB
         if (allSets.length > 0) {
             try {
-                await set(LIBRARY_KEY, allSets);
+                const localWriteTimestamp = Date.now();
+                await writeLibraryToIndexedDb(allSets, localWriteTimestamp);
+                writeLibraryToLocalFallback(allSets, localWriteTimestamp);
             } catch (e) { }
         }
 
@@ -793,6 +872,7 @@ export const deleteAllUserData = async (): Promise<{ success: boolean; error?: s
 
     // Also clear legacy keys
     localStorage.removeItem(LIBRARY_KEY);
+    localStorage.removeItem(LIBRARY_LOCAL_UPDATED_AT_KEY);
     localStorage.removeItem(FOLDERS_KEY);
     localStorage.removeItem(SETTINGS_KEY);
     localStorage.removeItem(BADGES_KEY);
@@ -804,6 +884,7 @@ export const deleteAllUserData = async (): Promise<{ success: boolean; error?: s
     // Clear IndexedDB
     try {
         await del(LIBRARY_KEY);
+        await del(LIBRARY_IDB_UPDATED_AT_KEY);
     } catch (e) {
         console.error('Failed to clear IndexedDB:', e);
     }
