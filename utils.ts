@@ -543,16 +543,35 @@ export const parseInput = (text: string): Partial<Card>[] => {
     // Check if it's a full session export or just cards
     const rawCards = j.cards ? j.cards : (Array.isArray(j) ? (j[0]?.cards ? j[0].cards : j) : [j]);
 
-    return rawCards.map((c: any) => ({
-      term: Array.isArray(c.term) ? c.term : [String(c.term || 'Untitled')],
-      content: Array.isArray(c.content) ? c.content.join('\n') : String(c.content || ''),
-      year: c.year ? String(c.year) : undefined,
-      image: c.image ? String(c.image) : undefined,
+    return rawCards.map((c: any) => {
+      const normalizedCustomFields = Array.isArray(c.customFields)
+        ? c.customFields
+          .map((f: any) => ({
+            name: String(f?.name ?? '').trim(),
+            value: String(f?.value ?? '')
+          }))
+          .filter((f: { name: string; value: string }) => f.name.length > 0)
+        : undefined;
 
-      tags: Array.isArray(c.tags) ? c.tags : [],
-      mastery: Number(c.mastery || 0),
-      star: Boolean(c.star || 0)
-    }));
+      const normalizedTags = Array.isArray(c.tags)
+        ? c.tags.map((tag: any) => String(tag).trim()).filter(Boolean)
+        : undefined;
+
+      return {
+        id: typeof c.id === 'string' ? c.id : undefined,
+        term: Array.isArray(c.term) ? c.term : [String(c.term || 'Untitled')],
+        content: Array.isArray(c.content) ? c.content.join('\n') : String(c.content || ''),
+        year: c.year ? String(c.year) : undefined,
+        image: c.image ? String(c.image) : undefined,
+        termImage: c.termImage ? String(c.termImage) : undefined,
+        customFields: normalizedCustomFields && normalizedCustomFields.length > 0 ? normalizedCustomFields : undefined,
+        tags: normalizedTags && normalizedTags.length > 0 ? normalizedTags : undefined,
+        mastery: Number(c.mastery || 0),
+        star: Boolean(c.star || 0),
+        originalSetId: typeof c.originalSetId === 'string' ? c.originalSetId : undefined,
+        originalSetName: typeof c.originalSetName === 'string' ? c.originalSetName : undefined
+      };
+    });
   } catch (e) {
     // Fallback to Raw Separator format
     // Format: Term/Definition///Year ||| ImageURL

@@ -129,7 +129,7 @@ export const checkAndMigrate = async (): Promise<{
  */
 export const saveLibrary = async (
     sets: CardSet[],
-    options?: { ignoreConflicts?: boolean; folders?: Folder[] }
+    options?: { ignoreConflicts?: boolean; folders?: Folder[]; skipCloud?: boolean }
 ): Promise<{ success: boolean; savedToCloud: boolean; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] }> => {
     // Always save locally first for speed
     try {
@@ -139,7 +139,7 @@ export const saveLibrary = async (
     }
 
     const user = await getUser();
-    if (!user) {
+    if (!user || options?.skipCloud) {
         // console.log('[Storage] No user session - saving locally only');
         return { success: true, savedToCloud: false };
     }
@@ -148,6 +148,9 @@ export const saveLibrary = async (
     const cloudSets = sets.filter(s => !s.isLocalOnly);
 
     try {
+        // Best-effort snapshot backup of current cloud state before mutating files.
+        await storageV2.createCloudSafetyBackupIfNeeded();
+
         const conflicts: string[] = [];
         const conflictDetails: CloudConflictDetail[] = [];
         // console.log(`[Storage] Saving ${cloudSets.length} sets to Google Drive...`);
@@ -330,8 +333,15 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
         console.error('Failed to load from IndexedDB/LocalStorage:', e);
     }
 
-    if (!user) {
+    // Safety-first boot behavior:
+    // If local cache already has sets, do NOT let cloud replace them during initial load.
+    // Cloud reconciliation runs separately via syncCloudData() with no-loss merge logic.
+    if (localSets.length > 0) {
         return localSets.length > 0 ? localSets : undefined;
+    }
+
+    if (!user) {
+        return undefined;
     }
 
     // 2. Load from V2 Cloud
@@ -497,9 +507,11 @@ export const loadFolders = async (): Promise<Folder[]> => {
 // SETTINGS
 // ============================================================================
 
-export const saveSettings = async (settings: Settings) => {
+export const saveSettings = async (settings: Settings, options?: { skipCloud?: boolean }) => {
     // Save locally
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+
+    if (options?.skipCloud) return;
 
     const user = await getUser();
     if (!user) return;
@@ -583,9 +595,11 @@ export const loadBadges = async (): Promise<any[]> => {
 // TAGS
 // ============================================================================
 
-export const saveTags = async (tags: Tag[]) => {
+export const saveTags = async (tags: Tag[], options?: { skipCloud?: boolean }) => {
     // Save locally
     localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
+
+    if (options?.skipCloud) return;
 
     const user = await getUser();
     if (!user) return;
@@ -627,9 +641,11 @@ export const loadTags = async (): Promise<Tag[]> => {
 // STATS
 // ============================================================================
 
-export const saveStats = async (stats: { lifetimeCorrect: number }) => {
+export const saveStats = async (stats: { lifetimeCorrect: number }, options?: { skipCloud?: boolean }) => {
     // Save locally
     localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+
+    if (options?.skipCloud) return;
 
     const user = await getUser();
     if (!user) return;

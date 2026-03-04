@@ -3990,6 +3990,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             termImage: c.termImage || "",
             customFields: c.customFields || [],
             tags: c.tags || [],
+            originalCardId: c.id,
             star: c.star || false,
           };
         });
@@ -4120,6 +4121,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       return;
     }
 
+    const usedCardIds = new Set<string>();
+    const getStableCardId = (candidate?: string): string => {
+      if (candidate && !usedCardIds.has(candidate)) {
+        usedCardIds.add(candidate);
+        return candidate;
+      }
+      let nextId = generateId();
+      while (usedCardIds.has(nextId)) {
+        nextId = generateId();
+      }
+      usedCardIds.add(nextId);
+      return nextId;
+    };
+
     const cards: Card[] = builderRows
       .filter((row) => row.term.trim() || row.def.trim())
       .map((row) => {
@@ -4145,7 +4160,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           .filter((f) => f.name.length > 0);
 
         return {
-          id: generateId(),
+          id: getStableCardId(row.originalCardId),
           term: [termRaw],
           content: row.def.trim(),
           year: row.year.trim(),

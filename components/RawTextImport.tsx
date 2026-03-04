@@ -18,7 +18,6 @@ interface RawTextImportProps {
 
 const COMMON_TERM_DEF = ['/', ':', '-'];
 const COMMON_CARD = ['\\n\\n', '&&&', ';;;'];
-const COMMON_YEAR = ['///', ':::', '==='];
 
 export const RawTextImport: React.FC<RawTextImportProps> = ({
     onClose,
@@ -60,13 +59,6 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
     const [customCardSep, setCustomCardSep] = useState('');
     const [isCustomCardSep, setIsCustomCardSep] = useState(false);
 
-    const [yearSep, setYearSep] = useState('disable');
-    const [customYearSep, setCustomYearSep] = useState('');
-    const [isCustomYearSep, setIsCustomYearSep] = useState(false);
-
-    // Derived enableYear based on selection
-    const enableYear = yearSep !== 'disable' || (isCustomYearSep && customYearSep.trim().length > 0);
-
     // Bullet Point Logic
     const [bulletMarker, setBulletMarker] = useState('>');
     const [useBulletMarker, setUseBulletMarker] = useState(false);
@@ -81,11 +73,6 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
         // Handle escaped newline sequence for card separator if user typed "\n\n"
         const resolvedCardSep = (isCustomCardSep ? customCardSep : cardSep).replace(/\\n/g, '\n');
         const resolvedTermDefSep = isCustomTermDef ? customTermDef : termDefSep;
-        // Resolve Year Sep: if disabled, we ignore year splitting. 
-        // If 'disable', resolvedYearSep is null/ignored.
-        let resolvedYearSep = null;
-        if (isCustomYearSep) resolvedYearSep = customYearSep;
-        else if (yearSep !== 'disable') resolvedYearSep = yearSep;
 
         if (!resolvedCardSep || !resolvedTermDefSep) return [];
 
@@ -112,21 +99,13 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
 
             let term = '';
             let def = '';
-            let year = '';
 
             // Split Term and Rest
             const parts = rawCard.split(resolvedTermDefSep);
             if (parts.length > 0) {
                 term = parts[0].trim();
                 const rest = parts.slice(1).join(resolvedTermDefSep).trim();
-
-                if (resolvedYearSep) {
-                    const defParts = rest.split(resolvedYearSep);
-                    def = defParts[0].trim();
-                    year = defParts.slice(1).join(resolvedYearSep).trim();
-                } else {
-                    def = rest;
-                }
+                def = rest;
             }
 
             // Bullet Point Logic (Inline Mode): Check inside definition for lines starting with marker
@@ -145,7 +124,6 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                     term: [term], // Card type uses array for terms sometimes? check type def. 
                     // Wait, Card definition says term: string[]
                     content: def,
-                    year: year,
                     id: generateId(),
                     mastery: 0,
                     star: false
@@ -154,7 +132,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
         });
 
         return result;
-    }, [rawText, termDefSep, customTermDef, isCustomTermDef, cardSep, customCardSep, isCustomCardSep, yearSep, customYearSep, isCustomYearSep, enableYear, bulletMarker, useBulletMarker]);
+    }, [rawText, termDefSep, customTermDef, isCustomTermDef, cardSep, customCardSep, isCustomCardSep, bulletMarker, useBulletMarker]);
 
 
     // Preview Logic
@@ -205,32 +183,12 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
         setIsCustom: (val: boolean) => void,
         customVal: string,
         setCustomVal: (val: string) => void,
-        hasDisableOption: boolean = false,
         footer?: React.ReactNode
     ) => {
         return (
             <div className="bg-panel-2 p-4 rounded-xl border border-outline flex flex-col h-full">
                 <h4 className="text-sm font-bold text-muted mb-3 shrink-0">{label}</h4>
                 <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-                    {/* Disable Option (only for Year) */}
-                    {hasDisableOption && (
-                        <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className={clsx(
-                                "w-4 h-4 rounded-full border flex items-center justify-center transition-colors shrink-0",
-                                !isCustom && selected === 'disable' ? "border-accent bg-accent" : "border-muted group-hover:border-text"
-                            )}>
-                                {!isCustom && selected === 'disable' && <div className="w-1.5 h-1.5 bg-bg rounded-full" />}
-                            </div>
-                            <input
-                                type="radio"
-                                className="hidden"
-                                checked={!isCustom && selected === 'disable'}
-                                onChange={() => { setIsCustom(false); setSelected('disable'); }}
-                            />
-                            <span className="text-sm italic text-muted group-hover:text-text transition-colors">Disable</span>
-                        </label>
-                    )}
-
                     {options.map(opt => (
                         <label key={opt} className="flex items-center gap-3 cursor-pointer group">
                             <div className={clsx(
@@ -340,7 +298,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                     <div className="lg:col-span-8 flex flex-col gap-6 pr-2">
 
                         {/* Separators Configuration - Fixed Height Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
                             {renderRadioGroup(
                                 "Between Term & Definition",
                                 COMMON_TERM_DEF,
@@ -361,24 +319,11 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                                 setIsCustomCardSep,
                                 customCardSep,
                                 setCustomCardSep,
-                                false,
                                 (
                                     <div className="mt-2 text-[10px] text-muted bg-panel border bordering-outline px-2 py-1 rounded shadow-sm text-center">
                                         <code className="text-accent">{'\\n'}</code> for new line
                                     </div>
                                 )
-                            )}
-
-                            {renderRadioGroup(
-                                "Between Definition & Year",
-                                COMMON_YEAR,
-                                yearSep,
-                                setYearSep,
-                                isCustomYearSep,
-                                setIsCustomYearSep,
-                                customYearSep,
-                                setCustomYearSep,
-                                true // Has Disable Option
                             )}
                         </div>
 

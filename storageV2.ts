@@ -62,6 +62,9 @@ const CONFIG_CACHE_KEY = 'flashcardsish-config-v2';
 const STRUCTURE_CACHE_KEY = 'flashcardsish-structure-v2';
 const SET_CACHE_PREFIX = 'flashcardsish-set-';
 const DRIVE_FOLDER_ID_KEY = 'flashcardsish-drive-folder-id';
+const CLOUD_BACKUP_LAST_AT_KEY = 'flashcardsish-cloud-backup-last-at';
+const CLOUD_BACKUP_INTERVAL_MS = 10 * 60 * 1000;
+const CLOUD_BACKUP_MAX_FILES = 25;
 
 // ============================================================================
 // TYPES
@@ -427,6 +430,13 @@ const ensureSessionsFolder = async (parentFolderId: string): Promise<string> => 
     return await googleDrive.getOrCreateSubfolder(parentFolderId, 'sessions');
 };
 
+/**
+ * Get or create the 'backups' subfolder
+ */
+const ensureBackupsFolder = async (parentFolderId: string): Promise<string> => {
+    return await googleDrive.getOrCreateSubfolder(parentFolderId, 'backups');
+};
+
 // ============================================================================
 // CONFIG FILE OPERATIONS
 // ============================================================================
@@ -497,7 +507,7 @@ export const readConfig = async (forceCloud = false): Promise<{ config: ConfigFi
         if (hadError) {
             console.warn('[StorageV2] Config file was corrupted, using defaults');
             const defaultConfig = createDefaultConfig();
-            await writeConfig(defaultConfig);
+            // Non-destructive recovery: do not overwrite cloud config on parse failure.
             return { config: defaultConfig, wasCorrupted: true };
         }
 
@@ -613,7 +623,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
         if (hadError) {
             console.warn('[StorageV2] Structure file was corrupted, using defaults');
             const defaultStructure = createDefaultStructure();
-            await writeStructure(defaultStructure);
+            // Non-destructive recovery: do not overwrite cloud structure on parse failure.
             return { structure: defaultStructure, wasCorrupted: true };
         }
 
@@ -782,8 +792,7 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
                     topStreak: 0
                 };
 
-                // Save recovered version
-                await writeFlashcardSet(recoveredSet);
+                // Non-destructive recovery: do not overwrite cloud set with partial recovery.
                 await set(`${SET_CACHE_PREFIX}${setId}`, recoveredSet);
 
                 return {
@@ -1169,6 +1178,70 @@ export const loadBootData = async (forceCloud = true): Promise<{
 };
 
 /**
+ * Create a timestamped cloud snapshot backup before writes.
+ * Best-effort only: failures are logged but never block normal saves.
+ */
+export const createCloudSafetyBackupIfNeeded = async (): Promise<void> => {
+    const user = await getUser();
+    if (!user) return;
+
+    const lastBackupAtRaw = localStorage.getItem(CLOUD_BACKUP_LAST_AT_KEY);
+    const lastBackupAt = lastBackupAtRaw ? Number(lastBackupAtRaw) : 0;
+    if (Number.isFinite(lastBackupAt) && Date.now() - lastBackupAt < CLOUD_BACKUP_INTERVAL_MS) {
+        return;
+    }
+
+    try {
+        const folderId = await ensureDriveFolder();
+        const backupsFolderId = await ensureBackupsFolder(folderId);
+        const [{ config }, { structure }] = await Promise.all([
+            readConfig(true),
+            readStructure(true)
+        ]);
+
+        const allSetIds = new Set<string>();
+        structure.rootSets.forEach(id => allSetIds.add(id));
+        structure.folders.forEach(folder => folder.setIds.forEach(id => allSetIds.add(id)));
+
+        const librarySets: CardSet[] = [];
+        for (const setId of allSetIds) {
+            const { set: cloudSet } = await readFlashcardSet(setId, true);
+            if (cloudSet) {
+                librarySets.push(cloudSet);
+            }
+        }
+
+        const nowIso = new Date().toISOString();
+        const backupPayload = {
+            version: 'flashcardsish-cloud-backup-v1',
+            createdAt: nowIso,
+            config,
+            structure,
+            library_sets: librarySets
+        };
+        const filename = `cloud-backup-${nowIso.replace(/[:.]/g, '-')}.json`;
+        await googleDrive.writeFile(backupsFolderId, filename, JSON.stringify(backupPayload, null, 2), { ignoreConflicts: true });
+        localStorage.setItem(CLOUD_BACKUP_LAST_AT_KEY, Date.now().toString());
+
+        // Keep only the newest N backups.
+        const backupFiles = await googleDrive.listFilesInFolder(backupsFolderId, 'cloud-backup-');
+        if (backupFiles.length > CLOUD_BACKUP_MAX_FILES) {
+            const sorted = [...backupFiles].sort((a, b) => a.name.localeCompare(b.name));
+            const stale = sorted.slice(0, sorted.length - CLOUD_BACKUP_MAX_FILES);
+            for (const file of stale) {
+                try {
+                    await googleDrive.deleteFile(backupsFolderId, file.name);
+                } catch (error) {
+                    console.warn(`[StorageV2] Failed to prune backup ${file.name}:`, error);
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('[StorageV2] Failed to create cloud safety backup:', error);
+    }
+};
+
+/**
  * Delete all user data (GDPR compliance)
  */
 export const deleteAllDataV2 = async (): Promise<{ success: boolean; error?: string }> => {
@@ -1179,6 +1252,7 @@ export const deleteAllDataV2 = async (): Promise<{ success: boolean; error?: str
         localStorage.removeItem(CONFIG_CACHE_KEY);
         localStorage.removeItem(STRUCTURE_CACHE_KEY);
         localStorage.removeItem(DRIVE_FOLDER_ID_KEY);
+        localStorage.removeItem(CLOUD_BACKUP_LAST_AT_KEY);
 
         // Clear IndexedDB caches
         const keys = await import('idb-keyval').then(m => m.keys());

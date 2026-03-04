@@ -64,6 +64,7 @@ class GoogleDriveClient {
     private authChangeCallbacks: Array<(user: GoogleDriveUser | null) => void> = [];
     private currentUser: GoogleDriveUser | null = null;
     private rememberSession = true;
+    private rememberedEmailHint: string | null = null;
 
     private validateGoogleConfig(): void {
         if (!CLIENT_ID) {
@@ -89,7 +90,20 @@ class GoogleDriveClient {
         // 2. If we restored a token, verify it and set up GAPI
         if (this.accessToken) {
             this.setAuthToken();
-            await this.fetchUserInfo();
+            const status = await this.fetchUserInfo();
+            if (status === 'unauthorized') {
+                const recovered = this.hasRememberedSessionHint()
+                    ? await this.trySilentSignIn()
+                    : false;
+                if (!recovered) {
+                    this.finalizeSignedOutState();
+                }
+            }
+        } else if (this.hasRememberedSessionHint()) {
+            const recovered = await this.trySilentSignIn();
+            if (!recovered) {
+                this.finalizeSignedOutState();
+            }
         }
 
         // console.log('[GoogleDrive] Initialization complete');
@@ -98,7 +112,8 @@ class GoogleDriveClient {
     private restoreSession(): void {
         const restored = this.restoreFromStorage(localStorage) || this.restoreFromStorage(sessionStorage);
         if (!restored) {
-            this.clearStorage();
+            // Keep remembered local user metadata so we can attempt silent token refresh.
+            this.clearStorage({ preserveLocalUser: true });
         }
     }
 
@@ -106,6 +121,17 @@ class GoogleDriveClient {
         const token = storage.getItem(TOKEN_KEY);
         const expiry = storage.getItem(TOKEN_EXPIRY_KEY);
         const userJson = storage.getItem(USER_KEY);
+
+        if (userJson) {
+            try {
+                const parsedUser = JSON.parse(userJson) as Partial<GoogleDriveUser>;
+                if (typeof parsedUser.email === 'string' && parsedUser.email.trim()) {
+                    this.rememberedEmailHint = parsedUser.email.trim();
+                }
+            } catch {
+                // ignore malformed user cache
+            }
+        }
 
         if (!token || !expiry) {
             return false;
@@ -116,7 +142,6 @@ class GoogleDriveClient {
             console.warn('[GoogleDrive] Stored token expired');
             storage.removeItem(TOKEN_KEY);
             storage.removeItem(TOKEN_EXPIRY_KEY);
-            storage.removeItem(USER_KEY);
             return false;
         }
 
@@ -132,14 +157,93 @@ class GoogleDriveClient {
         return true;
     }
 
-    private clearStorage(): void {
+    private clearStorage(options: { preserveLocalUser?: boolean } = {}): void {
+        const { preserveLocalUser = false } = options;
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(TOKEN_EXPIRY_KEY);
-        localStorage.removeItem(USER_KEY);
+        if (!preserveLocalUser) {
+            localStorage.removeItem(USER_KEY);
+        }
         sessionStorage.removeItem(TOKEN_KEY);
         sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
         sessionStorage.removeItem(USER_KEY);
         this.fileModifiedAtCache.clear();
+    }
+
+    private hasRememberedSessionHint(): boolean {
+        return !!localStorage.getItem(USER_KEY);
+    }
+
+    private finalizeSignedOutState(): void {
+        this.accessToken = null;
+        this.currentUser = null;
+        this.rememberedEmailHint = null;
+        this.clearStorage();
+
+        if (this.gapiInitialized) {
+            window.gapi.client.setToken(null);
+        }
+
+        this.authChangeCallbacks.forEach(cb => cb(null));
+    }
+
+    private async processTokenResponse(response: any): Promise<boolean> {
+        if (response.error) {
+            console.error('[GoogleDrive] Token error:', response.error);
+            return false;
+        }
+
+        this.accessToken = response.access_token;
+
+        const storage = this.rememberSession ? localStorage : sessionStorage;
+        storage.setItem(TOKEN_KEY, this.accessToken!);
+        const expiresInSeconds =
+            typeof response.expires_in === 'number' && Number.isFinite(response.expires_in) && response.expires_in > 0
+                ? response.expires_in
+                : 3600;
+        const expiryTime = Date.now() + (expiresInSeconds * 1000) - (60 * 1000); // 1 minute buffer
+        storage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+
+        this.setAuthToken();
+        const status = await this.fetchUserInfo();
+        return status === 'ok';
+    }
+
+    private async requestAccessTokenWithPrompt(prompt: '' | 'select_account'): Promise<boolean> {
+        if (!this.tokenClient) {
+            return false;
+        }
+
+        return new Promise((resolve) => {
+            const originalCallback = this.tokenClient.callback;
+            this.tokenClient.callback = async (response: any) => {
+                this.tokenClient.callback = originalCallback;
+                try {
+                    const success = await this.processTokenResponse(response);
+                    resolve(success);
+                } catch (error) {
+                    console.error('[GoogleDrive] Token handling failed:', error);
+                    resolve(false);
+                }
+            };
+
+            try {
+                const request: { prompt: '' | 'select_account'; login_hint?: string } = { prompt };
+                if (prompt === '' && this.rememberedEmailHint) {
+                    request.login_hint = this.rememberedEmailHint;
+                }
+                this.tokenClient.requestAccessToken(request);
+            } catch (error) {
+                this.tokenClient.callback = originalCallback;
+                console.error('[GoogleDrive] Failed to request access token:', error);
+                resolve(false);
+            }
+        });
+    }
+
+    private async trySilentSignIn(): Promise<boolean> {
+        this.rememberSession = true;
+        return this.requestAccessTokenWithPrompt('');
     }
 
     private getFileCacheKey(folderId: string, filename: string): string {
@@ -209,23 +313,8 @@ class GoogleDriveClient {
                 client_id: CLIENT_ID,
                 scope: SCOPES,
                 callback: (response: any) => {
-                    // console.log('[GoogleDrive] Token response received');
-                    if (response.error) {
-                        console.error('[GoogleDrive] Token error:', response.error);
-                        return;
-                    }
-                    this.accessToken = response.access_token;
-
-                    const storage = this.rememberSession ? localStorage : sessionStorage;
-
-                    // Save to storage with expiry (response.expires_in is in seconds)
-                    storage.setItem(TOKEN_KEY, this.accessToken!);
-                    const expiryTime = Date.now() + (response.expires_in * 1000) - (60 * 1000); // 1 minute buffer
-                    storage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
-
-                    // console.log('[GoogleDrive] Access token obtained');
-                    this.setAuthToken();
-                    this.fetchUserInfo();
+                    // Keep default callback for fallback callers; explicit flows wrap this callback.
+                    void this.processTokenResponse(response);
                 },
             });
 
@@ -242,9 +331,9 @@ class GoogleDriveClient {
         }
     }
 
-    private async fetchUserInfo(): Promise<void> {
+    private async fetchUserInfo(): Promise<'ok' | 'unauthorized' | 'error'> {
         if (!this.accessToken) {
-            return;
+            return 'error';
         }
 
         try {
@@ -261,6 +350,7 @@ class GoogleDriveClient {
                     name: data.name,
                     picture: data.picture,
                 };
+                this.rememberedEmailHint = this.currentUser.email;
 
                 // Save user info to persistence
                 const storage = this.rememberSession ? localStorage : sessionStorage;
@@ -268,17 +358,28 @@ class GoogleDriveClient {
 
                 // console.log('[GoogleDrive] User info fetched:', this.currentUser.email);
                 this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
+                return 'ok';
             } else {
                 if (response.status === 401) {
-                    console.warn('[GoogleDrive] Token invalid or expired, clearing session');
-                    this.signOut();
+                    console.warn('[GoogleDrive] Token invalid or expired');
+                    this.accessToken = null;
+                    localStorage.removeItem(TOKEN_KEY);
+                    localStorage.removeItem(TOKEN_EXPIRY_KEY);
+                    sessionStorage.removeItem(TOKEN_KEY);
+                    sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+                    if (this.gapiInitialized) {
+                        window.gapi.client.setToken(null);
+                    }
+                    return 'unauthorized';
                 } else {
                     const errorText = await response.text();
                     console.error('[GoogleDrive] User info fetch failed:', errorText);
+                    return 'error';
                 }
             }
         } catch (error) {
             console.error('[GoogleDrive] Failed to fetch user info:', error);
+            return 'error';
         }
     }
 
@@ -292,27 +393,12 @@ class GoogleDriveClient {
             localStorage.removeItem(USER_KEY);
         }
 
-        return new Promise((resolve, reject) => {
-            if (!this.tokenClient) {
-                reject(new Error('Token client not initialized'));
-                return;
-            }
+        const success = await this.requestAccessTokenWithPrompt('select_account');
+        if (!success || !this.currentUser) {
+            throw new Error('Sign-in failed. Please try again.');
+        }
 
-            // Store resolve for callback
-            const originalCallback = this.tokenClient.callback;
-            this.tokenClient.callback = async (response: any) => {
-                await originalCallback(response);
-                if (response.error) {
-                    console.error('[GoogleDrive] Sign-in failed:', response.error);
-                    reject(new Error(response.error));
-                } else if (this.currentUser) {
-                    // console.log('[GoogleDrive] Sign-in successful:', this.currentUser.email);
-                    resolve(this.currentUser);
-                }
-            };
-
-            this.tokenClient.requestAccessToken({ prompt: 'select_account' });
-        });
+        return this.currentUser;
     }
 
     async signOut(): Promise<void> {
@@ -326,15 +412,7 @@ class GoogleDriveClient {
             } catch (e) { }
         }
 
-        this.accessToken = null;
-        this.currentUser = null;
-        this.clearStorage();
-
-        if (this.gapiInitialized) {
-            window.gapi.client.setToken(null);
-        }
-
-        this.authChangeCallbacks.forEach(cb => cb(null));
+        this.finalizeSignedOutState();
         // console.log('[GoogleDrive] Signed out');
     }
 

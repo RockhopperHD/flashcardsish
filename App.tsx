@@ -30,6 +30,7 @@ import { AppErrorBoundary } from './components/AppErrorBoundary';
 
 const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
 const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
+const LIBRARY_LOCAL_FALLBACK_KEY = 'flashcard-library-v3';
 
 const normalizeLoadedSet = (set: CardSet): CardSet => {
    const sanitized = sanitizeSet(sanitizeStrings(set));
@@ -103,19 +104,35 @@ const cardContentSignature = (card: CardSet['cards'][number]): string => JSON.st
    tags: normalizeStringArrayForSignature(card.tags || [])
 });
 
+const stableHash = (value: string): string => {
+   let hash = 0;
+   for (let i = 0; i < value.length; i += 1) {
+      hash = ((hash << 5) - hash) + value.charCodeAt(i);
+      hash |= 0;
+   }
+   return Math.abs(hash).toString(36);
+};
+
+const createConflictCardId = (baseId: string, signature: string, usedIds: Set<string>): string => {
+   const base = `${baseId}__merge_${stableHash(signature)}`;
+   if (!usedIds.has(base)) return base;
+
+   let counter = 2;
+   let candidate = `${base}_${counter}`;
+   while (usedIds.has(candidate)) {
+      counter += 1;
+      candidate = `${base}_${counter}`;
+   }
+   return candidate;
+};
+
 const mergeSetWithoutLosingCards = (localSet: CardSet, cloudSet: CardSet): CardSet => {
-   const cloudCards = cloudSet.cards || [];
    const localCards = localSet.cards || [];
-   const localById = new Map(localCards.map((card, index) => [card.id, { card, index }]));
-   const localSignatureBuckets = new Map<string, number[]>();
-   localCards.forEach((card, index) => {
-      const signature = cardContentSignature(card);
-      const bucket = localSignatureBuckets.get(signature) ?? [];
-      bucket.push(index);
-      localSignatureBuckets.set(signature, bucket);
-   });
-   const consumedLocalIndexes = new Set<number>();
-   const localContentPreferred = (localSet.lastPlayed || 0) > (cloudSet.lastPlayed || 0);
+   const cloudCards = cloudSet.cards || [];
+   const mergedCards = localCards.map(card => ({ ...card }));
+   const usedIds = new Set(mergedCards.map(card => card.id));
+   const localIndexById = new Map<string, number>();
+   const signatureToIndex = new Map<string, number>();
 
    const mergeProgressFields = (
       preferredContent: CardSet['cards'][number],
@@ -130,41 +147,60 @@ const mergeSetWithoutLosingCards = (localSet: CardSet, cloudSet: CardSet): CardS
       originalSetName: preferredContent.originalSetName || localCard.originalSetName || cloudCard.originalSetName
    });
 
-   const mergedCards = cloudCards.map(cloudCard => {
-      const localBySameId = localById.get(cloudCard.id);
-      if (localBySameId && !consumedLocalIndexes.has(localBySameId.index)) {
-         consumedLocalIndexes.add(localBySameId.index);
-         const localCard = localBySameId.card;
-         const contentChanged = cardContentSignature(localCard) !== cardContentSignature(cloudCard);
-         const preferredContent = localContentPreferred && contentChanged
-            ? localCard
-            : cloudCard;
-         return mergeProgressFields(preferredContent, localCard, cloudCard);
+   mergedCards.forEach((card, index) => {
+      localIndexById.set(card.id, index);
+      const signature = cardContentSignature(card);
+      if (!signatureToIndex.has(signature)) {
+         signatureToIndex.set(signature, index);
       }
-
-      const signature = cardContentSignature(cloudCard);
-      const signatureBucket = localSignatureBuckets.get(signature);
-      if (signatureBucket && signatureBucket.length > 0) {
-         let matchedIndex: number | undefined;
-         while (signatureBucket.length > 0 && matchedIndex === undefined) {
-            const candidate = signatureBucket.shift();
-            if (candidate === undefined) break;
-            if (!consumedLocalIndexes.has(candidate)) {
-               matchedIndex = candidate;
-            }
-         }
-         if (matchedIndex !== undefined) {
-            consumedLocalIndexes.add(matchedIndex);
-            const localCard = localCards[matchedIndex];
-            return mergeProgressFields(cloudCard, localCard, cloudCard);
-         }
-      }
-
-      return cloudCard;
    });
 
-   const localOnlyCards = localCards.filter((_, index) => !consumedLocalIndexes.has(index));
-   mergedCards.push(...localOnlyCards);
+   for (const cloudCard of cloudCards) {
+      const cloudSignature = cardContentSignature(cloudCard);
+      const localIndex = localIndexById.get(cloudCard.id);
+
+      if (localIndex !== undefined) {
+         const localCard = mergedCards[localIndex];
+         const localSignature = cardContentSignature(localCard);
+
+         // Keep local card content for existing IDs to avoid accidental overwrite.
+         mergedCards[localIndex] = mergeProgressFields(localCard, localCard, cloudCard);
+
+         // If same ID has different content, preserve cloud variant as an extra card.
+         if (localSignature !== cloudSignature && !signatureToIndex.has(cloudSignature)) {
+            const conflictId = createConflictCardId(cloudCard.id, cloudSignature, usedIds);
+            const conflictCard = mergeProgressFields(
+               { ...cloudCard, id: conflictId },
+               localCard,
+               cloudCard
+            );
+            mergedCards.push(conflictCard);
+            const newIndex = mergedCards.length - 1;
+            usedIds.add(conflictId);
+            localIndexById.set(conflictId, newIndex);
+            signatureToIndex.set(cloudSignature, newIndex);
+         }
+         continue;
+      }
+
+      const existingBySignature = signatureToIndex.get(cloudSignature);
+      if (existingBySignature !== undefined) {
+         const existingCard = mergedCards[existingBySignature];
+         mergedCards[existingBySignature] = mergeProgressFields(existingCard, existingCard, cloudCard);
+         continue;
+      }
+
+      let nextId = cloudCard.id;
+      if (usedIds.has(nextId)) {
+         nextId = createConflictCardId(cloudCard.id, cloudSignature, usedIds);
+      }
+      const mergedCloudCard = { ...cloudCard, id: nextId };
+      mergedCards.push(mergedCloudCard);
+      const newIndex = mergedCards.length - 1;
+      usedIds.add(nextId);
+      localIndexById.set(nextId, newIndex);
+      signatureToIndex.set(cloudSignature, newIndex);
+   }
 
    const useLocalMetadata = (localSet.lastPlayed || 0) > (cloudSet.lastPlayed || 0);
    const metadataSource = useLocalMetadata ? localSet : cloudSet;
@@ -1457,6 +1493,7 @@ const App: React.FC = () => {
       sets: CardSet[];
       folders: Folder[];
       ignoreConflicts?: boolean;
+      skipCloud?: boolean;
    } | null>(null);
 
    // Cloud loading state (pulling sets from Drive)
@@ -1482,13 +1519,20 @@ const App: React.FC = () => {
 
       pendingLibrarySaveRef.current = null;
       cloudSaveInFlightRef.current = true;
+      const syncLocked = syncInProgressRef.current || isCloudLoading;
+      const skipCloudWrite = Boolean(
+         payload.skipCloud ||
+         syncLocked ||
+         (user && !hasSyncedOnceRef.current && !payload.ignoreConflicts)
+      );
 
-      if (user) setCloudSyncStatus('saving');
+      if (user && !skipCloudWrite) setCloudSyncStatus('saving');
 
       try {
          const result = await saveLibrary(payload.sets, {
             ignoreConflicts: payload.ignoreConflicts,
-            folders: payload.folders
+            folders: payload.folders,
+            skipCloud: skipCloudWrite
          });
 
          if (result.conflicts && result.conflicts.length > 0 && !payload.ignoreConflicts) {
@@ -1516,6 +1560,8 @@ const App: React.FC = () => {
             setCloudSyncStatus('saved');
             if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
             cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('saved_faded'), 3000);
+         } else if (skipCloudWrite) {
+            setCloudSyncStatus('idle');
          } else if (result.error) {
             setCloudSyncStatus('error');
             if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
@@ -1533,15 +1579,24 @@ const App: React.FC = () => {
       }
    };
 
+   const cloneSetsForSave = (setsSnapshot: CardSet[]): CardSet[] => {
+      const sc = (globalThis as any).structuredClone;
+      if (typeof sc === 'function') {
+         return sc(setsSnapshot) as CardSet[];
+      }
+      return JSON.parse(JSON.stringify(setsSnapshot)) as CardSet[];
+   };
+
    const queueLibrarySave = (
       setsSnapshot: CardSet[],
       foldersSnapshot: Folder[],
-      options?: { ignoreConflicts?: boolean }
+      options?: { ignoreConflicts?: boolean; skipCloud?: boolean }
    ) => {
       pendingLibrarySaveRef.current = {
-         sets: [...setsSnapshot],
+         sets: cloneSetsForSave(setsSnapshot),
          folders: foldersSnapshot.map(folder => ({ ...folder, setIds: [...folder.setIds] })),
-         ignoreConflicts: options?.ignoreConflicts
+         ignoreConflicts: options?.ignoreConflicts,
+         skipCloud: options?.skipCloud
       };
       void flushPendingLibrarySave();
    };
@@ -1980,6 +2035,11 @@ const App: React.FC = () => {
 
    useEffect(() => {
       const timeSinceMount = Date.now() - mountTime.current;
+      const cloudWriteBlocked = Boolean(
+         syncInProgressRef.current ||
+         isCloudLoading ||
+         (user && !hasSyncedOnceRef.current)
+      );
 
       // HARD RULE: No saves allowed for first 3 seconds after mount
       if (timeSinceMount < 3000) {
@@ -1989,41 +2049,68 @@ const App: React.FC = () => {
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
-         queueLibrarySave(librarySets, folders);
+         queueLibrarySave(librarySets, folders, { skipCloud: cloudWriteBlocked });
       } else if (isLibraryLoaded && !hasCompletedInitialLoad.current) {
          console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save will be enabled in', (3000 - timeSinceMount), 'ms');
          hasCompletedInitialLoad.current = true;
+         queueLibrarySave(librarySets, folders, { skipCloud: cloudWriteBlocked });
       }
-   }, [librarySets, isLibraryLoaded]);
+   }, [librarySets, isLibraryLoaded, isCloudLoading, user]);
 
    useEffect(() => {
       latestLibrarySetsRef.current = librarySets;
    }, [librarySets]);
 
    useEffect(() => {
+      if (!isLibraryLoaded) return;
+      try {
+         localStorage.setItem(LIBRARY_LOCAL_FALLBACK_KEY, JSON.stringify(librarySets));
+      } catch (error) {
+         console.warn('[App] Failed to write local fallback library cache:', error);
+      }
+   }, [librarySets, isLibraryLoaded]);
+
+   useEffect(() => {
       const timeSinceMount = Date.now() - mountTime.current;
       if (timeSinceMount < 3000) return;
+
+      const cloudWriteBlocked = Boolean(
+         syncInProgressRef.current ||
+         isCloudLoading ||
+         (user && !hasSyncedOnceRef.current)
+      );
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING folders');
          saveFolders(folders, { skipCloud: true });
-         queueLibrarySave(latestLibrarySetsRef.current, folders);
+         queueLibrarySave(latestLibrarySetsRef.current, folders, { skipCloud: cloudWriteBlocked });
       }
-   }, [folders, isLibraryLoaded]);
+   }, [folders, isLibraryLoaded, isCloudLoading, user]);
 
    useEffect(() => {
       const timeSinceMount = Date.now() - mountTime.current;
       if (timeSinceMount < 3000) return;
 
+      const skipCloud = Boolean(
+         syncInProgressRef.current ||
+         isCloudLoading ||
+         (user && !hasSyncedOnceRef.current)
+      );
+
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING settings');
-         saveSettings(settings);
+         saveSettings(settings, { skipCloud });
       }
-   }, [settings, isLibraryLoaded]);
+   }, [settings, isLibraryLoaded, isCloudLoading, user]);
 
    useEffect(() => {
-      saveStats({ lifetimeCorrect });
-   }, [lifetimeCorrect]);
+      const skipCloud = Boolean(
+         syncInProgressRef.current ||
+         isCloudLoading ||
+         (user && !hasSyncedOnceRef.current)
+      );
+      saveStats({ lifetimeCorrect }, { skipCloud });
+   }, [lifetimeCorrect, isCloudLoading, user]);
 
    useEffect(() => {
       console.log('App: settings.darkMode is now:', settings.darkMode);
@@ -2136,9 +2223,20 @@ const App: React.FC = () => {
    const handleResumeSession = (session: CardSet) => {
       // Sanitize and normalize before entering session flow.
       const sanitized = normalizeLoadedSet(session);
+      const resumedSession = {
+         ...sanitized,
+         isSessionActive: true,
+         lastPlayed: Date.now()
+      };
 
       // Update in library with sanitized version
-      setLibrarySets(prev => prev.map(s => s.id === session.id ? sanitized : s));
+      setLibrarySets(prev => {
+         const exists = prev.some(s => s.id === session.id);
+         if (exists) {
+            return prev.map(s => s.id === session.id ? resumedSession : s);
+         }
+         return [resumedSession, ...prev];
+      });
 
       setActiveSetId(session.id);
       setTimerStart(Date.now());
@@ -2196,12 +2294,16 @@ const App: React.FC = () => {
 
       const newSessionData = {
          ...updatedSession,
+         isSessionActive: true,
          elapsedTime: newElapsedTime,
          lastPlayed: now
       };
 
       setLibrarySets(prev => {
-         let nextLibrary = prev.map(s => s.id === updatedSession.id ? newSessionData : s);
+         const exists = prev.some(s => s.id === updatedSession.id);
+         let nextLibrary = exists
+            ? prev.map(s => s.id === updatedSession.id ? newSessionData : s)
+            : [newSessionData, ...prev];
 
          if (updatedSession.isMultistudy) {
             const updatedCardsByScopedId = new Map<string, typeof updatedSession.cards[number]>();
@@ -2390,7 +2492,13 @@ const App: React.FC = () => {
             forceAiSetupOpen={forceAiSetupOpen}
             onUpdateTags={(newTags) => {
                setTags(newTags);
-               saveTags(newTags);
+               saveTags(newTags, {
+                  skipCloud: Boolean(
+                     syncInProgressRef.current ||
+                     isCloudLoading ||
+                     (user && !hasSyncedOnceRef.current)
+                  )
+               });
             }}
             onOpenPrivacy={() => setIsPrivacyOpen(true)}
          />
@@ -2716,7 +2824,13 @@ const App: React.FC = () => {
                   tags={tags}
                   onUpdateTags={(newTags) => {
                      setTags(newTags);
-                     saveTags(newTags);
+                     saveTags(newTags, {
+                        skipCloud: Boolean(
+                           syncInProgressRef.current ||
+                           isCloudLoading ||
+                           (user && !hasSyncedOnceRef.current)
+                        )
+                     });
                   }}
                   appliedTags={appliedTags}
                   onOpenSettings={() => {
