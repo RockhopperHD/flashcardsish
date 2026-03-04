@@ -14,7 +14,7 @@ import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
-import { saveLibrary, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, CloudConflictDetail } from './storage';
+import { saveLibrary, saveDirtySets, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, CloudConflictDetail } from './storage';
 import { sanitizeStrings, readFlashcardSet, readStructure } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { UserModal } from './components/UserModal';
@@ -1498,6 +1498,11 @@ const App: React.FC = () => {
       skipCloud?: boolean;
    } | null>(null);
 
+   // V3: Per-set dirty tracking
+   const dirtySetIdsRef = useRef<Set<string>>(new Set());
+   const structureChangedRef = useRef(false);
+   const saveDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
    // Cloud loading state (pulling sets from Drive)
    const [isCloudLoading, setIsCloudLoading] = useState(false);
    const syncInProgressRef = useRef(false);
@@ -1531,11 +1536,38 @@ const App: React.FC = () => {
       if (user && !skipCloudWrite) setCloudSyncStatus('saving');
 
       try {
-         const result = await saveLibrary(payload.sets, {
-            ignoreConflicts: payload.ignoreConflicts,
-            folders: payload.folders,
-            skipCloud: skipCloudWrite
-         });
+         // V3: Use dirty-set save for targeted writes, fall back to full save for ignoreConflicts (overwrite)
+         let result: { success: boolean; savedToCloud: boolean; savedSetIds?: string[]; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] };
+
+         if (payload.ignoreConflicts) {
+            // Full save path — used for conflict overwrite resolution
+            result = await saveLibrary(payload.sets, {
+               ignoreConflicts: true,
+               folders: payload.folders,
+               skipCloud: skipCloudWrite
+            });
+         } else {
+            // V3 targeted save — only write dirty sets
+            const dirtyIds = new Set(dirtySetIdsRef.current);
+            const shouldWriteStructure = structureChangedRef.current;
+
+            result = await saveDirtySets(payload.sets, dirtyIds, {
+               ignoreConflicts: false,
+               folders: payload.folders,
+               skipCloud: skipCloudWrite,
+               structureChanged: shouldWriteStructure
+            });
+
+            // Clear the dirty sets that were successfully saved
+            if (result.savedSetIds) {
+               for (const id of result.savedSetIds) {
+                  dirtySetIdsRef.current.delete(id);
+               }
+            }
+            if (shouldWriteStructure && result.savedToCloud) {
+               structureChangedRef.current = false;
+            }
+         }
 
          if (result.conflicts && result.conflicts.length > 0 && !payload.ignoreConflicts) {
             setCloudConflicts(result.conflictDetails || result.conflicts.map((setName, idx) => ({
@@ -1591,12 +1623,36 @@ const App: React.FC = () => {
       return JSON.parse(JSON.stringify(setsSnapshot)) as CardSet[];
    };
 
+   /**
+    * V3: Mark specific sets as dirty so they get saved to cloud on next flush.
+    */
+   const markSetDirty = (setId: string) => {
+      dirtySetIdsRef.current.add(setId);
+   };
+
+   /**
+    * V3: Mark all sets dirty (used for full overwrite scenarios).
+    */
+   const markAllSetsDirty = (sets: CardSet[]) => {
+      for (const s of sets) {
+         dirtySetIdsRef.current.add(s.id);
+      }
+   };
+
    const queueLibrarySave = (
       setsSnapshot: CardSet[],
       foldersSnapshot: Folder[],
-      options?: { ignoreConflicts?: boolean; skipCloud?: boolean }
+      options?: { ignoreConflicts?: boolean; skipCloud?: boolean; changedSetIds?: string[] }
    ) => {
       hasPendingLocalLibraryChangesRef.current = true;
+
+      // V3: If specific set IDs are provided, only mark those dirty
+      if (options?.changedSetIds) {
+         for (const id of options.changedSetIds) {
+            dirtySetIdsRef.current.add(id);
+         }
+      }
+
       pendingLibrarySaveRef.current = {
          sets: cloneSetsForSave(setsSnapshot),
          folders: foldersSnapshot.map(folder => ({ ...folder, setIds: [...folder.setIds] })),
@@ -1642,6 +1698,14 @@ const App: React.FC = () => {
                      merged[localIndex] = mergeSetWithoutLosingCards(localSet, cloudSet);
                   }
                });
+
+               // V3: Rebuild the snapshot so auto-save doesn't see merged sets as dirty.
+               // The merge result IS the correct state — no need to re-upload to cloud.
+               const freshSnapshot = new Map<string, string>();
+               for (const s of merged) {
+                  freshSnapshot.set(s.id, JSON.stringify(s));
+               }
+               prevLibrarySnapshotRef.current = freshSnapshot;
 
                return merged;
             });
@@ -1720,12 +1784,21 @@ const App: React.FC = () => {
             cloudById.set(conflictId, normalized);
          }
 
-         setLibrarySets(prev =>
-            prev.map(localSet => {
+         setLibrarySets(prev => {
+            const resolved = prev.map(localSet => {
                if (!conflictIds.has(localSet.id)) return localSet;
                return cloudById.get(localSet.id) ?? localSet;
-            })
-         );
+            });
+
+            // V3: Rebuild snapshot so cloud-sourced data isn't re-uploaded
+            const freshSnapshot = new Map<string, string>();
+            for (const s of resolved) {
+               freshSnapshot.set(s.id, JSON.stringify(s));
+            }
+            prevLibrarySnapshotRef.current = freshSnapshot;
+
+            return resolved;
+         });
 
          setFolders(structure.folders);
 
@@ -1980,11 +2053,23 @@ const App: React.FC = () => {
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
          writeLibraryLocalFallbackSnapshot();
 
+         // V3: If there's a debounced cloud save pending, flush it now
+         if (saveDebounceTimerRef.current && dirtySetIdsRef.current.size > 0) {
+            clearTimeout(saveDebounceTimerRef.current);
+            saveDebounceTimerRef.current = null;
+            // Queue the save immediately (it won't complete before unload, but the local fallback is safe)
+            queueLibrarySave(latestLibrarySetsRef.current, folders, {
+               skipCloud: false,
+               changedSetIds: Array.from(dirtySetIdsRef.current)
+            });
+         }
+
          const hasPendingSave = (
             cloudSyncStatus === 'saving' ||
             cloudSaveInFlightRef.current ||
             pendingLibrarySaveRef.current !== null ||
-            hasPendingLocalLibraryChangesRef.current
+            hasPendingLocalLibraryChangesRef.current ||
+            dirtySetIdsRef.current.size > 0
          );
 
          if (hasPendingSave) {
@@ -2066,6 +2151,8 @@ const App: React.FC = () => {
    // CRITICAL: We need to ensure the save effects don't fire during initial load OR hot reloads
    const hasCompletedInitialLoad = useRef(false);
    const mountTime = useRef(Date.now());
+   // V3: Snapshot of previous library state for dirty detection
+   const prevLibrarySnapshotRef = useRef<Map<string, string>>(new Map());
 
    useEffect(() => {
       if (!isLibraryLoaded) return;
@@ -2078,14 +2165,82 @@ const App: React.FC = () => {
 
       if (!hasCompletedInitialLoad.current) {
          hasCompletedInitialLoad.current = true;
+         // V3: Build initial snapshot for dirty detection
+         const snapshot = new Map<string, string>();
+         for (const s of librarySets) {
+            snapshot.set(s.id, JSON.stringify(s));
+         }
+         prevLibrarySnapshotRef.current = snapshot;
          console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save is now enabled.');
          return;
       }
 
+      // V3: Detect which sets actually changed
+      const prevSnapshot = prevLibrarySnapshotRef.current;
+      const changedSetIds: string[] = [];
+      const newSnapshot = new Map<string, string>();
+      let setsAdded = false;
+      let setsRemoved = false;
+
+      for (const s of librarySets) {
+         const serialized = JSON.stringify(s);
+         newSnapshot.set(s.id, serialized);
+         const prev = prevSnapshot.get(s.id);
+         if (prev !== serialized) {
+            changedSetIds.push(s.id);
+         }
+         if (!prev) {
+            setsAdded = true;
+         }
+      }
+
+      // Check for removed sets
+      for (const prevId of prevSnapshot.keys()) {
+         if (!newSnapshot.has(prevId)) {
+            setsRemoved = true;
+            break;
+         }
+      }
+
+      prevLibrarySnapshotRef.current = newSnapshot;
+
+      // If sets were added or removed, mark structure as changed
+      if (setsAdded || setsRemoved) {
+         structureChangedRef.current = true;
+      }
+
+      if (changedSetIds.length === 0 && !setsAdded && !setsRemoved) {
+         return; // Nothing actually changed, skip save entirely
+      }
+
       hasPendingLocalLibraryChangesRef.current = true;
 
-      console.log('[App] AUTO-SAVING library:', librarySets.length, 'sets');
-      queueLibrarySave(librarySets, folders, { skipCloud: cloudWriteBlocked });
+      // V3: Debounce cloud saves (2s) but save locally immediately
+      if (saveDebounceTimerRef.current) {
+         clearTimeout(saveDebounceTimerRef.current);
+      }
+
+      console.log(`[App V3] ${changedSetIds.length} set(s) changed, debouncing cloud save...`);
+
+      // Save locally right away
+      const localOnlyPayload = {
+         sets: cloneSetsForSave(librarySets),
+         folders: folders.map(folder => ({ ...folder, setIds: [...folder.setIds] })),
+         skipCloud: true
+      };
+      pendingLibrarySaveRef.current = localOnlyPayload;
+      void flushPendingLibrarySave();
+
+      // Debounce the cloud save
+      if (!cloudWriteBlocked) {
+         saveDebounceTimerRef.current = setTimeout(() => {
+            console.log(`[App V3] Flushing ${changedSetIds.length} dirty set(s) to cloud`);
+            queueLibrarySave(latestLibrarySetsRef.current, folders, {
+               skipCloud: false,
+               changedSetIds
+            });
+         }, 2000);
+      }
    }, [librarySets, isLibraryLoaded, isCloudLoading, user]);
 
    useEffect(() => {
@@ -2114,6 +2269,7 @@ const App: React.FC = () => {
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
          console.log('[App] AUTO-SAVING folders');
+         structureChangedRef.current = true;
          saveFolders(folders, { skipCloud: true });
          queueLibrarySave(latestLibrarySetsRef.current, folders, { skipCloud: cloudWriteBlocked });
       }

@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
     nextFieldKey1: 'Tab'
 };
 
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 3;
 
 // Local storage keys for caching
 const CONFIG_CACHE_KEY = 'flashcardsish-config-v2';
@@ -77,6 +77,10 @@ export interface ConfigFile {
     lastUsedSets: string[]; // IDs of last 3 used sets for preloading
 }
 
+export interface SetManifestEntry {
+    modifiedAt: number; // ms timestamp of last content change
+}
+
 export interface StructureFile {
     _WARNING: string[];
     version: number;
@@ -87,6 +91,7 @@ export interface StructureFile {
     stats: {
         lifetimeCorrect: number;
     };
+    setManifest: Record<string, SetManifestEntry>; // V3: per-set modification metadata
 }
 
 export interface FlashcardFile {
@@ -109,6 +114,7 @@ export interface FlashcardFile {
     isMultistudy?: boolean;
     sourceSetIds?: string[];
     isLocalOnly?: boolean;
+    modifiedAt?: number; // V3: ms timestamp of last save
 }
 
 export interface SessionFile {
@@ -173,7 +179,8 @@ const createDefaultStructure = (): StructureFile => ({
     tags: [],
     stats: {
         lifetimeCorrect: 0
-    }
+    },
+    setManifest: {}
 });
 
 /**
@@ -269,7 +276,7 @@ const isValidCard = (card: any): card is Card => {
 /**
  * Convert a CardSet to FlashcardFile format
  */
-const setToFile = (set: CardSet): FlashcardFile => ({
+const setToFile = (set: CardSet, modifiedAt?: number): FlashcardFile => ({
     version: set.version || CURRENT_VERSION,
     id: set.id,
     name: set.name,
@@ -288,7 +295,8 @@ const setToFile = (set: CardSet): FlashcardFile => ({
     isSessionActive: set.isSessionActive,
     isMultistudy: set.isMultistudy,
     sourceSetIds: set.sourceSetIds,
-    isLocalOnly: set.isLocalOnly
+    isLocalOnly: set.isLocalOnly,
+    modifiedAt: modifiedAt ?? Date.now()
 });
 
 /**
@@ -598,6 +606,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
                     badges: data.badges ?? defaults.badges,
                     folders: data.folders ?? defaults.folders,
                     rootSets: data.rootSets ?? defaults.rootSets,
+                    setManifest: data.setManifest ?? defaults.setManifest,
                 };
                 return { structure: merged, wasCorrupted: false };
             }
@@ -637,6 +646,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
             badges: data.badges ?? defaults.badges,
             folders: data.folders ?? defaults.folders,
             rootSets: data.rootSets ?? defaults.rootSets,
+            setManifest: data.setManifest ?? defaults.setManifest,
         };
 
         // Cache locally
@@ -833,7 +843,8 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
  * Write a flashcard set file
  */
 export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions): Promise<void> => {
-    const file = setToFile(cardSet);
+    const now = Date.now();
+    const file = setToFile(cardSet, now);
 
     // Cache locally
     await set(`${SET_CACHE_PREFIX}${cardSet.id}`, cardSet);
@@ -855,6 +866,18 @@ export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions
             JSON.stringify(file, null, 2),
             { ignoreConflicts: options?.ignoreConflicts }
         );
+
+        // V3: Update set manifest entry in local structure cache
+        // (Full structure write happens in saveLibrary / saveDirtySets)
+        try {
+            const cached = localStorage.getItem(STRUCTURE_CACHE_KEY);
+            if (cached) {
+                const structure = JSON.parse(cached) as StructureFile;
+                if (!structure.setManifest) structure.setManifest = {};
+                structure.setManifest[cardSet.id] = { modifiedAt: now };
+                localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(structure));
+            }
+        } catch (_) { /* best effort */ }
     } catch (error) {
         console.error(`[StorageV2] Failed to write set ${cardSet.id}:`, error);
         throw error;

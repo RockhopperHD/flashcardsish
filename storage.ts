@@ -227,6 +227,7 @@ export const saveLibrary = async (
         const folderIds = new Set(sourceFolders.map(folder => folder.id));
         const folderMembership = new Map<string, string[]>();
         const rootSets: string[] = [];
+        const now = Date.now();
 
         for (const cardSet of cloudSets) {
             if (cardSet.folderId && folderIds.has(cardSet.folderId)) {
@@ -246,6 +247,12 @@ export const saveLibrary = async (
         structure.rootSets = rootSets;
         structure.folders = normalizedFolders;
 
+        // V3: Update manifest for all written sets
+        if (!structure.setManifest) structure.setManifest = {};
+        for (const cardSet of cloudSets) {
+            structure.setManifest[cardSet.id] = { modifiedAt: now };
+        }
+
         await storageV2.writeStructure(structure);
         // console.log(`[Storage] Successfully saved ${cloudSets.length} sets to Google Drive`);
         return { success: true, savedToCloud: true };
@@ -253,6 +260,127 @@ export const saveLibrary = async (
         const msg = error instanceof Error ? error.message : String(error);
         console.error('[Storage] Failed to save library to Google Drive:', msg);
         return { success: true, savedToCloud: false, error: msg };
+    }
+};
+
+/**
+ * V3: Save only the sets that have actually changed (dirty sets).
+ * This avoids re-uploading every set when only one card was edited.
+ * Also updates structure.json for folder/set membership if needed.
+ */
+export const saveDirtySets = async (
+    allSets: CardSet[],
+    dirtySetIds: Set<string>,
+    options?: { ignoreConflicts?: boolean; folders?: Folder[]; skipCloud?: boolean; structureChanged?: boolean }
+): Promise<{ success: boolean; savedToCloud: boolean; savedSetIds: string[]; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] }> => {
+    // Always save full library locally for fast offline access
+    const localWriteTimestamp = Date.now();
+    try {
+        await writeLibraryToIndexedDb(allSets, localWriteTimestamp);
+    } catch (error) {
+        console.error('Failed to save library to IndexedDB:', error);
+    }
+    writeLibraryToLocalFallback(allSets, localWriteTimestamp);
+
+    const savedSetIds: string[] = [];
+
+    const user = await getUser();
+    if (!user || options?.skipCloud) {
+        return { success: true, savedToCloud: false, savedSetIds };
+    }
+
+    // Only write dirty cloud sets
+    const dirtySets = allSets.filter(s => dirtySetIds.has(s.id) && !s.isLocalOnly);
+
+    if (dirtySets.length === 0 && !options?.structureChanged) {
+        return { success: true, savedToCloud: false, savedSetIds };
+    }
+
+    try {
+        const conflicts: string[] = [];
+        const conflictDetails: CloudConflictDetail[] = [];
+        console.log(`[Storage V3] Saving ${dirtySets.length} dirty sets to Google Drive...`);
+
+        // Write only the dirty sets
+        for (const cardSet of dirtySets) {
+            try {
+                await storageV2.writeFlashcardSet(cardSet, { ignoreConflicts: options?.ignoreConflicts });
+                savedSetIds.push(cardSet.id);
+            } catch (error: any) {
+                if (error?.code === 'CLOUD_CONFLICT' || error?.name === 'DriveConflictError') {
+                    conflicts.push(cardSet.name || cardSet.id);
+                    try {
+                        const { set: cloudSet } = await storageV2.readFlashcardSet(cardSet.id, true);
+                        conflictDetails.push(buildConflictDetail(cardSet, cloudSet, {
+                            localModifiedAt: error?.expectedModifiedTime,
+                            cloudModifiedAt: error?.actualModifiedTime
+                        }));
+                    } catch {
+                        conflictDetails.push(buildConflictDetail(cardSet, null, {
+                            localModifiedAt: error?.expectedModifiedTime,
+                            cloudModifiedAt: error?.actualModifiedTime
+                        }));
+                    }
+                    continue;
+                }
+                throw error;
+            }
+        }
+
+        if (conflicts.length > 0 && !options?.ignoreConflicts) {
+            return {
+                success: false,
+                savedToCloud: false,
+                savedSetIds,
+                error: 'Cloud conflict detected',
+                conflicts,
+                conflictDetails
+            };
+        }
+
+        // Only rebuild structure if explicitly told or if we wrote sets
+        if (options?.structureChanged || savedSetIds.length > 0) {
+            const { structure } = await storageV2.readStructure();
+            const cloudSets = allSets.filter(s => !s.isLocalOnly);
+            const sourceFolders = options?.folders ?? structure.folders;
+            const folderIds = new Set(sourceFolders.map(folder => folder.id));
+            const folderMembership = new Map<string, string[]>();
+            const rootSets: string[] = [];
+            const now = Date.now();
+
+            for (const cardSet of cloudSets) {
+                if (cardSet.folderId && folderIds.has(cardSet.folderId)) {
+                    const bucket = folderMembership.get(cardSet.folderId) ?? [];
+                    bucket.push(cardSet.id);
+                    folderMembership.set(cardSet.folderId, bucket);
+                    continue;
+                }
+                rootSets.push(cardSet.id);
+            }
+
+            const normalizedFolders = sourceFolders.map(folder => ({
+                ...folder,
+                setIds: folderMembership.get(folder.id) ?? []
+            }));
+
+            structure.rootSets = rootSets;
+            structure.folders = normalizedFolders;
+
+            // V3: Update manifest only for sets we actually wrote
+            if (!structure.setManifest) structure.setManifest = {};
+            for (const setId of savedSetIds) {
+                structure.setManifest[setId] = { modifiedAt: now };
+            }
+
+            await storageV2.writeStructure(structure);
+        }
+
+        console.log(`[Storage V3] Successfully saved ${savedSetIds.length} dirty sets to Google Drive`);
+        return { success: true, savedToCloud: true, savedSetIds };
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[Storage V3] Failed to save dirty sets to Google Drive:', msg);
+        return { success: true, savedToCloud: false, savedSetIds, error: msg };
     }
 };
 

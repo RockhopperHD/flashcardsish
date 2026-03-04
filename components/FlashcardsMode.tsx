@@ -50,6 +50,11 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
     onExit,
     onUpdateSet
 }) => {
+    const getCardKey = useCallback((card: Card): string => {
+        if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
+        return card.id;
+    }, [set.isMultistudy]);
+
     // Sub-mode selection
     const [subMode, setSubMode] = useState<FlashcardsSubMode | null>(null);
 
@@ -69,6 +74,10 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         }
         return cards;
     }, [set.cards, settings.starredOnly]);
+    const baseCardKeys = useMemo(
+        () => baseCards.map(getCardKey).join('|'),
+        [baseCards, getCardKey]
+    );
 
     // Working deck (can be shuffled)
     const [deck, setDeck] = useState<Card[]>(baseCards);
@@ -99,7 +108,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         setCurrentIndex(0);
         setIsFlipped(false);
         setShuffled(settings.shuffleCards);
-    }, [baseCards, settings.shuffleCards]);
+    }, [baseCardKeys, settings.shuffleCards]);
 
     // Current card
     const currentCard = deck[currentIndex] || null;
@@ -116,11 +125,6 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         if (!currentCard) return null;
         return showTermFirst ? currentCard.content : currentCard.term.join(' / ');
     }, [currentCard, showTermFirst]);
-
-    const getCardKey = useCallback((card: Card): string => {
-        if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
-        return card.id;
-    }, [set.isMultistudy]);
 
     // Memoize a random message when round finishes
     const roundMessage = useMemo(() => {
@@ -172,15 +176,56 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
 
     // Flip card
     const flipCard = useCallback(() => {
-        setIsFlipped(!isFlipped);
-    }, [isFlipped]);
+        setIsFlipped(prev => !prev);
+    }, []);
+
+    const flipKey1 = settings.flipCardKey1 || ' ';
+    const flipKey2 = settings.flipCardKey2 || 'Enter';
+
+    const doesKeyMatch = useCallback((pressedKey: string, targetKey?: string, pressedCode?: string) => {
+        if (!targetKey) return false;
+        if (targetKey === ' ') return pressedKey === ' ' || pressedCode === 'Space';
+        return pressedKey === targetKey || pressedKey.toLowerCase() === targetKey.toLowerCase();
+    }, []);
+
+    const formatKeyHint = useCallback((key: string) => {
+        if (key === ' ') return 'SPACE';
+        if (key === 'ArrowLeft') return '←';
+        if (key === 'ArrowRight') return '→';
+        if (key === 'ArrowUp') return '↑';
+        if (key === 'ArrowDown') return '↓';
+        if (key === 'Escape') return 'ESC';
+        if (key.length === 1) return key.toUpperCase();
+        return key.toUpperCase();
+    }, []);
+
+    const flipHint = useMemo(() => {
+        const uniqueKeys = Array.from(new Set([flipKey1, flipKey2].filter(Boolean)));
+        return uniqueKeys.map(formatKeyHint).join(' / ');
+    }, [flipKey1, flipKey2, formatKeyHint]);
 
     // Toggle star
     const toggleStar = useCallback(() => {
         if (!currentCard) return;
         const currentCardKey = getCardKey(currentCard);
+        const sourceCard = set.cards.find(c => getCardKey(c) === currentCardKey);
+        const nextStar = sourceCard ? !sourceCard.star : !currentCard.star;
+        const syncCardStar = (card: Card): Card =>
+            getCardKey(card) === currentCardKey ? { ...card, star: nextStar } : card;
+
+        setDeck(prev => prev.map(syncCardStar));
+        setSortState(prev => ({
+            reviewPile: prev.reviewPile.map(syncCardStar),
+            gotItPile: prev.gotItPile.map(syncCardStar),
+            history: prev.history.map(entry =>
+                getCardKey(entry.card) === currentCardKey
+                    ? { ...entry, card: { ...entry.card, star: nextStar } }
+                    : entry
+            )
+        }));
+
         const newCards = set.cards.map(c =>
-            getCardKey(c) === currentCardKey ? { ...c, star: !c.star } : c
+            getCardKey(c) === currentCardKey ? { ...c, star: nextStar } : c
         );
         onUpdateSet({ ...set, cards: newCards });
     }, [currentCard, set, onUpdateSet, getCardKey]);
@@ -286,7 +331,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         const handleKeyDown = (e: KeyboardEvent) => {
             // Round finished handling (Space or Enter to continue)
             if (subMode === 'sort' && isRoundFinished) {
-                if (e.code === 'Space' || e.code === 'Enter') {
+                if (doesKeyMatch(e.key, ' ', e.code) || doesKeyMatch(e.key, 'Enter', e.code)) {
                     e.preventDefault();
                     startNextRound();
                     return;
@@ -298,8 +343,8 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                 }
             }
 
-            // Space to flip
-            if (e.code === 'Space') {
+            // Flip card keybinds
+            if (doesKeyMatch(e.key, flipKey1, e.code) || doesKeyMatch(e.key, flipKey2, e.code)) {
                 e.preventDefault();
                 flipCard();
             }
@@ -333,7 +378,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [subMode, isRoundFinished, flipCard, goNext, goPrev, sortGotIt, sortReview, sortUndo, startNextRound]);
+    }, [subMode, isRoundFinished, flipCard, goNext, goPrev, sortGotIt, sortReview, sortUndo, startNextRound, flipKey1, flipKey2, doesKeyMatch]);
 
     // Reset stack mode
     const resetStack = useCallback(() => {
@@ -787,7 +832,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                                         className="flex items-center gap-2 px-12 py-4 rounded-xl font-bold text-lg transition-all bg-accent text-bg hover:opacity-90 shadow-xl shadow-accent/20"
                                     >
                                         Start Next Round
-                                        <span className="ml-2 px-2 py-0.5 bg-bg/20 rounded text-[10px] uppercase">Space</span>
+                                        <span className="ml-2 px-2 py-0.5 bg-bg/20 rounded text-[10px] uppercase">Space / Enter</span>
                                     </button>
 
                                     <button
@@ -837,7 +882,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
 
             {/* Keyboard hints */}
             <div className="mt-6 flex justify-center gap-4 text-xs text-muted opacity-60">
-                <span><kbd className="px-1.5 py-0.5 bg-panel-2 rounded border border-outline font-mono">SPACE</kbd> flip</span>
+                <span><kbd className="px-1.5 py-0.5 bg-panel-2 rounded border border-outline font-mono">{flipHint}</kbd> flip</span>
                 {subMode === 'stack' && (
                     <>
                         <span><kbd className="px-1.5 py-0.5 bg-panel-2 rounded border border-outline font-mono">←</kbd> prev</span>
