@@ -28,12 +28,14 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapi
 const TOKEN_KEY = 'flashcardsish-google-token';
 const USER_KEY = 'flashcardsish-google-user';
 const TOKEN_EXPIRY_KEY = 'flashcardsish-google-token-expiry';
+const USER_JOINED_AT_MAP_KEY = 'flashcardsish-user-joined-at-map';
 
 export interface GoogleDriveUser {
     id: string;
     email: string;
     name: string;
     picture?: string;
+    joinedAt?: string;
 }
 
 export class DriveConflictError extends Error {
@@ -65,6 +67,73 @@ class GoogleDriveClient {
     private currentUser: GoogleDriveUser | null = null;
     private rememberSession = true;
     private rememberedEmailHint: string | null = null;
+
+    private isValidDateString(value: unknown): value is string {
+        return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+    }
+
+    private readJoinedAtMap(): Record<string, string> {
+        try {
+            const raw = localStorage.getItem(USER_JOINED_AT_MAP_KEY);
+            if (!raw) return {};
+            const parsed = JSON.parse(raw) as Record<string, unknown>;
+            const map: Record<string, string> = {};
+            for (const [key, value] of Object.entries(parsed)) {
+                if (this.isValidDateString(value)) {
+                    map[key] = value;
+                }
+            }
+            return map;
+        } catch {
+            return {};
+        }
+    }
+
+    private writeJoinedAtMap(map: Record<string, string>): void {
+        try {
+            localStorage.setItem(USER_JOINED_AT_MAP_KEY, JSON.stringify(map));
+        } catch {
+            // Ignore storage failures (private browsing, quota, etc.)
+        }
+    }
+
+    private readJoinedAtFromCachedUser(storage: Storage, userId: string, normalizedEmail: string): string | null {
+        try {
+            const raw = storage.getItem(USER_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as Partial<GoogleDriveUser>;
+            const parsedId = typeof parsed.id === 'string' ? parsed.id : '';
+            const parsedEmail =
+                typeof parsed.email === 'string'
+                    ? parsed.email.trim().toLowerCase()
+                    : '';
+            const sameUser = (parsedId && parsedId === userId) || (parsedEmail && parsedEmail === normalizedEmail);
+            if (sameUser && this.isValidDateString(parsed.joinedAt)) {
+                return parsed.joinedAt;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    private resolveJoinedAt(userId: string, email: string): string {
+        const normalizedEmail = email.trim().toLowerCase();
+        const map = this.readJoinedAtMap();
+        const candidates: Array<string | null | undefined> = [
+            this.currentUser?.id === userId ? this.currentUser.joinedAt : null,
+            this.readJoinedAtFromCachedUser(localStorage, userId, normalizedEmail),
+            this.readJoinedAtFromCachedUser(sessionStorage, userId, normalizedEmail),
+            map[userId],
+            map[normalizedEmail]
+        ];
+        const existing = candidates.find(candidate => this.isValidDateString(candidate)) ?? null;
+        const joinedAt = existing ?? new Date().toISOString();
+        if (userId) map[userId] = joinedAt;
+        if (normalizedEmail) map[normalizedEmail] = joinedAt;
+        this.writeJoinedAtMap(map);
+        return joinedAt;
+    }
 
     private validateGoogleConfig(): void {
         if (!CLIENT_ID) {
@@ -344,11 +413,15 @@ class GoogleDriveClient {
 
             if (response.ok) {
                 const data = await response.json();
+                const userId = String(data.id ?? '').trim();
+                const userEmail = String(data.email ?? '').trim();
+                const joinedAt = this.resolveJoinedAt(userId, userEmail);
                 this.currentUser = {
-                    id: data.id,
-                    email: data.email,
+                    id: userId,
+                    email: userEmail,
                     name: data.name,
                     picture: data.picture,
+                    joinedAt,
                 };
                 this.rememberedEmailHint = this.currentUser.email;
 

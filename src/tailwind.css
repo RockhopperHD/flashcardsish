@@ -65,6 +65,34 @@
     }
 }
 
+@keyframes streakOrbitSpin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.streak-number-pop {
+    animation: streakNumberPop 280ms cubic-bezier(.16, .9, .3, 1.2);
+}
+
+@keyframes streakNumberPop {
+    0% {
+        transform: scale(1);
+    }
+
+    55% {
+        transform: scale(1.16);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
 .splash-greeting--colorful {
     text-shadow:
         1px 0 0 color-mix(in srgb, var(--red) 28%, transparent),

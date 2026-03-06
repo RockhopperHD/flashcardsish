@@ -28,13 +28,12 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
     const totalStarred = librarySets.reduce((acc, set) => acc + set.cards.filter(c => c.star).length, 0);
     const totalSets = librarySets.length;
     const avgSetSize = totalSets > 0 ? Math.round(totalCards / totalSets) : 0;
-
-
-
-    // Join Date - GoogleDrive doesn't provide created_at, so we'll use current date as fallback
-    // You might want to store this in your Drive data file if needed
-    const joinDate = new Date(); // Default to now since Google Drive doesn't track account creation
-    const formattedJoinDate = joinDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const formattedJoinDate = (() => {
+        if (!user?.joinedAt) return null;
+        const parsed = new Date(user.joinedAt);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return parsed.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    })();
 
     return (
         <div className={clsx("bg-panel border border-outline rounded-3xl p-8 md:p-10 relative overflow-hidden", className)}>
@@ -71,7 +70,9 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({ user, lifetimeCorrect,
                     </h2>
                     <p className="text-base md:text-lg text-muted/80 font-medium mb-10 flex items-center gap-2">
                         <Calendar size={18} />
-                        Member since {formattedJoinDate}
+                        {formattedJoinDate
+                            ? `Joined flashcardsish on ${formattedJoinDate}`
+                            : 'Joined flashcardsish recently'}
                     </p>
 
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-y-8 gap-x-4 lg:gap-x-12">

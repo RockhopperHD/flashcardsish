@@ -7,6 +7,7 @@ import { generateIncorrectAnswers, isAiAvailable } from '../src/aiService';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
 import { CardTagPill } from './CardTagPill';
+import { StreakCornerBadge } from './StreakCornerBadge';
 
 interface GameProps {
    set: CardSet;
@@ -391,6 +392,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [batchCorrectInBatch, setBatchCorrectInBatch] = useState<Set<string>>(new Set()); // Cards marked correct this batch
    const [batchPerfectInBatch, setBatchPerfectInBatch] = useState<Set<string>>(new Set()); // Cards got correct on first try in batch
    const [showBatchBreak, setShowBatchBreak] = useState(false);
+   const [batchBreakMessage, setBatchBreakMessage] = useState('');
    const [seenCardIds, setSeenCardIds] = useState<Set<string>>(new Set()); // All cards ever shown
    const [batchProgressBarWidth, setBatchProgressBarWidth] = useState(0);
 
@@ -670,6 +672,22 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       }
       return () => { isMounted = false; };
    }, [currentCard, settings.mode, settings.answerWithDefinition, set.cards, getCardKey]);
+
+   // Pick one encouragement line per batch break screen to prevent flicker from rerenders.
+   useEffect(() => {
+      if (subMode !== 'batch' || !showBatchBreak) return;
+
+      const perfectCount = batchPerfectInBatch.size;
+      const accuracy = effectiveBatchSize > 0 ? perfectCount / effectiveBatchSize : 0;
+
+      const pool = accuracy === 1
+         ? BATCH_MESSAGES_PERFECT
+         : accuracy < 0.5
+            ? BATCH_MESSAGES_NEEDS_WORK
+            : BATCH_MESSAGES_GOOD;
+
+      setBatchBreakMessage(pool[Math.floor(Math.random() * pool.length)]);
+   }, [subMode, showBatchBreak, batchPerfectInBatch.size, effectiveBatchSize]);
 
    // Focus Management
    useEffect(() => {
@@ -1335,11 +1353,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       // Calculate accuracy for this batch (unique cards perfect / total unique cards)
       // actually batchPerfectInBatch has the IDs of cards perfect in this batch
       const perfectCount = batchPerfectInBatch.size;
-      const accuracy = perfectCount / effectiveBatchSize;
-
-      let message = BATCH_MESSAGES_GOOD[Math.floor(Math.random() * BATCH_MESSAGES_GOOD.length)];
-      if (accuracy === 1) message = BATCH_MESSAGES_PERFECT[Math.floor(Math.random() * BATCH_MESSAGES_PERFECT.length)];
-      else if (accuracy < 0.5) message = BATCH_MESSAGES_NEEDS_WORK[Math.floor(Math.random() * BATCH_MESSAGES_NEEDS_WORK.length)];
+      const masteryOneTotal = baseCards.filter(c => c.mastery === 1).length;
+      const masteryTwoTotal = baseCards.filter(c => c.mastery === 2).length;
 
       // List of cards in this batch (unique)
       // We want to show "All cards introduced so far" or just "Current Batch"?
@@ -1356,28 +1371,32 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   className="text-4xl text-text mb-4"
                   style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
                >
-                  {message}
+                  {batchBreakMessage || "Batch complete!"}
                </h2>
                <p className="text-muted">Take a breath. Here is how you are doing.</p>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-12">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
                <div className="bg-panel border border-outline rounded-xl p-4 text-center">
                   <div className="text-3xl font-bold text-text mb-1">{perfectCount}/{effectiveBatchSize}</div>
                   <div className="text-xs font-bold text-muted uppercase tracking-wider">Perfect This Batch</div>
                </div>
                <div className="bg-panel border border-outline rounded-xl p-4 text-center">
-                  <div className="text-3xl font-bold text-text mb-1">{baseCards.filter(c => c.mastery === 2).length}</div>
-                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Mastered Total</div>
+                  <div className="text-3xl font-bold text-text mb-1">{masteryOneTotal}</div>
+                  <div className="text-xs font-bold text-muted uppercase tracking-wider flex items-center justify-center gap-2">
+                     <div className="w-2 h-2 rounded-full bg-green" />
+                     <div className="w-2 h-2 rounded-full border border-outline/70" />
+                     <span>Total</span>
+                  </div>
                </div>
                <div className="bg-panel border border-outline rounded-xl p-4 text-center">
-                  <div className="text-3xl font-bold text-text mb-1">{streak}</div>
-                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Current Streak</div>
-               </div>
-               <div className="bg-panel border border-outline rounded-xl p-4 text-center">
-                  <div className="text-3xl font-bold text-text mb-1">{baseCards.length - baseCards.filter(c => c.mastery === 2).length}</div>
-                  <div className="text-xs font-bold text-muted uppercase tracking-wider">Remaining</div>
+                  <div className="text-3xl font-bold text-text mb-1">{masteryTwoTotal}</div>
+                  <div className="text-xs font-bold text-muted uppercase tracking-wider flex items-center justify-center gap-2">
+                     <div className="w-2 h-2 rounded-full bg-green" />
+                     <div className="w-2 h-2 rounded-full bg-green" />
+                     <span>Total</span>
+                  </div>
                </div>
             </div>
 
@@ -1592,39 +1611,40 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                )}
             </div>
 
-            {/* Mastery Stats (Only show in Zen Mode) */}
             {subMode === 'zen' && (
-               <div className="flex gap-3">
-                  {[0, 1, 2].map(level => (
-                     <div key={level} className="relative">
-                        {confirmResetLevel === level && (
-                           <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
-                              CONFIRM?
-                           </div>
-                        )}
-                        <div
-                           onClick={() => {
-                              if (confirmResetLevel === level) demoteLevel(level);
-                              else if (counts[level] > 0) {
-                                 setConfirmResetLevel(level);
-                                 setTimeout(() => setConfirmResetLevel(null), 3000);
-                              }
-                           }}
-                           className={clsx(
-                              "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
-                              "bg-panel border-outline",
-                              counts[level] > 0 && "hover:border-accent"
+               <div className="flex flex-wrap justify-end items-end gap-3">
+                  <div className="flex gap-3">
+                     {[0, 1, 2].map(level => (
+                        <div key={level} className="relative">
+                           {confirmResetLevel === level && (
+                              <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
+                                 CONFIRM?
+                              </div>
                            )}
-                        >
-                           <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
-                           <div className="flex gap-1">
-                              {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
-                              {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
-                              {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
+                           <div
+                              onClick={() => {
+                                 if (confirmResetLevel === level) demoteLevel(level);
+                                 else if (counts[level] > 0) {
+                                    setConfirmResetLevel(level);
+                                    setTimeout(() => setConfirmResetLevel(null), 3000);
+                                 }
+                              }}
+                              className={clsx(
+                                 "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
+                                 "bg-panel border-outline",
+                                 counts[level] > 0 && "hover:border-accent"
+                              )}
+                           >
+                              <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
+                              <div className="flex gap-1">
+                                 {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
+                                 {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
+                                 {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
+                              </div>
                            </div>
                         </div>
-                     </div>
-                  ))}
+                     ))}
+                  </div>
                </div>
             )}
          </div>
@@ -1642,10 +1662,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
          {/* Main Card Area */}
          <div className={clsx(
-            "bg-panel border rounded-[24px] shadow-2xl p-10 relative overflow-hidden transition-all duration-500",
+            "bg-panel border rounded-[24px] shadow-2xl p-10 relative overflow-visible transition-all duration-500",
             feedback.type === 'correct' ? "border-green/50 shadow-[0_0_30px_rgba(147,210,108,0.1)]" : "border-outline",
             feedback.type === 'retype_needed' && "border-red/50"
          )}>
+            <StreakCornerBadge streak={streak} isTooltipEnabled={!settings.hideTooltips} />
 
             {/* Top Controls */}
             <div className="flex justify-between items-start mb-8">
@@ -1686,8 +1707,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   >
                      <Pencil size={18} />
                   </button>
-                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 1 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
-                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 2 ? "bg-green border-green shadow-[0_0_10px_var(--green)]" : "bg-transparent border-outline/50")} />
+                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 1 ? "bg-green border-green" : "bg-transparent border-outline/50")} />
+                  <div className={clsx("w-5 h-5 rounded-full border-2 transition-all", currentCard.mastery >= 2 ? "bg-green border-green" : "bg-transparent border-outline/50")} />
                </div>
             </div>
 
@@ -2128,16 +2149,6 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             )}
          </div>
 
-         {/* Streak Footer */}
-         {
-            streak >= 2 && (
-               <div className="text-center mt-8 animate-in fade-in duration-500">
-                  <span className="px-6 py-2 rounded-full font-bold tracking-widest transition-colors text-accent bg-bg border border-accent/50 shadow-[0_0_15px_rgba(208,164,94,0.2)]">
-                     {streak} CARD STREAK
-                  </span>
-               </div>
-            )
-         }
          {/* Edit Modal */}
 
          {/* Edit Modal (Redesigned) */}
