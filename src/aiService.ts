@@ -3,7 +3,7 @@
  * Handles integration with Google Cloud Vertex AI API for AI-powered features
  */
 
-import { VertexAI } from '@google-cloud/vertexai';
+
 
 export interface VertexCredentials {
     apiKey: string;
@@ -49,12 +49,8 @@ export const isAiAvailable = (): boolean => {
  */
 export const testApiKey = async (apiKey: string, projectId: string, location: string): Promise<{ success: boolean; error?: string }> => {
     try {
-        // According to the Vertex AI library, you can pass credentials or rely on ADC.
-        // For a frontend implementation using a provided key/token, we usually configure the project properly. Wait, Vertex AI relies on the Google Auth library typically, or REST. 
-        // Can we initialize VertexAI directly with apiKey? The prompt says "use the VertexAI class".
-        const vertexAi = new VertexAI({ project: projectId, location: location, googleAuthOptions: { apiKey } }); // Or maybe just `{project, location}` and the apiKey? I will check the documentation if needed, or provide googleAuthOptions: { apiKey } wait, the prompt asks to replace @google/generative-ai with @google-cloud/vertexai.
-
-        // Wait, the client library for the browser might differ, or standard Node.js `@google-cloud/vertexai` handles auth. We are in a Vite React app... `@google-cloud/vertexai` is a Node.js library. Can it be used in the browser? The prompt says "Replace `@google/generative-ai` with `@google-cloud/vertexai`". Let's assume the user knows it works and just initialize:
+        // Dynamically import VertexAI to prevent Node.js module loading issues from breaking the entire browser app on startup
+        const { VertexAI } = await import('@google-cloud/vertexai');
         const vertexAiInit = new VertexAI({ project: projectId, location: location, googleAuthOptions: { apiKey: apiKey } });
         const model = vertexAiInit.getGenerativeModel({ model: 'gemini-3-flash-preview' });
 
@@ -92,6 +88,8 @@ export const generateIncorrectAnswers = async (
     }
 
     try {
+        // Dynamically import VertexAI
+        const { VertexAI } = await import('@google-cloud/vertexai');
         const vertexAi = new VertexAI({
             project: sessionCredentials.projectId,
             location: sessionCredentials.location,
