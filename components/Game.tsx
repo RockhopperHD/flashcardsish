@@ -606,7 +606,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Generate Options for Multiple Choice
    useEffect(() => {
       let isMounted = true;
-      if ((settings.mode === 'multiple_choice' || settings.mode === 'ai_random_choice') && currentCard) {
+      if (settings.mode === 'multiple_choice' && currentCard) {
          // In definition mode, options are definitions. Otherwise, options are terms.
          const correctAnswer = settings.answerWithDefinition
             ? currentCard.content
@@ -633,42 +633,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             setOptions(newOptions);
          };
 
-         if (settings.mode === 'ai_random_choice' && isAiAvailable()) {
-            // AI Random Choice Mode
-            setIsLoadingAiOptions(true);
-            setAiOptionsError(null);
-
-            const term = settings.answerWithDefinition
-               ? currentCard.term[0]
-               : currentCard.content;
-
-            generateIncorrectAnswers(term, correctAnswer)
-               .then(result => {
-                  if (!isMounted) return;
-
-                  if (result && result.answers.length === 3) {
-                     // Combine correct answer with AI-generated distractors and shuffle
-                     const newOptions = [correctAnswer, ...result.answers].sort(() => 0.5 - Math.random());
-                     setOptions(newOptions);
-                     setAiOptionsError(null);
-                  } else {
-                     // Fallback to regular multiple choice if AI fails
-                     setAiOptionsError(result?.error || 'Failed to generate AI options');
-                     fallbackToRegularMultipleChoice();
-                  }
-                  setIsLoadingAiOptions(false);
-               })
-               .catch(err => {
-                  if (!isMounted) return;
-                  console.error('AI generation error:', err);
-                  setAiOptionsError('AI service error');
-                  fallbackToRegularMultipleChoice();
-                  setIsLoadingAiOptions(false);
-               });
-         } else {
-            // Regular Multiple Choice Mode
-            fallbackToRegularMultipleChoice();
-         }
+         // Regular Multiple Choice Mode
+         fallbackToRegularMultipleChoice();
       }
       return () => { isMounted = false; };
    }, [currentCard, settings.mode, settings.answerWithDefinition, set.cards, getCardKey]);
@@ -1793,24 +1759,8 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                )}
 
                {/* Input Area or Multiple Choice Grid */}
-               {(settings.mode === 'multiple_choice' || settings.mode === 'ai_random_choice') ? (
+               {settings.mode === 'multiple_choice' ? (
                   <div className="space-y-4">
-                     {/* AI Loading/Error indicators */}
-                     {settings.mode === 'ai_random_choice' && isLoadingAiOptions && (
-                        <div className="flex items-center justify-center gap-2 p-4 bg-purple/10 border border-purple/20 rounded-xl">
-                           <Loader2 className="animate-spin text-purple" size={20} />
-                           <span className="text-purple font-medium">AI is generating options...</span>
-                        </div>
-                     )}
-
-                     {settings.mode === 'ai_random_choice' && aiOptionsError && (
-                        <div className="p-3 bg-yellow/10 border border-yellow/30 rounded-xl">
-                           <p className="text-yellow text-sm">
-                              AI generation issue: {aiOptionsError}. Using fallback options.
-                           </p>
-                        </div>
-                     )}
-
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {options.map((opt, i) => {
                            const isSelected = false; // Could track selected for styling
@@ -1828,12 +1778,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                               <button
                                  key={i}
                                  onClick={() => isInteractive && handleOptionClick(opt)}
-                                 disabled={!isInteractive || isLoadingAiOptions}
+                                 disabled={!isInteractive}
                                  className={clsx(
                                     "p-6 rounded-xl text-lg font-bold text-left transition-all border-2",
                                     stateClass,
-                                    (isInteractive && !isLoadingAiOptions) && "hover:scale-[1.02] active:scale-[0.98]",
-                                    isLoadingAiOptions && "opacity-50 cursor-wait"
+                                    isInteractive && "hover:scale-[1.02] active:scale-[0.98]"
                                  )}
                               >
                                  <>{renderInline(opt, `option-${i}`)}</>

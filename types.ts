@@ -69,14 +69,14 @@ export interface Settings {
   retypeOnMistake: boolean;
   darkMode: boolean;
   starredOnly: boolean;
-  mode: 'standard' | 'multiple_choice' | 'ai_random_choice';
+  mode: 'standard' | 'multiple_choice';
   answerWithDefinition: boolean;
   hideTooltips: boolean;
   shuffleCards: boolean; // Shuffle cards in Learn mode (default true)
   brutalMode: boolean; // Zen mode: if wrong at 1/2 mastery, reset to 0/2 (default false)
   autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
   // AI Features
-  aiEnabled?: boolean; // Master killswitch for AI features (default false)
+  // AI Features
   learnModeLeftKey1?: string; // Primary key for Left/Option A/True (default 'a')
   learnModeLeftKey2?: string; // Secondary key for Left/Option A/True (default 'ArrowLeft')
   learnModeRightKey1?: string; // Primary key for Right/Option B/False (default 'b')

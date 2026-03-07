@@ -12,7 +12,6 @@ import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
 import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
-import { testApiKey, setSessionApiKey, clearSessionApiKey, getSessionApiKey } from './src/aiService';
 import clsx from 'clsx';
 import { saveLibrary, saveDirtySets, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, CloudConflictDetail } from './storage';
 import { sanitizeStrings, readFlashcardSet, readStructure } from './storageV2';
@@ -22,7 +21,6 @@ import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
 import { CursorTooltip } from './components/CursorTooltip';
 import { CorruptionNotification, CorruptionPopup } from './components/CorruptionNotification';
-import { AiSetupModal } from './components/AiSetupModal';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 // UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
@@ -364,9 +362,8 @@ const SettingsModal: React.FC<{
    initialTab?: 'set' | 'global' | 'you' | 'tags';
    tags: Tag[];
    onUpdateTags: (tags: Tag[]) => void;
-   forceAiSetupOpen?: boolean;
    onOpenPrivacy?: () => void;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, forceAiSetupOpen, onOpenPrivacy }) => {
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
@@ -374,15 +371,6 @@ const SettingsModal: React.FC<{
    const [isImportingBackup, setIsImportingBackup] = useState(false);
    const backupImportInputRef = useRef<HTMLInputElement>(null);
 
-   // AI State
-   const sessionCreds = getSessionApiKey();
-   const [apiKeyInput, setApiKeyInput] = useState(sessionCreds ? '••••••••••••' : '');
-   const [projectIdInput, setProjectIdInput] = useState(sessionCreds?.projectId || '');
-   const [locationInput, setLocationInput] = useState(sessionCreds?.location || '');
-   const [isApiKeyLocked, setIsApiKeyLocked] = useState(!!sessionCreds);
-   const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; error?: string } | null>(null);
-   const [isTestingApiKey, setIsTestingApiKey] = useState(false);
-   const [isAiSetupOpen, setIsAiSetupOpen] = useState(false);
    const [deleteConfirmTagId, setDeleteConfirmTagId] = useState<string | null>(null);
    const [isAnswerWithOpen, setIsAnswerWithOpen] = useState(false);
    const [isAnswerStyleOpen, setIsAnswerStyleOpen] = useState(false);
@@ -413,12 +401,6 @@ const SettingsModal: React.FC<{
          setActiveTab(initialTab);
       }
    }, [isOpen, initialTab]);
-
-   React.useEffect(() => {
-      if (isOpen && forceAiSetupOpen) {
-         setIsAiSetupOpen(true);
-      }
-   }, [isOpen, forceAiSetupOpen]);
 
    React.useEffect(() => {
       if (!isOpen) return;
@@ -462,9 +444,7 @@ const SettingsModal: React.FC<{
       retypeOnMistake: "When you get an answer wrong, you'll need to retype the correct answer before moving on.",
       starredOnly: "Only study cards you've starred. Great for focusing on tricky terms.",
       answerWithDefinition: `Change what you're expected to enter and what you're prompted with. Right now, you will be presented with the ${settings.answerWithDefinition ? 'Term' : 'Definition'} and have to think about, choose, or type the ${settings.answerWithDefinition ? 'Definition' : 'Term'}.`,
-      learnMode: "Choose how you want to answer: type your answer (Standard), pick from options (Multiple Choice), or use AI-powered multiple choice (Random Choice - requires AI).",
-      aiEnabled: "Enable or disable Developer API features. These are experimental tools for developers and require a valid Google Cloud Vertex AI token/key and project.",
-      aiApiKey: "Enter your Google Cloud Vertex AI credentials to enable experimental features. These are stored securely in memory for this session only and will be cleared when you close or refresh this tab.",
+      learnMode: "Choose how you want to answer: type your answer (Standard), pick from options (Multiple Choice).",
       hideTooltips: "Turns on or off Helper Tooltips, like this one. This tooltip appears regardless of if this setting is on or not.",
       darkMode: "Toggle between dark and light themes for the app.",
       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
@@ -750,9 +730,6 @@ const SettingsModal: React.FC<{
                                        {[
                                           { value: "standard", label: "Standard" },
                                           { value: "multiple_choice", label: "Multiple Choice" },
-                                          ...(settings.aiEnabled && isApiKeyLocked
-                                             ? [{ value: "ai_random_choice", label: "Random Choice" }]
-                                             : []),
                                        ].map((opt) => (
                                           <button
                                              key={opt.value}
@@ -1083,162 +1060,7 @@ const SettingsModal: React.FC<{
                            </button>
                         </div>
 
-                        {/* AI Enabled Features */}
-                        <div className="p-4 bg-purple/5 rounded-xl border border-purple/20 hover:border-purple/40 transition-all">
-                           <span className="font-medium text-purple block mb-3 flex items-center gap-2">
-                              <Sparkles size={18} /> AI Enabled Features
-                           </span>
 
-                           {/* AI Master Killswitch */}
-                           <TooltipWrapper id="aiEnabled" tooltip={tooltips.aiEnabled} settings={settings}>
-                              <label
-                                 onClick={() => {
-                                    if (settings.aiEnabled) {
-                                       // Disabling
-                                       onUpdate({ ...settings, aiEnabled: false });
-                                       clearSessionApiKey();
-                                       setIsApiKeyLocked(false);
-                                       setApiKeyInput('');
-                                       setProjectIdInput('');
-                                       setLocationInput('');
-                                       setApiKeyTestResult(null);
-                                       if (settings.mode === 'ai_random_choice') {
-                                          onUpdate({ ...settings, aiEnabled: false, mode: 'standard' });
-                                       }
-                                    } else {
-                                       // Enabling - Prompt for Developer Agreement first
-                                       setIsAiSetupOpen(true);
-                                    }
-                                 }}
-                                 className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all mb-3"
-                              >
-                                 <span className="font-medium text-text">Enable Vertex AI Access</span>
-                                 <div
-                                    className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.aiEnabled ? "bg-accent" : "bg-outline")}
-                                 >
-                                    <div className={clsx("bg-bg w-4 h-4 rounded-full shadow-sm transition-transform", settings.aiEnabled ? "translate-x-6" : "translate-x-0")} />
-                                 </div>
-                              </label>
-                           </TooltipWrapper>
-
-                           {settings.aiEnabled && (
-                              <>
-                                 {/* API Key Input */}
-                                 <TooltipWrapper id="aiApiKey" tooltip={tooltips.aiApiKey} settings={settings}>
-                                    <div className="space-y-4">
-                                       <div className="space-y-2">
-                                          <label className="block text-xs font-bold text-muted uppercase">Google Cloud Project ID</label>
-                                          <input
-                                             type="text"
-                                             value={projectIdInput}
-                                             onChange={(e) => setProjectIdInput(e.target.value)}
-                                             disabled={isApiKeyLocked}
-                                             placeholder="e.g. my-project-123"
-                                             className="w-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                       </div>
-                                       <div className="space-y-2">
-                                          <label className="block text-xs font-bold text-muted uppercase">Location</label>
-                                          <input
-                                             type="text"
-                                             value={locationInput}
-                                             onChange={(e) => setLocationInput(e.target.value)}
-                                             disabled={isApiKeyLocked}
-                                             placeholder="e.g. us-central1"
-                                             className="w-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                          />
-                                       </div>
-                                       <div className="space-y-2">
-                                          <label className="block text-xs font-bold text-muted uppercase">Vertex AI Token / API Key</label>
-                                          <div className="flex gap-2">
-                                             <input
-                                                type="password"
-                                                value={apiKeyInput}
-                                                onChange={(e) => setApiKeyInput(e.target.value)}
-                                                disabled={isApiKeyLocked}
-                                                placeholder="Enter your API key..."
-                                                className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                             />
-                                             <button
-                                                onClick={async () => {
-                                                   if (isApiKeyLocked) {
-                                                      // Unlock
-                                                      clearSessionApiKey();
-                                                      setIsApiKeyLocked(false);
-                                                      setApiKeyInput('');
-                                                      setProjectIdInput('');
-                                                      setLocationInput('');
-                                                      setApiKeyTestResult(null);
-                                                      // Reset mode if it was AI mode
-                                                      if (settings.mode === 'ai_random_choice') {
-                                                         onUpdate({ ...settings, mode: 'standard' });
-                                                      }
-                                                   } else {
-                                                      // Test and lock
-                                                      if (!apiKeyInput.trim() || !projectIdInput.trim() || !locationInput.trim()) {
-                                                         alert('Please enter a Project ID, Location, and API Key / Token');
-                                                         return;
-                                                      }
-
-                                                      setIsTestingApiKey(true);
-                                                      setApiKeyTestResult(null);
-
-                                                      try {
-                                                         const result = await testApiKey(apiKeyInput, projectIdInput, locationInput);
-                                                         setApiKeyTestResult(result);
-
-                                                         if (result.success) {
-                                                            setSessionApiKey({ apiKey: apiKeyInput, projectId: projectIdInput, location: locationInput });
-                                                            setIsApiKeyLocked(true);
-                                                            setApiKeyInput('••••••••••••');
-                                                         }
-                                                      } catch (e) {
-                                                         setApiKeyTestResult({ success: false, error: 'Unknown error occurred' });
-                                                      } finally {
-                                                         setIsTestingApiKey(false);
-                                                      }
-                                                   }
-                                                }}
-                                                disabled={isTestingApiKey}
-                                                className={clsx(
-                                                   "px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors min-w-[100px] justify-center",
-                                                   isApiKeyLocked
-                                                      ? "bg-red/10 text-red border border-red/30 hover:bg-red/20"
-                                                      : "bg-accent text-bg hover:bg-accent/90",
-                                                   isTestingApiKey && "opacity-70 cursor-wait"
-                                                )}
-                                             >
-                                                {isTestingApiKey ? (
-                                                   <Loader2 className="animate-spin" size={16} />
-                                                ) : isApiKeyLocked ? (
-                                                   <>
-                                                      <Lock size={16} /> Unlock
-                                                   </>
-                                                ) : (
-                                                   <>
-                                                      <Lock size={16} /> Submit
-                                                   </>
-                                                )}
-                                             </button>
-                                          </div>
-                                       </div>
-                                       {apiKeyTestResult && !apiKeyTestResult.success && (
-                                          <p className="text-xs text-red mt-1">{apiKeyTestResult.error}</p>
-                                       )}
-                                       {isApiKeyLocked && (
-                                          <p className="text-xs text-green mt-1 flex items-center gap-1">
-                                             <span className="w-2 h-2 bg-green rounded-full" />
-                                             API Key Active
-                                          </p>
-                                       )}
-                                       <p className="text-xs text-muted mt-2">
-                                          Your API key is stored only in this session and will be cleared when you refresh or close this tab. <button onClick={() => setIsAiSetupOpen(true)} className="text-accent hover:underline font-bold">Review Developer Terms</button>
-                                       </p>
-                                    </div>
-                                 </TooltipWrapper>
-                              </>
-                           )}
-                        </div>
 
                         {/* Export Data Box */}
                         <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
@@ -1395,15 +1217,7 @@ const SettingsModal: React.FC<{
                </div>
             </div>
 
-            {/* AI Setup Modal - Stacked on top */}
-            <AiSetupModal
-               isOpen={isAiSetupOpen}
-               onClose={() => setIsAiSetupOpen(false)}
-               onConfirm={() => {
-                  onUpdate({ ...settings, aiEnabled: true });
-                  setIsAiSetupOpen(false);
-               }}
-            />
+
          </div>
       </div >
    );
@@ -1461,7 +1275,7 @@ const App: React.FC = () => {
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
    const [isKeybindsModalOpen, setIsKeybindsModalOpen] = useState(false);
-   const [forceAiSetupOpen, setForceAiSetupOpen] = useState(false);
+
 
    const [uiAuditRequest, setUiAuditRequest] = useState<UiAuditRequest | null>(null);
    const [uiAuditToastReports, setUiAuditToastReports] = useState<CorruptionReport[]>([]);
@@ -2675,7 +2489,7 @@ const App: React.FC = () => {
 
    const handleStartOnboarding = () => {
       setIsSettingsOpen(false);
-      setForceAiSetupOpen(false);
+      setIsSettingsOpen(false);
       handleBackToMenu();
       setIsOnboardingTourOpen(true);
    };
@@ -2693,7 +2507,7 @@ const App: React.FC = () => {
             isOpen={isSettingsOpen}
             onClose={() => {
                setIsSettingsOpen(false);
-               setForceAiSetupOpen(false);
+               setIsSettingsOpen(false);
             }}
             settings={settings}
             onUpdate={updateSettings}
@@ -2710,7 +2524,6 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             initialTab={settingsInitialTab}
             tags={tags}
-            forceAiSetupOpen={forceAiSetupOpen}
             onUpdateTags={(newTags) => {
                setTags(newTags);
                saveTags(newTags, {
@@ -3225,7 +3038,7 @@ const App: React.FC = () => {
             }}
             onOpenAiSetup={() => {
                setSettingsInitialTab('global');
-               setForceAiSetupOpen(true);
+               setSettingsInitialTab('global');
                setIsSettingsOpen(true);
             }}
             onOpenCorruptionPopup={() => {

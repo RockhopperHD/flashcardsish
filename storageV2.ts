@@ -42,7 +42,6 @@ export const DEFAULT_SETTINGS: Settings = {
     autoCloseImageWindow: false,
     hideTooltips: false,
     darkMode: true,
-    aiEnabled: false,
     learnModeLeftKey1: 'a',
     learnModeLeftKey2: 'ArrowLeft',
     learnModeRightKey1: 'b',
