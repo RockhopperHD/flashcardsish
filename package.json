@@ -12,7 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
+    "@google-cloud/vertexai": "^1.10.0",
     "@hello-pangea/dnd": "^18.0.1",
     "clsx": "^2.1.1",
     "gapi-script": "^1.2.0",

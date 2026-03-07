@@ -375,8 +375,11 @@ const SettingsModal: React.FC<{
    const backupImportInputRef = useRef<HTMLInputElement>(null);
 
    // AI State
-   const [apiKeyInput, setApiKeyInput] = useState('');
-   const [isApiKeyLocked, setIsApiKeyLocked] = useState(!!getSessionApiKey());
+   const sessionCreds = getSessionApiKey();
+   const [apiKeyInput, setApiKeyInput] = useState(sessionCreds ? '••••••••••••' : '');
+   const [projectIdInput, setProjectIdInput] = useState(sessionCreds?.projectId || '');
+   const [locationInput, setLocationInput] = useState(sessionCreds?.location || '');
+   const [isApiKeyLocked, setIsApiKeyLocked] = useState(!!sessionCreds);
    const [apiKeyTestResult, setApiKeyTestResult] = useState<{ success: boolean; error?: string } | null>(null);
    const [isTestingApiKey, setIsTestingApiKey] = useState(false);
    const [isAiSetupOpen, setIsAiSetupOpen] = useState(false);
@@ -460,8 +463,8 @@ const SettingsModal: React.FC<{
       starredOnly: "Only study cards you've starred. Great for focusing on tricky terms.",
       answerWithDefinition: `Change what you're expected to enter and what you're prompted with. Right now, you will be presented with the ${settings.answerWithDefinition ? 'Term' : 'Definition'} and have to think about, choose, or type the ${settings.answerWithDefinition ? 'Definition' : 'Term'}.`,
       learnMode: "Choose how you want to answer: type your answer (Standard), pick from options (Multiple Choice), or use AI-powered multiple choice (Random Choice - requires AI).",
-      aiEnabled: "Enable or disable Developer API features. These are experimental tools for developers and require a valid Google Cloud/Vertex AI key.",
-      aiApiKey: "Enter your Google AI Studio API key to enable experimental features. Your key is stored only for this session and will be cleared when you close or refresh this tab.",
+      aiEnabled: "Enable or disable Developer API features. These are experimental tools for developers and require a valid Google Cloud Vertex AI token/key and project.",
+      aiApiKey: "Enter your Google Cloud Vertex AI credentials to enable experimental features. These are stored securely in memory for this session only and will be cleared when you close or refresh this tab.",
       hideTooltips: "Turns on or off Helper Tooltips, like this one. This tooltip appears regardless of if this setting is on or not.",
       darkMode: "Toggle between dark and light themes for the app.",
       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
@@ -1096,6 +1099,8 @@ const SettingsModal: React.FC<{
                                        clearSessionApiKey();
                                        setIsApiKeyLocked(false);
                                        setApiKeyInput('');
+                                       setProjectIdInput('');
+                                       setLocationInput('');
                                        setApiKeyTestResult(null);
                                        if (settings.mode === 'ai_random_choice') {
                                           onUpdate({ ...settings, aiEnabled: false, mode: 'standard' });
@@ -1107,7 +1112,7 @@ const SettingsModal: React.FC<{
                                  }}
                                  className="flex items-center justify-between p-3 bg-panel-2 rounded-xl cursor-pointer hover:border-accent border border-transparent transition-all mb-3"
                               >
-                                 <span className="font-medium text-text">Enable Developer API Access</span>
+                                 <span className="font-medium text-text">Enable Vertex AI Access</span>
                                  <div
                                     className={clsx("w-12 h-6 rounded-full p-1 transition-colors", settings.aiEnabled ? "bg-accent" : "bg-outline")}
                                  >
@@ -1120,76 +1125,102 @@ const SettingsModal: React.FC<{
                               <>
                                  {/* API Key Input */}
                                  <TooltipWrapper id="aiApiKey" tooltip={tooltips.aiApiKey} settings={settings}>
-                                    <div className="space-y-2">
-                                       <label className="block text-xs font-bold text-muted uppercase">Google AI Studio API Key</label>
-                                       <div className="flex gap-2">
+                                    <div className="space-y-4">
+                                       <div className="space-y-2">
+                                          <label className="block text-xs font-bold text-muted uppercase">Google Cloud Project ID</label>
                                           <input
-                                             type="password"
-                                             value={apiKeyInput}
-                                             onChange={(e) => setApiKeyInput(e.target.value)}
+                                             type="text"
+                                             value={projectIdInput}
+                                             onChange={(e) => setProjectIdInput(e.target.value)}
                                              disabled={isApiKeyLocked}
-                                             placeholder="Enter your API key..."
-                                             className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                             placeholder="e.g. my-project-123"
+                                             className="w-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                                           />
-                                          <button
-                                             onClick={async () => {
-                                                if (isApiKeyLocked) {
-                                                   // Unlock
-                                                   clearSessionApiKey();
-                                                   setIsApiKeyLocked(false);
-                                                   setApiKeyInput('');
-                                                   setApiKeyTestResult(null);
-                                                   // Reset mode if it was AI mode
-                                                   if (settings.mode === 'ai_random_choice') {
-                                                      onUpdate({ ...settings, mode: 'standard' });
-                                                   }
-                                                } else {
-                                                   // Test and lock
-                                                   if (!apiKeyInput.trim()) {
-                                                      alert('Please enter an API key');
-                                                      return;
-                                                   }
-
-                                                   setIsTestingApiKey(true);
-                                                   setApiKeyTestResult(null);
-
-                                                   try {
-                                                      const result = await testApiKey(apiKeyInput);
-                                                      setApiKeyTestResult(result);
-
-                                                      if (result.success) {
-                                                         setSessionApiKey(apiKeyInput);
-                                                         setIsApiKeyLocked(true);
-                                                         setApiKeyInput('••••••••••••');
+                                       </div>
+                                       <div className="space-y-2">
+                                          <label className="block text-xs font-bold text-muted uppercase">Location</label>
+                                          <input
+                                             type="text"
+                                             value={locationInput}
+                                             onChange={(e) => setLocationInput(e.target.value)}
+                                             disabled={isApiKeyLocked}
+                                             placeholder="e.g. us-central1"
+                                             className="w-full bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                          />
+                                       </div>
+                                       <div className="space-y-2">
+                                          <label className="block text-xs font-bold text-muted uppercase">Vertex AI Token / API Key</label>
+                                          <div className="flex gap-2">
+                                             <input
+                                                type="password"
+                                                value={apiKeyInput}
+                                                onChange={(e) => setApiKeyInput(e.target.value)}
+                                                disabled={isApiKeyLocked}
+                                                placeholder="Enter your API key..."
+                                                className="flex-1 bg-panel border border-outline rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                                             />
+                                             <button
+                                                onClick={async () => {
+                                                   if (isApiKeyLocked) {
+                                                      // Unlock
+                                                      clearSessionApiKey();
+                                                      setIsApiKeyLocked(false);
+                                                      setApiKeyInput('');
+                                                      setProjectIdInput('');
+                                                      setLocationInput('');
+                                                      setApiKeyTestResult(null);
+                                                      // Reset mode if it was AI mode
+                                                      if (settings.mode === 'ai_random_choice') {
+                                                         onUpdate({ ...settings, mode: 'standard' });
                                                       }
-                                                   } catch (e) {
-                                                      setApiKeyTestResult({ success: false, error: 'Unknown error occurred' });
-                                                   } finally {
-                                                      setIsTestingApiKey(false);
+                                                   } else {
+                                                      // Test and lock
+                                                      if (!apiKeyInput.trim() || !projectIdInput.trim() || !locationInput.trim()) {
+                                                         alert('Please enter a Project ID, Location, and API Key / Token');
+                                                         return;
+                                                      }
+
+                                                      setIsTestingApiKey(true);
+                                                      setApiKeyTestResult(null);
+
+                                                      try {
+                                                         const result = await testApiKey(apiKeyInput, projectIdInput, locationInput);
+                                                         setApiKeyTestResult(result);
+
+                                                         if (result.success) {
+                                                            setSessionApiKey({ apiKey: apiKeyInput, projectId: projectIdInput, location: locationInput });
+                                                            setIsApiKeyLocked(true);
+                                                            setApiKeyInput('••••••••••••');
+                                                         }
+                                                      } catch (e) {
+                                                         setApiKeyTestResult({ success: false, error: 'Unknown error occurred' });
+                                                      } finally {
+                                                         setIsTestingApiKey(false);
+                                                      }
                                                    }
-                                                }
-                                             }}
-                                             disabled={isTestingApiKey}
-                                             className={clsx(
-                                                "px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors min-w-[100px] justify-center",
-                                                isApiKeyLocked
-                                                   ? "bg-red/10 text-red border border-red/30 hover:bg-red/20"
-                                                   : "bg-accent text-bg hover:bg-accent/90",
-                                                isTestingApiKey && "opacity-70 cursor-wait"
-                                             )}
-                                          >
-                                             {isTestingApiKey ? (
-                                                <Loader2 className="animate-spin" size={16} />
-                                             ) : isApiKeyLocked ? (
-                                                <>
-                                                   <Lock size={16} /> Unlock
-                                                </>
-                                             ) : (
-                                                <>
-                                                   <Lock size={16} /> Submit
-                                                </>
-                                             )}
-                                          </button>
+                                                }}
+                                                disabled={isTestingApiKey}
+                                                className={clsx(
+                                                   "px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-colors min-w-[100px] justify-center",
+                                                   isApiKeyLocked
+                                                      ? "bg-red/10 text-red border border-red/30 hover:bg-red/20"
+                                                      : "bg-accent text-bg hover:bg-accent/90",
+                                                   isTestingApiKey && "opacity-70 cursor-wait"
+                                                )}
+                                             >
+                                                {isTestingApiKey ? (
+                                                   <Loader2 className="animate-spin" size={16} />
+                                                ) : isApiKeyLocked ? (
+                                                   <>
+                                                      <Lock size={16} /> Unlock
+                                                   </>
+                                                ) : (
+                                                   <>
+                                                      <Lock size={16} /> Submit
+                                                   </>
+                                                )}
+                                             </button>
+                                          </div>
                                        </div>
                                        {apiKeyTestResult && !apiKeyTestResult.success && (
                                           <p className="text-xs text-red mt-1">{apiKeyTestResult.error}</p>

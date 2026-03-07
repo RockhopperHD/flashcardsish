@@ -103,12 +103,13 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">8. Developer API & AI Features</h3>
-                        <p>Optional features may allow you to use your own API keys. By using these features, you confirm that:</p>
+                        <p>Optional AI features are powered by Google Cloud Vertex AI. These features allow you to use your own Google Cloud projects and API keys. By using these features, you confirm that:</p>
                         <ul className="list-disc pl-5 my-2 space-y-1">
                             <li>You are 18 years or older</li>
-                            <li>You are authorized to use the keys</li>
+                            <li>You are authorized to use the keys and projects you provide</li>
                             <li>You comply with third-party terms</li>
                             <li>You assume all responsibility for generated content</li>
+                            <li>You are solely responsible for your own Google Cloud billing and usage</li>
                         </ul>
                         <p className="mt-2 italic">AI output may be inaccurate or inappropriate. You use it at your own risk.</p>
                     </section>

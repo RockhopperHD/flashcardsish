@@ -37,7 +37,7 @@ export const AiSetupModal: React.FC<AiSetupModalProps> = ({ isOpen, onClose, onC
                             className="text-2xl text-text"
                             style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
                         >
-                            Developer API Access
+                            Vertex AI Setup
                         </h2>
                         <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
                             <X size={24} />
@@ -53,7 +53,7 @@ export const AiSetupModal: React.FC<AiSetupModalProps> = ({ isOpen, onClose, onC
                             <div>
                                 <h3 className="font-bold text-yellow text-sm mb-1">Developer Mode Only</h3>
                                 <p className="text-base text-text leading-relaxed">
-                                    This feature allows developers to connect their own Google Cloud/Vertex AI keys for testing purposes. It is not intended for general consumer use.
+                                    This feature uses Google Cloud Vertex AI and allows developers to connect their own projects and keys for testing purposes. It is compatible with Google AI Pro/Ultra credits. It is not intended for general consumer use.
                                 </p>
                             </div>
                         </div>
@@ -61,7 +61,7 @@ export const AiSetupModal: React.FC<AiSetupModalProps> = ({ isOpen, onClose, onC
 
                     <div className="prose prose-invert max-w-none text-text mb-6">
                         <p className="text-base">
-                            By enabling Developer API Access, you confirm that you are a developer using your own API credentials in accordance with the Google AI Studio Terms of Service.
+                            By enabling Developer API Access, you confirm that you are a developer using your own API credentials in accordance with the Google Cloud Terms of Service.
                         </p>
                     </div>
 
@@ -85,7 +85,7 @@ export const AiSetupModal: React.FC<AiSetupModalProps> = ({ isOpen, onClose, onC
                             )}
                         </div>
                         <p className="text-base font-medium text-text">
-                            I confirm I am a developer and agree to the Google AI Studio Terms.
+                            I confirm I am a developer and agree to the Google Cloud Terms.
                         </p>
                     </label>
 

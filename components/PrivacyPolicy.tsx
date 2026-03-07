@@ -92,14 +92,14 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                         <div className="mb-4">
                             <h4 className="font-bold mb-1">3.4 Developer API Keys (Optional Features)</h4>
-                            <p>Some optional features allow you to supply your own third-party API keys (for example, Google AI Studio or similar services).</p>
+                            <p>Some optional features allow you to supply your own third-party API keys and project IDs (for example, Google Cloud Vertex AI). When using a Bring Your Own Key (BYOK) model, data is processed directly via your specified Google Cloud project.</p>
                             <ul className="list-disc pl-5 my-2 space-y-1">
-                                <li>API keys are entered by you</li>
+                                <li>API credentials are entered by you</li>
                                 <li>They are processed only within your browser</li>
                                 <li>They are sent directly to the third-party provider</li>
                                 <li>Flashcardsish does not log, store, or transmit these keys to any first-party server</li>
                             </ul>
-                            <p>You are solely responsible for how you use third-party APIs and for complying with their terms.</p>
+                            <p>You are solely responsible for how you use third-party APIs and for complying with their terms. Your usage is subject to the Google Cloud Privacy Notice.</p>
                         </div>
 
                         <div>
