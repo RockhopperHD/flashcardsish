@@ -2862,6 +2862,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingFolderName, setEditingFolderName] = useState("");
   const [movingSetId, setMovingSetId] = useState<string | null>(null);
+  const [draggingSelectedSetIds, setDraggingSelectedSetIds] = useState<string[] | null>(null);
+  const [folderDropTargetId, setFolderDropTargetId] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [newFolderColor, setNewFolderColor] =
     useState<Folder["color"]>("brown");
@@ -3342,6 +3344,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setMovingSetId(null);
   };
 
+  const moveSetIdsToFolder = useCallback(
+    (setIds: Iterable<string>, folderId: string | undefined) => {
+      const setIdLookup = new Set(setIds);
+      if (setIdLookup.size === 0) return;
+      setLibrarySets((prev) =>
+        prev.map((s) => (setIdLookup.has(s.id) ? { ...s, folderId } : s)),
+      );
+    },
+    [setLibrarySets],
+  );
+
   const handleDeleteFolder = (folderId: string) => {
     const folderSets = librarySets.filter((s) => s.folderId === folderId);
     if (folderSets.length > 0) {
@@ -3438,12 +3451,83 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const handleMoveSelectedToFolder = (folderId: string | undefined) => {
-    setLibrarySets((prev) =>
-      prev.map((s) => (selectedSetIds.has(s.id) ? { ...s, folderId } : s)),
-    );
+    moveSetIdsToFolder(selectedSetIds, folderId);
     setSelectedSetIds(new Set());
     setMovingSetId(null); // Close any move UI if open
     setMoveToMenuOpen(false); // Close the move menu
+    setDraggingSelectedSetIds(null);
+    setFolderDropTargetId(null);
+  };
+
+  const handleSelectedSetDragStart = (
+    e: React.DragEvent<HTMLDivElement>,
+    setId: string,
+  ) => {
+    const dragOrigin = e.target as HTMLElement;
+    if (dragOrigin.closest("button, input, textarea, a")) {
+      e.preventDefault();
+      return;
+    }
+
+    if (selectedSetIds.size === 0 || !selectedSetIds.has(setId)) {
+      e.preventDefault();
+      return;
+    }
+
+    const draggedIds = Array.from(selectedSetIds);
+    setDraggingSelectedSetIds(draggedIds);
+    setFolderDropTargetId(null);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData(
+      "application/x-flashcardsish-set-ids",
+      JSON.stringify(draggedIds),
+    );
+    e.dataTransfer.setData(
+      "text/plain",
+      `${draggedIds.length} set${draggedIds.length === 1 ? "" : "s"}`,
+    );
+  };
+
+  const handleSelectedSetDragEnd = () => {
+    setDraggingSelectedSetIds(null);
+    setFolderDropTargetId(null);
+  };
+
+  const handleFolderDragOver = (
+    e: React.DragEvent<HTMLDivElement>,
+    folderId: string,
+  ) => {
+    if (!draggingSelectedSetIds || draggingSelectedSetIds.length === 0) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (folderDropTargetId !== folderId) {
+      setFolderDropTargetId(folderId);
+    }
+  };
+
+  const handleFolderDragLeave = (
+    e: React.DragEvent<HTMLDivElement>,
+    folderId: string,
+  ) => {
+    const nextTarget = e.relatedTarget as Node | null;
+    if (!e.currentTarget.contains(nextTarget)) {
+      setFolderDropTargetId((prev) => (prev === folderId ? null : prev));
+    }
+  };
+
+  const handleFolderDropSelectedSets = (
+    e: React.DragEvent<HTMLDivElement>,
+    folderId: string,
+  ) => {
+    if (!draggingSelectedSetIds || draggingSelectedSetIds.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moveSetIdsToFolder(draggingSelectedSetIds, folderId);
+    setSelectedSetIds(new Set());
+    setMovingSetId(null);
+    setMoveToMenuOpen(false);
+    setDraggingSelectedSetIds(null);
+    setFolderDropTargetId(null);
   };
 
   const handleCreateMultistudy = () => {
@@ -4866,7 +4950,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             )}
 
             {/* ONGOING SESSIONS */}
-            {ongoingSessions.length > 0 && (
+            {!currentFolderId && ongoingSessions.length > 0 && (
               <div className="mb-8">
                 <h3 className="text-xs font-bold text-muted uppercase tracking-widest pl-2 mb-4">
                   Ongoing
@@ -5040,18 +5124,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {/* LIBRARY COLUMN */}
             <div className="space-y-4">
               <div className="flex justify-between items-center gap-3 flex-wrap">
-                <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
-                  {currentFolderId ? (
+                {currentFolderId ? (
+                  <div className="flex items-center gap-3 pl-2">
                     <button
                       onClick={() => setCurrentFolderId(null)}
-                      className="flex items-center gap-1 hover:text-text transition-colors"
+                      className="flex items-center gap-2 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                     >
-                      <ArrowLeft size={14} /> {currentFolder?.name}
+                      <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
+                        <ArrowLeft size={16} />
+                      </div>
+                      Back
                     </button>
-                  ) : (
-                    "Library"
-                  )}
-                </h3>
+                    {currentFolder?.name && (
+                      <span className="text-text text-sm font-bold normal-case tracking-normal">
+                        {currentFolder.name}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <h3 className="text-xs font-bold text-muted uppercase tracking-widest flex items-center gap-2 pl-2">
+                    Library
+                  </h3>
+                )}
                 <div className="flex gap-2 flex-wrap">
                   {currentFolderId && (
                     <button
@@ -5190,7 +5284,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               movingSetId
                                 ? "ring-2 ring-offset-2 ring-offset-bg ring-accent"
                                 : "",
+                              folderDropTargetId === folder.id &&
+                                "ring-2 ring-offset-2 ring-offset-bg ring-accent scale-[1.02]",
                             )}
+                            onDragEnter={(e) => handleFolderDragOver(e, folder.id)}
+                            onDragOver={(e) => handleFolderDragOver(e, folder.id)}
+                            onDragLeave={(e) => handleFolderDragLeave(e, folder.id)}
+                            onDrop={(e) => handleFolderDropSelectedSets(e, folder.id)}
                             onClick={() => {
                               if (editingFolderId === folder.id) return;
                               if (movingSetId)
@@ -5273,7 +5373,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     )}
 
                     {displayedSets.map((set) => (
-                      <div key={set.id} className="relative group/row">
+                      <div
+                        key={set.id}
+                        className={clsx(
+                          "relative group/row",
+                          selectedSetIds.size > 0 &&
+                            selectedSetIds.has(set.id) &&
+                            "cursor-grab active:cursor-grabbing",
+                        )}
+                        draggable={
+                          selectedSetIds.size > 0 && selectedSetIds.has(set.id)
+                        }
+                        onDragStart={(e) => handleSelectedSetDragStart(e, set.id)}
+                        onDragEnd={handleSelectedSetDragEnd}
+                      >
                         {/* Checkbox - Left Wing */}
                         <div className="absolute -left-12 top-1/2 -translate-y-1/2 w-12 flex justify-center">
                           <div
@@ -5453,7 +5566,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       </h4>
                       <div className="space-y-3">
                         {displayedLocalSets.map((set) => (
-                          <div key={set.id} className="relative group/row">
+                          <div
+                            key={set.id}
+                            className={clsx(
+                              "relative group/row",
+                              selectedSetIds.size > 0 &&
+                                selectedSetIds.has(set.id) &&
+                                "cursor-grab active:cursor-grabbing",
+                            )}
+                            draggable={
+                              selectedSetIds.size > 0 &&
+                              selectedSetIds.has(set.id)
+                            }
+                            onDragStart={(e) =>
+                              handleSelectedSetDragStart(e, set.id)
+                            }
+                            onDragEnd={handleSelectedSetDragEnd}
+                          >
                             <div className="absolute -left-12 top-1/2 -translate-y-1/2 w-12 flex justify-center">
                               <div
                                 onClick={() => handleToggleSelect(set.id)}
@@ -5609,35 +5738,35 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                   {/* Floating Action Bar */}
                   {selectedSetIds.size > 0 && (
-                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-panel border border-outline shadow-2xl p-2 rounded-2xl animate-in slide-in-from-bottom-4">
-                      <div className="pl-4 pr-2 text-sm font-bold text-text">
+                    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex max-w-[calc(100vw-1.5rem)] items-center gap-3 overflow-x-auto rounded-2xl border border-outline bg-panel p-2 shadow-2xl animate-in slide-in-from-bottom-4">
+                      <div className="shrink-0 whitespace-nowrap pl-4 pr-2 text-sm font-bold text-text">
                         {selectedSetIds.size} selected
                       </div>
-                      <div className="h-6 w-px bg-outline"></div>
+                      <div className="h-6 w-px shrink-0 bg-outline"></div>
                       <button
                         onClick={handleCreateMultistudy}
-                        className="px-6 py-2 bg-accent text-bg font-bold rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg"
+                        className="shrink-0 whitespace-nowrap rounded-xl border border-accent bg-accent px-6 py-2 font-bold text-bg shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:translate-y-0 active:scale-95"
                       >
                         Multistudy
                       </button>
                       <button
                         onClick={handleCombineSets}
-                        className="px-6 py-2 bg-panel-2 border border-accent text-accent font-bold rounded-xl hover:bg-accent hover:text-bg transition-all shadow-lg flex items-center gap-2"
+                        className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl border border-accent bg-panel-2 px-6 py-2 font-bold text-accent shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-accent hover:text-bg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:translate-y-0"
                         title="Create a new set by combining all selected sets"
                       >
                         <Combine size={16} /> Combine
                       </button>
                       <button
                         onClick={handleCreateFolder}
-                        className="px-6 py-2 bg-panel-2 border border-outline text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg"
+                        className="shrink-0 whitespace-nowrap rounded-xl border border-outline bg-panel-2 px-6 py-2 font-bold text-text shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:border-accent hover:bg-accent/10 hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:translate-y-0"
                       >
                         New Folder
                       </button>
-                      <div className="relative">
+                      <div className="relative shrink-0">
                         <button
                           onClick={() => setMoveToMenuOpen(!moveToMenuOpen)}
                           className={clsx(
-                            "px-6 py-2 bg-panel-2 border text-text font-bold rounded-xl hover:bg-panel-3 transition-all shadow-lg flex items-center gap-2",
+                            "flex items-center gap-2 whitespace-nowrap rounded-xl border bg-panel-2 px-6 py-2 font-bold text-text shadow-lg transition-all duration-150 hover:-translate-y-0.5 hover:bg-accent/10 hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 active:translate-y-0",
                             moveToMenuOpen ? "border-accent" : "border-outline"
                           )}
                         >
@@ -5685,10 +5814,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       <button
                         onClick={handleBatchDelete}
                         className={clsx(
-                          "px-6 py-2 font-bold rounded-xl transition-all border border-transparent",
+                          "shrink-0 whitespace-nowrap rounded-xl border px-6 py-2 font-bold shadow-lg transition-all duration-150 focus:outline-none focus-visible:ring-2",
                           batchDeleteClicks > 0
-                            ? "bg-red text-bg animate-pulse"
-                            : "bg-panel-2 text-red hover:bg-red/10",
+                            ? "border-red bg-red text-bg animate-pulse focus-visible:ring-red/60"
+                            : "border-outline bg-panel-2 text-red hover:-translate-y-0.5 hover:border-red/50 hover:bg-red/10 focus-visible:ring-red/60",
                         )}
                       >
                         {batchDeleteClicks === 0

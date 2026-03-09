@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat } from '../utils';
-import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2 } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
@@ -1442,7 +1442,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                className="mb-8 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
             >
                <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-                  <ChevronLeft size={16} />
+                  <ArrowLeft size={16} />
                </div>
                Back
             </button>
@@ -1554,7 +1554,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   className="flex items-center gap-3 text-muted hover:text-text font-bold uppercase text-xs tracking-wider transition-colors group"
                >
                   <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-                     <ChevronLeft size={16} />
+                     <ArrowLeft size={16} />
                   </div>
                   Back
                </button>

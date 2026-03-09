@@ -417,7 +417,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                     className="mb-8 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                 >
                     <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-                        <ChevronLeft size={16} />
+                        <ArrowLeft size={16} />
                     </div>
                     Back
                 </button>
@@ -495,7 +495,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                     className="mb-8 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                 >
                     <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-                        <ChevronLeft size={16} />
+                        <ArrowLeft size={16} />
                     </div>
                     Back
                 </button>
@@ -533,7 +533,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                         className="flex items-center gap-2 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                     >
                         <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
-                            <ChevronLeft size={16} />
+                            <ArrowLeft size={16} />
                         </div>
                         Back
                     </button>
