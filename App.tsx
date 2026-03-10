@@ -1755,6 +1755,25 @@ const App: React.FC = () => {
       }
    };
 
+   const handleManualCloudSync = async () => {
+      if (!user) return;
+      if (syncInProgressRef.current || cloudSaveInFlightRef.current || conflictResolutionAction !== 'idle') {
+         return;
+      }
+
+      if (saveDebounceTimerRef.current && dirtySetIdsRef.current.size > 0) {
+         clearTimeout(saveDebounceTimerRef.current);
+         saveDebounceTimerRef.current = null;
+         queueLibrarySave(latestLibrarySetsRef.current, folders, {
+            skipCloud: false,
+            changedSetIds: Array.from(dirtySetIdsRef.current)
+         });
+      }
+
+      await waitForBackgroundSyncIdle();
+      await syncCloudData();
+   };
+
    const handleLogout = async () => {
       await googleDrive.signOut();
       setUser(null);
@@ -2920,32 +2939,36 @@ const App: React.FC = () => {
                   </button>
 
                   {/* Cloud Sync Status Indicator */}
-                  {user && cloudSyncStatus !== 'idle' && (
+                  {user && (isCloudLoading || cloudSyncStatus === 'saving') && (
                      <div
                         className={clsx(
                            "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
-                           cloudSyncStatus === 'saving' && "text-amber-400",
-                           cloudSyncStatus === 'saved' && "text-emerald-400",
-                           cloudSyncStatus === 'saved_faded' && "text-muted",
-                           cloudSyncStatus === 'error' && "text-red-400"
+                           "text-amber-400"
                         )}
-                        title={
-                           cloudSyncStatus === 'saving' ? 'Flashcardsish is currently syncing your data with Google Drive.' :
-                              (cloudSyncStatus === 'saved' || cloudSyncStatus === 'saved_faded') ? 'Flashcardsish has finished syncing your data with Google Drive.' :
-                                 'Failed to save to cloud'
-                        }
+                        title="Flashcardsish is currently syncing your data with Google Drive."
                      >
-
-                        {cloudSyncStatus === 'saving' && (
-                           <RefreshCw size={14} className="animate-spin" />
-                        )}
-                        {(cloudSyncStatus === 'saved' || cloudSyncStatus === 'saved_faded') && (
-                           <CheckCircle2 size={14} />
-                        )}
-                        {cloudSyncStatus === 'error' && (
-                           <XCircle size={14} />
-                        )}
+                        <RefreshCw size={14} className="animate-spin" />
                      </div>
+                  )}
+
+                  {user && !(isCloudLoading || cloudSyncStatus === 'saving') && (
+                     <button
+                        onClick={() => void handleManualCloudSync()}
+                        disabled={conflictResolutionAction !== 'idle'}
+                        className={clsx(
+                           "flex items-center justify-center p-2 rounded-lg border transition-all",
+                           cloudSyncStatus === 'error'
+                              ? "border-red/40 text-red hover:border-red"
+                              : cloudSyncStatus === 'saved'
+                                 ? "border-emerald-400/40 text-emerald-400 hover:border-emerald-300"
+                                 : "border-outline text-muted hover:text-text hover:border-accent",
+                           conflictResolutionAction !== 'idle' && "opacity-50 cursor-not-allowed"
+                        )}
+                        title="Sync with Google Drive now"
+                        aria-label="Sync with Google Drive now"
+                     >
+                        <RefreshCw size={14} />
+                     </button>
                   )}
 
                   <button
