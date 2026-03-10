@@ -39,7 +39,11 @@ const getRandomTipIndex = (excludeIndex = -1) => {
     return nextIndex;
 };
 
-const BreathingLoader: React.FC = () => {
+interface BreathingLoaderProps {
+    statusText?: string;
+}
+
+const BreathingLoader: React.FC<BreathingLoaderProps> = ({ statusText }) => {
     const [currentTipIndex, setCurrentTipIndex] = useState(() => getRandomTipIndex());
     const [isTipVisible, setIsTipVisible] = useState(true);
     const crests = [
@@ -83,6 +87,11 @@ const BreathingLoader: React.FC = () => {
 
     return (
         <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-700">
+            {statusText && (
+                <p className="mb-6 max-w-md px-6 text-center text-sm text-muted animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    {statusText}
+                </p>
+            )}
             <svg width="200" height="200" viewBox="0 0 200 200" className="text-accent">
                 <style>
                     {`

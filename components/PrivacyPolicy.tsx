@@ -38,7 +38,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
-                    <p className="text-sm text-muted">Last updated: February 9, 2026</p>
+                    <p className="text-sm text-muted">Last updated: March 10, 2026</p>
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Overview</h3>
                         <p>Flashcardsish ("the Service") is an experimental, open-source flashcard application created and maintained by an individual developer as a personal project. This Privacy Policy explains how data is handled when you use the Service.</p>
@@ -64,7 +64,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                                 <li>Profile image URL</li>
                                 <li>A unique Google account identifier ("sub")</li>
                             </ul>
-                            <p>This information is used only to authenticate you and associate your local or Google Drive data with your session. <strong>We do not store this information on our own servers.</strong> Session-related data may be stored temporarily in your browser's memory or local storage while you are signed in.</p>
+                            <p>This information is used only to authenticate you and associate your local or Google Drive data with your session. <strong>We do not store this information on our own servers.</strong> Session-related data may be stored temporarily in your browser's memory or local storage while you are signed in, and remembered Google sessions may expire after 30 days of inactivity.</p>
                         </div>
 
                         <div className="mb-4">

@@ -76,6 +76,9 @@ export const SignInCard: React.FC<SignInCardProps> = ({ onLogin, onOpenPrivacy }
                     </div>
                     Keep me signed in
                 </label>
+                <p className="text-xs text-muted/80 leading-relaxed -mt-1">
+                    Remembered sessions expire after 30 days of inactivity. If this is a shared device, leave this off.
+                </p>
                 <button
                     onClick={() => onLogin(keepSignedIn)}
                     className="w-full py-5 bg-text text-bg rounded-xl font-bold text-xl hover:opacity-90 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3 active:scale-[0.98]"

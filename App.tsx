@@ -1925,10 +1925,6 @@ const App: React.FC = () => {
             await googleDrive.init();
             const currentUser = await googleDrive.getSession();
             setUser(currentUser);
-
-            if (currentUser && !hasSyncedOnceRef.current) {
-               await syncCloudData();
-            }
          } catch (error) {
             console.error('Failed to initialize Google Drive:', error);
          }
@@ -1939,13 +1935,15 @@ const App: React.FC = () => {
       // Listen for sign-in state changes (e.g. user signs in via popup)
       const unsubscribe = googleDrive.onAuthStateChange(async (newUser) => {
          setUser(newUser);
-         if (newUser && !hasSyncedOnceRef.current) {
-            await syncCloudData();
-         }
       });
 
       return () => unsubscribe();
    }, []);
+
+   useEffect(() => {
+      if (!user || !isLibraryLoaded || hasSyncedOnceRef.current) return;
+      void syncCloudData();
+   }, [user, isLibraryLoaded]);
 
    // Browser closing protection
    useEffect(() => {
@@ -2965,26 +2963,6 @@ const App: React.FC = () => {
                </div>
             </div>
          </header>
-
-         {user && isCloudLoading && (
-            <div className="fixed inset-0 z-40 bg-bg/72 backdrop-blur-sm">
-               <div className="flex min-h-screen items-center justify-center p-6">
-                  <div className="w-full max-w-md rounded-2xl border border-outline bg-panel px-6 py-5 shadow-2xl">
-                     <div className="flex items-start gap-4">
-                        <div className="mt-0.5 rounded-xl border border-accent/20 bg-accent/10 p-3">
-                           <Loader2 size={22} className="animate-spin text-accent" />
-                        </div>
-                        <div className="space-y-1">
-                           <h2 className="text-lg font-bold text-text">Syncing with Google Drive</h2>
-                           <p className="text-sm text-muted">
-                              Flashcardsish is reconciling your latest cloud data. Editing is paused for a moment so your next change starts from the final synced version.
-                           </p>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-         )}
 
          {user && cloudConflicts.length > 0 && (
             <div className="px-6 pt-4">

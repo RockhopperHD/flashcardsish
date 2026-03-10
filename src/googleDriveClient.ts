@@ -29,6 +29,9 @@ const TOKEN_KEY = 'flashcardsish-google-token';
 const USER_KEY = 'flashcardsish-google-user';
 const TOKEN_EXPIRY_KEY = 'flashcardsish-google-token-expiry';
 const USER_JOINED_AT_MAP_KEY = 'flashcardsish-user-joined-at-map';
+const LAST_ACTIVE_KEY = 'flashcardsish-google-last-active';
+const REMEMBERED_SESSION_MAX_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+const ACTIVITY_WRITE_THROTTLE_MS = 5 * 60 * 1000;
 
 export interface GoogleDriveUser {
     id: string;
@@ -67,6 +70,8 @@ class GoogleDriveClient {
     private currentUser: GoogleDriveUser | null = null;
     private rememberSession = true;
     private rememberedEmailHint: string | null = null;
+    private activityTrackingInitialized = false;
+    private lastActivityWriteAt = 0;
 
     private isValidDateString(value: unknown): value is string {
         return typeof value === 'string' && !Number.isNaN(Date.parse(value));
@@ -155,6 +160,7 @@ class GoogleDriveClient {
 
         await this.initGapi();
         await this.initGis();
+        this.initActivityTracking();
 
         // 2. If we restored a token, verify it and set up GAPI
         if (this.accessToken) {
@@ -190,6 +196,7 @@ class GoogleDriveClient {
         const token = storage.getItem(TOKEN_KEY);
         const expiry = storage.getItem(TOKEN_EXPIRY_KEY);
         const userJson = storage.getItem(USER_KEY);
+        const lastActiveRaw = storage.getItem(LAST_ACTIVE_KEY);
 
         if (userJson) {
             try {
@@ -206,8 +213,15 @@ class GoogleDriveClient {
             return false;
         }
 
+        if (storage === localStorage && this.isRememberedSessionIdleExpired(lastActiveRaw)) {
+            console.warn('[GoogleDrive] Remembered session expired from inactivity');
+            this.clearStorage({ preserveLocalUser: false });
+            return false;
+        }
+
         const now = Date.now();
-        if (now >= parseInt(expiry)) {
+        const expiryMs = Number.parseInt(expiry, 10);
+        if (!Number.isFinite(expiryMs) || now >= expiryMs) {
             console.warn('[GoogleDrive] Stored token expired');
             storage.removeItem(TOKEN_KEY);
             storage.removeItem(TOKEN_EXPIRY_KEY);
@@ -223,6 +237,7 @@ class GoogleDriveClient {
                 this.authChangeCallbacks.forEach(cb => cb(this.currentUser));
             } catch (e) { }
         }
+        this.touchSessionActivity(storage, true);
         return true;
     }
 
@@ -232,15 +247,72 @@ class GoogleDriveClient {
         localStorage.removeItem(TOKEN_EXPIRY_KEY);
         if (!preserveLocalUser) {
             localStorage.removeItem(USER_KEY);
+            localStorage.removeItem(LAST_ACTIVE_KEY);
         }
         sessionStorage.removeItem(TOKEN_KEY);
         sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+        sessionStorage.removeItem(LAST_ACTIVE_KEY);
         sessionStorage.removeItem(USER_KEY);
         this.fileModifiedAtCache.clear();
     }
 
     private hasRememberedSessionHint(): boolean {
-        return !!localStorage.getItem(USER_KEY);
+        const hasHint = !!localStorage.getItem(USER_KEY);
+        if (!hasHint) return false;
+        if (this.isRememberedSessionIdleExpired(localStorage.getItem(LAST_ACTIVE_KEY))) {
+            console.warn('[GoogleDrive] Remembered session hint expired from inactivity');
+            this.clearStorage({ preserveLocalUser: false });
+            return false;
+        }
+        return true;
+    }
+
+    private isRememberedSessionIdleExpired(lastActiveRaw: string | null): boolean {
+        if (!lastActiveRaw) {
+            return false;
+        }
+        const lastActive = Number.parseInt(lastActiveRaw, 10);
+        if (!Number.isFinite(lastActive)) {
+            return false;
+        }
+        return (Date.now() - lastActive) > REMEMBERED_SESSION_MAX_IDLE_MS;
+    }
+
+    private getSessionStorage(): Storage {
+        return this.rememberSession ? localStorage : sessionStorage;
+    }
+
+    private touchSessionActivity(storage: Storage = this.getSessionStorage(), force = false): void {
+        const now = Date.now();
+        if (!force && now - this.lastActivityWriteAt < ACTIVITY_WRITE_THROTTLE_MS) {
+            return;
+        }
+        storage.setItem(LAST_ACTIVE_KEY, now.toString());
+        this.lastActivityWriteAt = now;
+    }
+
+    private initActivityTracking(): void {
+        if (this.activityTrackingInitialized || typeof window === 'undefined') {
+            return;
+        }
+
+        const markActive = () => {
+            if (!this.accessToken && !this.currentUser) {
+                return;
+            }
+            this.touchSessionActivity();
+        };
+
+        window.addEventListener('pointerdown', markActive, { passive: true });
+        window.addEventListener('keydown', markActive);
+        window.addEventListener('focus', markActive);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                markActive();
+            }
+        });
+
+        this.activityTrackingInitialized = true;
     }
 
     private finalizeSignedOutState(): void {
@@ -272,6 +344,7 @@ class GoogleDriveClient {
                 : 3600;
         const expiryTime = Date.now() + (expiresInSeconds * 1000) - (60 * 1000); // 1 minute buffer
         storage.setItem(TOKEN_EXPIRY_KEY, expiryTime.toString());
+        this.touchSessionActivity(storage, true);
 
         this.setAuthToken();
         const status = await this.fetchUserInfo();
@@ -428,6 +501,7 @@ class GoogleDriveClient {
                 // Save user info to persistence
                 const storage = this.rememberSession ? localStorage : sessionStorage;
                 storage.setItem(USER_KEY, JSON.stringify(this.currentUser));
+                this.touchSessionActivity(storage, true);
 
                 // console.log('[GoogleDrive] User info fetched:', this.currentUser.email);
                 this.authChangeCallbacks.forEach(cb => cb(this.currentUser));

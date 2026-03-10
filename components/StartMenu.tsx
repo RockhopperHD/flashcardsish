@@ -5296,7 +5296,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
               {librarySets.length === 0 ? (
                 isCloudLoading || isProcessingFile ? (
-                  <BreathingLoader />
+                  <BreathingLoader
+                    statusText={
+                      isCloudLoading
+                        ? "Syncing your library with Google Drive. This should only take a moment."
+                        : undefined
+                    }
+                  />
                 ) : (
                   <div className="py-16 border border-dashed border-outline rounded-2xl bg-panel/30 text-center">
                     <p className="text-muted mb-2">
