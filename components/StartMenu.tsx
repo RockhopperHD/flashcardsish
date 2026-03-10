@@ -527,232 +527,231 @@ const ImageModal: React.FC<{
   );
 };
 
-// Markdown Help Modal
+// Formatting Guide Modal
 const MarkdownHelpModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   isOpen,
   onClose,
 }) => {
+  const highlightExamples = [
+    { syntax: '<h=y>yellow</h>', label: 'yellow', className: 'bg-yellow/20 text-yellow' },
+    { syntax: '<h=r>red</h>', label: 'red', className: 'bg-red/20 text-red' },
+    { syntax: '<h=b>blue</h>', label: 'blue', className: 'bg-blue/20 text-blue' },
+    { syntax: '<h=g>green</h>', label: 'green', className: 'bg-green/20 text-green' },
+    { syntax: '<h=p>purple</h>', label: 'purple', className: 'bg-purple/20 text-purple' },
+  ];
+
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         e.preventDefault();
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 backdrop-blur-sm animate-in fade-in p-4 md:p-8"
       onMouseDown={onClose}
     >
       <div
-        className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh]"
+        className="bg-panel border border-outline rounded-2xl p-0 w-full max-w-5xl shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[90vh]"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-outline shrink-0 bg-panel-2 rounded-t-2xl">
           <div className="flex items-center justify-between gap-4">
             <h2
-              className="text-2xl text-text"
+              className="text-3xl text-text"
               style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
             >
-              Formatting and Raw Text Guide
+              Formatting Guide
             </h2>
             <button onClick={onClose} className="text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors">
-              <X size={24} />
+              <X size={22} />
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-8">
-          <p className="text-sm text-muted">
-            Use this reference while building cards. Visual Editor and Raw Text mode both support these patterns.
-          </p>
 
-          {/* Core Formatting */}
-          <div>
-            <h4 className="text-lg font-bold mb-3 text-text">Core Formatting</h4>
-            <div className="bg-panel-2 border border-outline rounded-xl overflow-hidden">
+          <section className="space-y-4">
+            <div>
+              <h3 className="text-2xl font-bold text-text">Basic Formatting</h3>
+              <p className="text-sm text-muted mt-2">
+                Type the markdown in the left column. The right column shows how it renders on the card.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-outline overflow-hidden bg-panel-2">
               <table className="w-full text-sm">
                 <thead className="bg-panel">
                   <tr>
-                    <th className="text-left px-4 py-3 text-muted font-medium">
+                    <th className="text-left px-5 py-3 font-bold text-muted uppercase tracking-[0.18em] text-[11px] w-[46%]">
                       You Type
                     </th>
-                    <th className="text-right px-4 py-3 text-muted font-medium">
+                    <th className="text-left px-5 py-3 font-bold text-muted uppercase tracking-[0.18em] text-[11px]">
                       You Get
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline">
                   <tr>
-                    <td className="px-4 py-3 font-mono text-muted">**bold**</td>
-                    <td className="px-4 py-3 text-right text-text"><strong>bold</strong></td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">*italic*</td>
-                    <td className="px-4 py-3 text-right text-text"><em>italic</em></td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">`code`</td>
-                    <td className="px-4 py-3 text-right">
-                      <code className="bg-panel px-1.5 py-0.5 rounded text-accent">
-                        code
-                      </code>
+                    <td className="px-5 py-4 align-top">
+                      <code className="text-white text-[17px]" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>**bold**</code>
+                    </td>
+                    <td className="px-5 py-4 text-text align-top">
+                      <strong>bold</strong>
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      ~~strikethrough~~
+                    <td className="px-5 py-4 align-top">
+                      <code className="text-white text-[17px]" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>*italic*</code>
                     </td>
-                    <td className="px-4 py-3 text-right text-text"><s>strikethrough</s></td>
+                    <td className="px-5 py-4 text-text align-top">
+                      <em>italic</em>
+                    </td>
                   </tr>
                   <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      __underline__
+                    <td className="px-5 py-4 align-top">
+                      <code className="text-white text-[17px]" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>__underline__</code>
                     </td>
-                    <td className="px-4 py-3 text-right text-text">
+                    <td className="px-5 py-4 text-text align-top">
                       <u>underline</u>
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      [[slab]]
+                    <td className="px-5 py-4 align-top">
+                      <code className="text-white text-[17px]" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>~~strikethrough~~</code>
                     </td>
-                    <td className="px-4 py-3 text-right text-text">
-                      <span className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)' }}>slab</span>
+                    <td className="px-5 py-4 text-text align-top">
+                      <s>strikethrough</s>
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-4 py-3 font-mono text-muted">- Bullet item</td>
-                    <td className="px-4 py-3 text-right text-text">
-                      <ul className="list-disc list-inside inline-block">
-                        <li>Bullet item</li>
+                    <td className="px-5 py-4 align-top">
+                      <code className="text-white text-[17px]" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>`code`</code>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <code className="bg-panel px-1.5 py-0.5 rounded text-accent">code</code>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="px-5 py-4 align-top">
+                      <pre className="text-white text-[17px] whitespace-pre-wrap" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>- First item{"\n"}- Second item</pre>
+                    </td>
+                    <td className="px-5 py-4 text-text align-top">
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>First item</li>
+                        <li>Second item</li>
                       </ul>
                     </td>
                   </tr>
                   <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      (Cue) Text
+                    <td className="px-5 py-4 align-top">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        {highlightExamples.map((example) => (
+                          <code key={example.syntax} className="text-white text-[17px]" style={{ fontFamily: "Consolas, 'Courier New', monospace" }}>
+                            {example.syntax}
+                          </code>
+                        ))}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-col items-end gap-1">
-                        <CardTagPill label="Cue" />
-                        <span className="text-text">Text</span>
+                    <td className="px-5 py-4 align-top">
+                      <div className="flex flex-col items-start gap-2">
+                        {highlightExamples.map((example) => (
+                          <span key={example.syntax} className={`${example.className} px-2 py-1 rounded`}>
+                            {example.label}
+                          </span>
+                        ))}
                       </div>
                     </td>
                   </tr>
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
 
-          {/* Highlights */}
-          <div>
-            <h4 className="text-lg font-bold mb-3 text-text">Highlights</h4>
-            <div className="bg-panel-2 border border-outline rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-panel">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-muted font-medium">
-                      You Type
-                    </th>
-                    <th className="text-right px-4 py-3 text-muted font-medium">
-                      You Get
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline">
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      &lt;h=y&gt;yellow&lt;/h&gt;
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="bg-yellow/20 text-yellow px-1 rounded">
-                        yellow
-                      </span>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      &lt;h=r&gt;red&lt;/h&gt;
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="bg-red/20 text-red px-1 rounded">
-                        red
-                      </span>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      &lt;h=b&gt;blue&lt;/h&gt;
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="bg-blue/20 text-blue px-1 rounded">
-                        blue
-                      </span>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      &lt;h=g&gt;green&lt;/h&gt;
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="bg-green/20 text-green px-1 rounded">
-                        green
-                      </span>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="px-4 py-3 font-mono text-muted">
-                      &lt;h=p&gt;purple&lt;/h&gt;
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="bg-purple/20 text-purple px-1 rounded">
-                        purple
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+          <section className="space-y-6">
+            <div>
+              <h3 className="text-2xl font-bold text-text">Flashcardsish Markdown</h3>
+              <p className="text-sm text-muted mt-2 leading-relaxed max-w-3xl">
+                Flashcardsish adds two special markdown patterns that change how information is laid out on a card: Cues and Slabs.
+              </p>
             </div>
-          </div>
 
-          {/* Raw Text Patterns */}
-          <div>
-            <h4 className="text-lg font-bold mb-3 text-text">Raw Text Patterns</h4>
-            <div className="bg-panel-2 border border-outline rounded-xl p-4 font-mono text-sm text-muted space-y-1">
-              <div>Term / Definition</div>
-              <div>Term / Definition /// Year</div>
-              <div>Term / Definition /// Year ||| https://image-url</div>
-              <div>{'>'} Bullet content appended to previous card</div>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
+              <div className="space-y-3">
+                <h4 className="text-xl font-bold text-text">Cues</h4>
+                <p className="text-sm text-muted leading-relaxed">
+                  Write a cue by putting text in parentheses at the start of the term, like <code className="bg-panel px-1 rounded text-text">(Verb) to run</code>. When the card renders, that cue is pulled out of the line and displayed as a small label above the main text.
+                </p>
+                <p className="text-sm text-muted leading-relaxed">
+                  This is useful when the extra information should guide the reader before they read the answer itself, such as part of speech, category, tense, or prompt type.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-outline bg-panel shadow-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-outline bg-panel-2">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted">Cue Example</span>
+
+                </div>
+                <div className="p-4">
+                  <div className="rounded-xl border border-outline bg-panel-2 min-h-[170px] p-6 relative flex items-center justify-center">
+                    <div className="absolute top-4 left-4">
+                      <CardTagPill label="Verb" className="px-3 py-1.5 text-[13px]" />
+                    </div>
+                    <div className="text-2xl font-semibold text-text text-center">to run</div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <ul className="mt-4 space-y-2 text-sm text-muted">
-              <li className="flex items-start gap-2">
-                <ChevronDown size={14} className="text-accent shrink-0 mt-0.5 rotate-[-90deg]" />
-                <span>Card separators are configurable in Raw Text Import. Common options are blank lines, <code className="bg-panel px-1 rounded">&&&</code>, or <code className="bg-panel px-1 rounded">;;;</code>.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <ChevronDown size={14} className="text-accent shrink-0 mt-0.5 rotate-[-90deg]" />
-                <span>Term/definition and year separators are configurable too, so you can match your source text format.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <ChevronDown size={14} className="text-accent shrink-0 mt-0.5 rotate-[-90deg]" />
-                <span>Start with simple cards, then enrich with images, tags, and custom fields in the Visual Editor.</span>
-              </li>
-            </ul>
-          </div>
 
-          <div className="bg-panel-2 border border-outline rounded-xl p-4">
-            <h4 className="font-bold text-text mb-2">Quick Tip</h4>
-            <p className="text-sm text-muted">
-              Use the builder&apos;s <strong className="text-text">WYSIWYG</strong> toggle to switch between raw markdown and rendered preview.
-            </p>
-          </div>
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-center">
+              <div className="space-y-3">
+                <h4 className="text-xl font-bold text-text">Slabs</h4>
+                <p className="text-sm text-muted leading-relaxed">
+                  Write a slab with double square brackets, like <code className="bg-panel px-1 rounded text-text">[[bio-]]</code>. A slab stays inside the sentence and renders as a solid inline block, so it feels attached to the text around it.
+                </p>
+                <p className="text-sm text-muted leading-relaxed">
+                  This works well for chunks that should stay visually locked into the phrase itself, like prefixes, suffixes, particles, or other compact units you want the learner to notice immediately.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-outline bg-panel shadow-xl overflow-hidden">
+                <div className="px-4 py-3 border-b border-outline bg-panel-2">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted">Slab Example</span>
+
+                </div>
+                <div className="p-4">
+                  <div className="rounded-xl border border-outline bg-panel-2 min-h-[170px] flex items-center justify-center p-6">
+                    <div className="text-xl text-text leading-relaxed text-center">
+                      The
+                      <span
+                        className="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 border border-slate-600 align-middle"
+                        style={{
+                          backgroundImage:
+                            "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px)",
+                        }}
+                      >
+                        bio-
+                      </span>
+                      prefix means life.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-outline bg-panel/80 px-5 py-4">
+              <p className="text-sm text-muted">
+                Quick rule of thumb: if the extra info should sit <span className="font-bold text-text">above</span> the text, use a Cue. If it should stay <span className="font-bold text-text">inside</span> the phrase, use a Slab.
+              </p>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -1609,7 +1608,7 @@ const SetConfigurationModal: React.FC<{
               <div className="flex flex-col gap-4">
                 {/* Applied Tags List */}
                 {appliedTags.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col items-start gap-2">
                     {tags.filter(t => appliedTags.includes(t.id)).map(tag => (
                       <div key={tag.id} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-accent/20 bg-accent/5 text-text text-sm font-medium">
                         <div
@@ -2004,7 +2003,7 @@ const BuilderRowItem: React.FC<{
     // Handle Definition Keydown (Bullets & Tab)
     const handleDefKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLDivElement | HTMLTextAreaElement>) => {
       if (e.key === "Enter") {
-        // Auto-list handling for RichInput? 
+        // Auto-list handling for RichInput?
         // For now, let's keep it simple. RichInput splits text by divs/p logic.
         // Implementing auto-bullet in RichInput is complex without cursor control via ref exposed methods.
         // We'll skip auto-bullet logic for this iteration to prioritize highlighting stability.
@@ -2142,7 +2141,11 @@ const BuilderRowItem: React.FC<{
           {/* Main Content Grid - Standardized to match CardPreview */}
           <div className="flex flex-col md:flex-row gap-4 items-stretch">
             {/* Term Column */}
-            <div className="relative group/term flex flex-col gap-3 flex-1 min-w-0">
+            <div
+              className="relative group/term flex flex-col gap-3 flex-1 min-w-0"
+              data-tour={index === 0 ? "builder-first-term" : undefined}
+              data-tour-filled={index === 0 ? (row.term.trim() ? "true" : "false") : undefined}
+            >
               <div className="flex items-center gap-2 ml-1 min-h-[24px]">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">
                   {termLabel}
@@ -2246,7 +2249,7 @@ const BuilderRowItem: React.FC<{
               {(showYear || termSideFields.length > 0) && (
                 <div className="mt-4 space-y-4">
                   {showYear && (
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                       <label className="text-xs font-bold text-muted uppercase tracking-wider ml-1">
                         Year
                       </label>
@@ -2279,7 +2282,11 @@ const BuilderRowItem: React.FC<{
             <div className="hidden md:block w-px bg-outline self-stretch" />
 
             {/* Definition Column */}
-            <div className="relative group/def flex flex-col gap-3 flex-1 min-w-0">
+            <div
+              className="relative group/def flex flex-col gap-3 flex-1 min-w-0"
+              data-tour={index === 0 ? "builder-first-definition" : undefined}
+              data-tour-filled={index === 0 ? (row.def.trim() ? "true" : "false") : undefined}
+            >
               <div className="flex items-center gap-2 mr-1 justify-end min-h-[24px]">
                 <label className="text-xs font-bold text-muted uppercase tracking-wider">
                   {definitionLabel}
@@ -2431,7 +2438,7 @@ const CustomFieldInput: React.FC<{
     const isB = val === optionB;
 
     return (
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label
           className="text-xs font-bold text-muted uppercase tracking-wider ml-1 truncate"
           title={field.name}
@@ -4690,6 +4697,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         {(view === "builder" || view === "raw-text") && (
           <button
             onClick={handleBackToLibrary}
+            data-tour="builder-back-to-library"
             className="mb-4 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
           >
             <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
@@ -4825,9 +4833,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     <BookOpen size={20} className="text-green" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-text text-sm mb-1">Take a Quick Tour</h4>
+                    <h4 className="font-bold text-text text-sm mb-1">Learn the First-Set Flow</h4>
                     <p className="text-muted text-xs leading-relaxed">
-                      Hi friend! Are you new to Flashcardsish? Run the guided tutorial to make and study your first set in just a few steps. You can always check this out in settings later, too.
+                      See exactly how to create a set, fill your first card, and find the save and study buttons. You can always reopen the tour from Settings later.
                     </p>
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
                       <button
@@ -4934,7 +4942,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                         key={i}
                                         className="flex items-center gap-1.5"
                                       >
-                                        <span className="text-accent">•</span>
+                                        <span className="text-accent">&bull;</span>
                                         <span className="truncate">
                                           {setName}
                                         </span>
@@ -5744,7 +5752,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             />
                           ))}
                         </div>
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                           <button
                             onClick={() => confirmCreateFolder(newFolderColor)}
                             className="w-full py-3 bg-text text-bg font-bold rounded-lg hover:bg-text/90 transition-colors duration-150"
@@ -5872,7 +5880,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       data-tour="builder-markdown-help"
                       className="text-xs text-muted hover:text-accent flex items-center gap-1"
                     >
-                      <HelpCircle size={12} /> Formatting Help
+                      <HelpCircle size={12} /> Formatting Guide
                     </button>
                   </div>
 
@@ -5957,7 +5965,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       data-tour="builder-markdown-help"
                       className="text-xs text-muted hover:text-accent flex items-center gap-1"
                     >
-                      <HelpCircle size={12} /> Formatting Help
+                      <HelpCircle size={12} /> Formatting Guide
                     </button>
                   </div>
                   {/* Raw Text also gets a panel since it's one big input */}

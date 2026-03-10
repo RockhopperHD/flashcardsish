@@ -3,7 +3,6 @@ import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '.
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat } from '../utils';
 import { ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
-import { generateIncorrectAnswers, isAiAvailable } from '../src/aiService';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
 import { CardTagPill } from './CardTagPill';
@@ -232,10 +231,10 @@ const ABInput = ({
    };
 
    const formatKey = (k: string) => {
-      if (k === 'ArrowLeft') return '←';
-      if (k === 'ArrowRight') return '→';
-      if (k === 'ArrowUp') return '↑';
-      if (k === 'ArrowDown') return '↓';
+      if (k === 'ArrowLeft') return 'LEFT';
+      if (k === 'ArrowRight') return 'RIGHT';
+      if (k === 'ArrowUp') return 'UP';
+      if (k === 'ArrowDown') return 'DOWN';
       if (k === ' ') return 'SPACE';
       return k.toUpperCase().slice(0, 5); // Truncate if too long (unlikely)
    };
@@ -377,8 +376,6 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    // Multiple Choice State
    const [options, setOptions] = useState<string[]>([]);
-   const [isLoadingAiOptions, setIsLoadingAiOptions] = useState(false);
-   const [aiOptionsError, setAiOptionsError] = useState<string | null>(null);
 
    // Multistudy Edit Warning
    const [showEditWarning, setShowEditWarning] = useState(false);
@@ -1650,9 +1647,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   </button>
                   {/* Cues */}
                   {currentCard.tags && currentCard.tags.length > 0 && (
-                     <div className="flex gap-1 ml-2">
+                     <div className="flex items-center gap-2 ml-2">
                         {currentCard.tags.map(tag => (
-                           <CardTagPill key={tag} label={tag} />
+                           <CardTagPill key={tag} label={tag} className="px-2.5 py-1 text-[11px]" />
                         ))}
                      </div>
                   )}

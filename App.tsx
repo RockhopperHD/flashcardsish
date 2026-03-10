@@ -437,7 +437,7 @@ const SettingsModal: React.FC<{
    // Tooltip definitions
    const tooltips: Record<string, string> = {
       forgiveSpellingErrors: "Allow minor typos and capitalization errors. Configure specific rules below.",
-      ignoreDiacritics: "Treat accented characters as their base letters (e.g., 'é' matches 'e').",
+      ignoreDiacritics: "Treat accented characters as their base letters (for example, accented e matches e).",
       ignoreCapitalization: "Mark answers as correct regardless of uppercase or lowercase usage.",
       forgiveThe: "Ignore the word 'the' at the beginning of terms (e.g., 'The Apple' matches 'Apple').",
       wiggleRoom: "How many letters can be wrong while still counting the answer as correct (1-6 letters).",
@@ -453,7 +453,7 @@ const SettingsModal: React.FC<{
       shuffleCards: "When in Learn mode, shuffle terms so they don't appear in the same order as they are listed in the set.",
       brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen.",
       importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
-      importOverride: "Choose how Flashcardsish handles duplicates when pasting raw text. If a card in your raw text matches the term or definition of one already in the set…\n\n• Keep Old: …the one already in the set will be kept and the one in the raw text will be ignored.\n• Add Duplicate: …the new one in the raw text will be added anyway, creating a duplicate card.\n• Override Old: …the new card in the raw text will replace the old card that already exists.",
+      importOverride: "Choose how Flashcardsish handles duplicates when pasting raw text. If a card in your raw text matches the term or definition of one already in the set...\n\n- Keep Old: the one already in the set will be kept and the one in the raw text will be ignored.\n- Add Duplicate: the new one in the raw text will be added anyway, creating a duplicate card.\n- Override Old: the new card in the raw text will replace the old card that already exists.",
       autoCloseImageWindow: "When enabled, pasting any text in the image URL space instantly closes the window and attempts to use that image. If it fails, it will upload a broken image, but you can always re-attempt the upload.",
       learnModeLeftKey1: "Primary key for Option A / True.",
       learnModeLeftKey2: "Secondary key for Option A / True.",
@@ -637,7 +637,7 @@ const SettingsModal: React.FC<{
                   {activeTab === 'set' && (
                      <div className="space-y-4">
 
-                        {/* ── General ─────────────────────────── */}
+                        {/* General */}
                         <h4 className="text-xs font-bold text-muted uppercase tracking-widest pt-1">General</h4>
 
                         {/* Answer With Toggle */}
@@ -703,7 +703,7 @@ const SettingsModal: React.FC<{
                            </button>
                         </div>
 
-                        {/* ── Learn Mode ──────────────────────── */}
+                        {/* Learn Mode */}
                         <h4 className="text-xs font-bold text-muted uppercase tracking-widest pt-3">Learn Mode</h4>
 
                         {/* Answer Style (was: Learn Mode Style) */}
@@ -771,7 +771,7 @@ const SettingsModal: React.FC<{
                                     {/* Ignore Diacritics */}
                                     <div className="flex items-center justify-between">
                                        <TooltipWrapper id="ignoreDiacritics" tooltip={tooltips.ignoreDiacritics} settings={settings}>
-                                          <label className="text-sm text-text cursor-pointer hover:text-text transition-colors">Ignore diacritics (é, ñ)</label>
+                                          <label className="text-sm text-text cursor-pointer hover:text-text transition-colors">Ignore diacritics (accents)</label>
                                        </TooltipWrapper>
                                        <div
                                           onClick={(e) => { e.stopPropagation(); toggle('ignoreDiacritics'); }}
@@ -1385,14 +1385,14 @@ const App: React.FC = () => {
          let result: { success: boolean; savedToCloud: boolean; savedSetIds?: string[]; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] };
 
          if (payload.ignoreConflicts) {
-            // Full save path — used for conflict overwrite resolution
+            // Full save path - used for conflict overwrite resolution
             result = await saveLibrary(payload.sets, {
                ignoreConflicts: true,
                folders: payload.folders,
                skipCloud: skipCloudWrite
             });
          } else {
-            // V3 targeted save — only write dirty sets
+            // V3 targeted save - only write dirty sets
             const dirtyIds = new Set(dirtySetIdsRef.current);
             const shouldWriteStructure = structureChangedRef.current;
 
@@ -1545,7 +1545,7 @@ const App: React.FC = () => {
                });
 
                // V3: Rebuild the snapshot so auto-save doesn't see merged sets as dirty.
-               // The merge result IS the correct state — no need to re-upload to cloud.
+               // The merge result IS the correct state - no need to re-upload to cloud.
                const freshSnapshot = new Map<string, string>();
                for (const s of merged) {
                   freshSnapshot.set(s.id, JSON.stringify(s));
@@ -3012,7 +3012,7 @@ const App: React.FC = () => {
                >
                   Privacy Policy
                </button>
-               <span className="text-outline">•</span>
+               <span className="text-outline">&bull;</span>
                <button
                   onClick={() => setIsTermsOpen(true)}
                   className="hover:text-accent hover:opacity-100 transition-all underline-offset-2 hover:underline"
@@ -3035,11 +3035,6 @@ const App: React.FC = () => {
             onOpenTerms={() => setIsTermsOpen(true)}
             onOpenKeybinds={() => {
                setIsKeybindsModalOpen(true);
-            }}
-            onOpenAiSetup={() => {
-               setSettingsInitialTab('global');
-               setSettingsInitialTab('global');
-               setIsSettingsOpen(true);
             }}
             onOpenCorruptionPopup={() => {
                const sample = [

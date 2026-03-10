@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 import { Confetti } from './Confetti';
+import { CardTagPill } from './CardTagPill';
 
 // Encouraging messages for round completion
 const ROUND_MESSAGES = [
@@ -125,6 +126,8 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         if (!currentCard) return null;
         return showTermFirst ? currentCard.content : currentCard.term.join(' / ');
     }, [currentCard, showTermFirst]);
+    const frontLabel = showTermFirst ? (set.termLabel || 'Term') : (set.definitionLabel || 'Definition');
+    const backLabel = showTermFirst ? (set.definitionLabel || 'Definition') : (set.termLabel || 'Term');
 
     // Memoize a random message when round finishes
     const roundMessage = useMemo(() => {
@@ -647,21 +650,31 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                             isFlipped ? "border-accent" : "border-outline"
                         )}>
                             {/* Top Row: Star + Side Label */}
-                            <div className="flex justify-between items-start mb-6">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); toggleStar(); }}
-                                    className={clsx(
-                                        "transition-all hover:scale-110 active:scale-95",
-                                        currentCard?.star ? "text-yellow" : "text-muted hover:text-yellow"
-                                    )}
-                                >
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill={currentCard?.star ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                                    </svg>
-                                </button>
+                            <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+                                <div className="flex flex-1 min-w-0 items-center gap-3">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); toggleStar(); }}
+                                        className={clsx(
+                                            "transition-all hover:scale-110 active:scale-95 shrink-0",
+                                            currentCard?.star ? "text-yellow" : "text-muted hover:text-yellow"
+                                        )}
+                                    >
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill={currentCard?.star ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                        </svg>
+                                    </button>
 
-                                <div className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-panel-2 text-muted">
-                                    {showTermFirst ? (set.termLabel || 'Term') : (set.definitionLabel || 'Definition')}
+                                    {currentCard?.tags && currentCard.tags.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 min-w-0">
+                                            {currentCard.tags.map(tag => (
+                                                <CardTagPill key={tag} label={tag} className="px-2.5 py-1 text-[11px]" />
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="shrink-0 text-[11px] font-bold uppercase tracking-[0.24em] text-muted">
+                                    {frontLabel}
                                 </div>
                             </div>
 
@@ -713,24 +726,33 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
                             isFlipped ? "border-accent shadow-2xl shadow-accent/10" : "border-outline"
                         )}>
                             {/* Top Row: Star + Side Label */}
-                            <div className="flex justify-between items-start mb-6">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); toggleStar(); }}
-                                    className={clsx(
-                                        "transition-all hover:scale-110 active:scale-95",
-                                        currentCard?.star ? "text-yellow" : "text-muted hover:text-yellow"
-                                    )}
-                                >
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill={currentCard?.star ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-                                    </svg>
-                                </button>
+                            <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
+                                <div className="flex flex-1 min-w-0 items-center gap-3">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); toggleStar(); }}
+                                        className={clsx(
+                                            "transition-all hover:scale-110 active:scale-95 shrink-0",
+                                            currentCard?.star ? "text-yellow" : "text-muted hover:text-yellow"
+                                        )}
+                                    >
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill={currentCard?.star ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                                        </svg>
+                                    </button>
 
-                                <div className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-accent/20 text-accent">
-                                    {showTermFirst ? (set.definitionLabel || 'Definition') : (set.termLabel || 'Term')}
+                                    {currentCard?.tags && currentCard.tags.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 min-w-0">
+                                            {currentCard.tags.map(tag => (
+                                                <CardTagPill key={tag} label={tag} className="px-2.5 py-1 text-[11px]" />
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="shrink-0 text-[11px] font-bold uppercase tracking-[0.24em] text-accent">
+                                    {backLabel}
                                 </div>
                             </div>
-
                             {/* Main Content */}
                             <div className="flex-1 flex items-center justify-center">
                                 <div className="text-left max-w-full w-full">

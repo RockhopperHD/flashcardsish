@@ -13,7 +13,6 @@ interface UiAuditPanelProps {
   onOpenPrivacy: () => void;
   onOpenTerms: () => void;
   onOpenKeybinds: () => void;
-  onOpenAiSetup: () => void;
   onOpenCorruptionPopup: () => void;
   onRequestMenuModal: (request: UiAuditRequest) => void;
   onShowToast: () => void;
@@ -27,9 +26,8 @@ export const UiAuditPanel: React.FC<UiAuditPanelProps> = ({
   onOpenPrivacy,
   onOpenTerms,
   onOpenKeybinds,
-  onOpenAiSetup,
-  onOpenCorruptionPopup,
   onRequestMenuModal,
+  onOpenCorruptionPopup,
   onShowToast,
   sampleTag,
 }) => {
@@ -68,11 +66,10 @@ export const UiAuditPanel: React.FC<UiAuditPanelProps> = ({
                 <button onClick={onOpenPrivacy} className={menuButtonClass(true)}>Privacy</button>
                 <button onClick={onOpenTerms} className={menuButtonClass(true)}>Terms</button>
                 <button onClick={onOpenKeybinds} className={menuButtonClass(true)}>Keybinds</button>
-                <button onClick={onOpenAiSetup} className={menuButtonClass(true)}>AI Setup</button>
                 <button onClick={onOpenCorruptionPopup} className={menuButtonClass(true)}>Recovery Popup</button>
                 <button
-                  onClick={() => onRequestMenuModal({ type: "add-set" })}
                   className={menuButtonClass(isMenuActive)}
+                  onClick={() => onRequestMenuModal({ type: "add-set" })}
                   disabled={!isMenuActive}
                 >
                   Add Set
@@ -138,7 +135,7 @@ export const UiAuditPanel: React.FC<UiAuditPanelProps> = ({
                   className={menuButtonClass(isMenuActive)}
                   disabled={!isMenuActive}
                 >
-                  Markdown Help
+                  Formatting Guide
                 </button>
                 <button
                   onClick={() => onRequestMenuModal({ type: "create-folder" })}

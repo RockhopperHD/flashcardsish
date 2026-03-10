@@ -43,17 +43,17 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                     <h2 className="text-3xl font-bold text-text text-center">Add New Set</h2>
                     <button
                         onClick={onClose}
+                        data-tour="add-set-close"
                         className="absolute right-0 top-1/2 -translate-y-1/2 text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
                     >
                         <X size={22} />
                     </button>
                 </div>
                 <p className="text-text text-lg mb-8 max-w-lg mx-auto text-center">
-                    Choose how you want to start creating your set
+                    Choose the starting point that fits how you want to build this set
                 </p>
 
                 <div className="grid md:grid-cols-2 gap-4 w-full">
-                    {/* Start from Scratch */}
                     <button
                         onClick={() => {
                             onStartScratch();
@@ -66,12 +66,11 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                             <FilePlus size={32} className="text-accent" />
                         </div>
                         <h3 className="text-xl font-bold text-text mb-2">Start from Scratch</h3>
-                        <p className="text-sm text-text max-w-[200px] leading-relaxed min-h-[60px]">
-                            Start with a clean slate and use the Set Builder in Flashcardsish to create cards.
+                        <p className="text-sm text-text max-w-[220px] leading-relaxed min-h-[60px]">
+                            Use the visual builder to name the set and build cards one by one.
                         </p>
                     </button>
 
-                    {/* Start with Raw Text */}
                     <button
                         onClick={() => {
                             onStartRaw();
@@ -83,8 +82,8 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                             <FileText size={32} className="text-accent" />
                         </div>
                         <h3 className="text-xl font-bold text-text mb-2">Raw Text Import</h3>
-                        <p className="text-sm text-text max-w-[200px] leading-relaxed min-h-[60px]">
-                            Start by pasting in a list of terms of definitions, either from another flashcards app or from a text editor.
+                        <p className="text-sm text-text max-w-[220px] leading-relaxed min-h-[60px]">
+                            Paste a list of terms and definitions from another flashcards app, document, or notes file.
                         </p>
                     </button>
                 </div>
