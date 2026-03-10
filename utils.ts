@@ -1,5 +1,7 @@
 import React from 'react';
 import { Card, CardSet, CustomFieldDefinition } from './types';
+import { sanitizeStrings } from './storageV2';
+import { normalizeCardMastery, normalizeCardStar } from './cardNormalization';
 
 export const isMacPlatform = (): boolean => {
   if (typeof navigator === 'undefined') return false;
@@ -236,6 +238,38 @@ export const distance = (a: string, b: string): number => {
   return dp[_b.length];
 };
 
+const normalizeForAnswerMatch = (
+  value: string,
+  options: { flattenBlocks?: boolean } = {}
+): string => {
+  let clean = value
+    .replace(/<h=[^>]+>/g, '')
+    .replace(/<\/h>/g, '')
+    .replace(/\*\*\*/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/__/g, '')
+    .replace(/`/g, '')
+    .replace(/<u>/g, '')
+    .replace(/<\/u>/g, '')
+    .replace(/\[\[(.*?)\]\]/g, ' $1 ')
+    .replace(/\u200B/g, '');
+
+  if (options.flattenBlocks) {
+    clean = clean
+      .replace(/<p>/gi, ' ')
+      .replace(/- /g, ' ');
+  }
+
+  clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  return clean
+    .toLowerCase()
+    .replace(/^(the|la|el)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 // Check answer logic
 export const checkAnswer = (
   inputTerm: string,
@@ -245,33 +279,13 @@ export const checkAnswer = (
   strict: boolean = false,
   customFieldDefs?: CustomFieldDefinition[]
 ) => {
-  const strip = (s: string) => {
-    // Strip markdown: **, *, __, `, <h=...>
-    let clean = s
-      .replace(/<h=[^>]+>/g, '')
-      .replace(/<\/h>/g, '')
-      .replace(/\*\*\*/g, '')
-      .replace(/\*\*/g, '')
-      .replace(/\*/g, '')
-      .replace(/__/g, '')
-      .replace(/`/g, '')
-      .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '')
-      .replace(/\[\[.*?\]\]/g, '')
-      .replace(/\u200B/g, '');
-    // Normalize and remove diacritics
-    clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-    return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
-  };
-
   // 1. Check Term
-  const strippedInput = strip(inputTerm);
+  const strippedInput = normalizeForAnswerMatch(inputTerm);
   let bestDist = Infinity;
   let bestTerm = '';
 
   for (const t of card.term) {
-    const dist = distance(strippedInput, strip(t));
+    const dist = distance(strippedInput, normalizeForAnswerMatch(t));
     if (dist < bestDist) {
       bestDist = dist;
       bestTerm = t;
@@ -285,7 +299,7 @@ export const checkAnswer = (
   // 2. Check Year (if applicable)
   let isYearMatch = true;
   if (card.year) {
-    isYearMatch = strip(inputYear) === strip(card.year);
+    isYearMatch = normalizeForAnswerMatch(inputYear) === normalizeForAnswerMatch(card.year);
   }
 
   // 3. Check Custom Fields (Only fields present in definitions, if provided)
@@ -300,7 +314,7 @@ export const checkAnswer = (
       }
 
       const input = inputCustom[field.name] || '';
-      const match = strip(input) === strip(field.value);
+      const match = normalizeForAnswerMatch(input) === normalizeForAnswerMatch(field.value);
       customResults[field.name] = match;
       if (!match) isCustomMatch = false;
     }
@@ -333,31 +347,9 @@ export const checkDefinitionAnswer = (
   strict: boolean = false,
   customFieldDefs?: CustomFieldDefinition[]
 ) => {
-  const strip = (s: string) => {
-    // Strip markdown: **, *, __, `, <h=...>
-    let clean = s
-      .replace(/<h=[^>]+>/g, '')
-      .replace(/<\/h>/g, '')
-      .replace(/\*\*\*/g, '')
-      .replace(/\*\*/g, '')
-      .replace(/\*/g, '')
-      .replace(/__/g, '')
-      .replace(/`/g, '')
-      .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '')
-      .replace(/\[\[.*?\]\]/g, '')
-      .replace(/\u200B/g, '')
-      .replace(/<p>/gi, ' ')
-      .replace(/- /g, ' ');
-    // Normalize and remove diacritics
-    clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-    return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
-  };
-
   // 1. Check Definition (content)
-  const strippedInput = strip(inputDefinition);
-  const strippedContent = strip(card.content);
+  const strippedInput = normalizeForAnswerMatch(inputDefinition, { flattenBlocks: true });
+  const strippedContent = normalizeForAnswerMatch(card.content, { flattenBlocks: true });
 
   const def_dist = distance(strippedInput, strippedContent);
 
@@ -369,7 +361,7 @@ export const checkDefinitionAnswer = (
   // 2. Check Year (if applicable)
   let isYearMatch = true;
   if (card.year) {
-    isYearMatch = strip(inputYear) === strip(card.year);
+    isYearMatch = normalizeForAnswerMatch(inputYear) === normalizeForAnswerMatch(card.year);
   }
 
   // 3. Check Custom Fields
@@ -384,7 +376,7 @@ export const checkDefinitionAnswer = (
       }
 
       const input = inputCustom[field.name] || '';
-      const match = strip(input) === strip(field.value);
+      const match = normalizeForAnswerMatch(input, { flattenBlocks: true }) === normalizeForAnswerMatch(field.value, { flattenBlocks: true });
       customResults[field.name] = match;
       if (!match) isCustomMatch = false;
     }
@@ -418,28 +410,9 @@ export const findMixup = (
   answerWithDefinition: boolean,
   customFieldDefs?: CustomFieldDefinition[]
 ): MixupItem[] => {
-  const strip = (s: string) => {
-    let clean = s
-      .replace(/<h=[^>]+>/g, '')
-      .replace(/<\/h>/g, '')
-      .replace(/\*\*\*/g, '')
-      .replace(/\*\*/g, '')
-      .replace(/\*/g, '')
-      .replace(/__/g, '')
-      .replace(/`/g, '')
-      .replace(/<u>/g, '')
-      .replace(/<\/u>/g, '')
-      .replace(/\[\[.*?\]\]/g, '')
-      .replace(/\u200B/g, '')
-      .replace(/<p>/gi, ' ')
-      .replace(/- /g, ' ');
-    clean = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return clean.toLowerCase().replace(/^(the|la|el)\s+/i, '').trim();
-  };
-
   const mixups: MixupItem[] = [];
-  const strippedInput = strip(inputTerm);
-  const strippedYear = strip(inputYear);
+  const strippedInput = normalizeForAnswerMatch(inputTerm, { flattenBlocks: true });
+  const strippedYear = normalizeForAnswerMatch(inputYear);
 
   // Helper to get display term for a card
   const getDisplayTerm = (card: Card) => card.term[0] || 'Unknown';
@@ -454,9 +427,9 @@ export const findMixup = (
     if (strippedInput) {
       if (answerWithDefinition) {
         // User is answering with definition - check if input matches other card's definition
-        const otherDefStripped = strip(otherCard.content);
+        const otherDefStripped = normalizeForAnswerMatch(otherCard.content, { flattenBlocks: true });
         // Only flag if current card's definition doesn't have the same value
-        if (strip(currentCard.content) !== otherDefStripped && strippedInput === otherDefStripped) {
+        if (normalizeForAnswerMatch(currentCard.content, { flattenBlocks: true }) !== otherDefStripped && strippedInput === otherDefStripped) {
           mixups.push({
             field: 'definition',
             fieldType: 'text',
@@ -468,9 +441,9 @@ export const findMixup = (
       } else {
         // User is answering with term - check if input matches other card's term
         for (const otherTerm of otherCard.term) {
-          const otherTermStripped = strip(otherTerm);
+          const otherTermStripped = normalizeForAnswerMatch(otherTerm);
           // Only flag if current card's terms don't include this value
-          const currentTermsStripped = currentCard.term.map(t => strip(t));
+          const currentTermsStripped = currentCard.term.map(t => normalizeForAnswerMatch(t));
           if (!currentTermsStripped.includes(otherTermStripped) && strippedInput === otherTermStripped) {
             mixups.push({
               field: 'term',
@@ -487,9 +460,9 @@ export const findMixup = (
 
     // Check year
     if (strippedYear && otherCard.year) {
-      const otherYearStripped = strip(otherCard.year);
+      const otherYearStripped = normalizeForAnswerMatch(otherCard.year);
       // Only flag if current card's year is different or doesn't have a year
-      const currentYearStripped = currentCard.year ? strip(currentCard.year) : '';
+      const currentYearStripped = currentCard.year ? normalizeForAnswerMatch(currentCard.year) : '';
       if (currentYearStripped !== otherYearStripped && strippedYear === otherYearStripped) {
         mixups.push({
           field: 'year',
@@ -504,14 +477,14 @@ export const findMixup = (
     // Check custom fields
     for (const [fieldName, inputValue] of Object.entries(inputCustom)) {
       if (!inputValue) continue;
-      const strippedCustomInput = strip(inputValue);
+      const strippedCustomInput = normalizeForAnswerMatch(inputValue, { flattenBlocks: true });
 
       const otherField = otherCard.customFields?.find(f => f.name === fieldName);
       if (!otherField) continue;
 
-      const otherValueStripped = strip(otherField.value);
+      const otherValueStripped = normalizeForAnswerMatch(otherField.value, { flattenBlocks: true });
       const currentField = currentCard.customFields?.find(f => f.name === fieldName);
-      const currentValueStripped = currentField ? strip(currentField.value) : '';
+      const currentValueStripped = currentField ? normalizeForAnswerMatch(currentField.value, { flattenBlocks: true }) : '';
 
       // Only flag if current card's field value is different
       if (currentValueStripped !== otherValueStripped && strippedCustomInput === otherValueStripped) {
@@ -536,14 +509,15 @@ export const findMixup = (
 // Parsing Logic
 export const parseInput = (text: string): Partial<Card>[] => {
   if (!text.trim()) return [];
+  const cleanText = sanitizeStrings(text);
 
   // Try JSON first
   try {
-    const j = JSON.parse(text);
+    const j = JSON.parse(cleanText);
     // Check if it's a full session export or just cards
     const rawCards = j.cards ? j.cards : (Array.isArray(j) ? (j[0]?.cards ? j[0].cards : j) : [j]);
 
-    return rawCards.map((c: any) => {
+    return sanitizeStrings(rawCards).map((c: any) => {
       const normalizedCustomFields = Array.isArray(c.customFields)
         ? c.customFields
           .map((f: any) => ({
@@ -557,17 +531,21 @@ export const parseInput = (text: string): Partial<Card>[] => {
         ? c.tags.map((tag: any) => String(tag).trim()).filter(Boolean)
         : undefined;
 
+      const normalizedTerm = Array.isArray(c.term)
+        ? c.term.map((term: any) => String(term ?? ''))
+        : [String(c.term || 'Untitled')];
+
       return {
         id: typeof c.id === 'string' ? c.id : undefined,
-        term: Array.isArray(c.term) ? c.term : [String(c.term || 'Untitled')],
-        content: Array.isArray(c.content) ? c.content.join('\n') : String(c.content || ''),
-        year: c.year ? String(c.year) : undefined,
-        image: c.image ? String(c.image) : undefined,
-        termImage: c.termImage ? String(c.termImage) : undefined,
+        term: normalizedTerm,
+        content: Array.isArray(c.content) ? c.content.map((part: any) => String(part ?? '')).join('\n') : String(c.content || ''),
+        year: c.year === undefined || c.year === null || c.year === '' ? undefined : String(c.year),
+        image: c.image === undefined || c.image === null || c.image === '' ? undefined : String(c.image),
+        termImage: c.termImage === undefined || c.termImage === null || c.termImage === '' ? undefined : String(c.termImage),
         customFields: normalizedCustomFields && normalizedCustomFields.length > 0 ? normalizedCustomFields : undefined,
         tags: normalizedTags && normalizedTags.length > 0 ? normalizedTags : undefined,
-        mastery: Number(c.mastery || 0),
-        star: Boolean(c.star || 0),
+        mastery: normalizeCardMastery(c.mastery),
+        star: normalizeCardStar(c.star),
         originalSetId: typeof c.originalSetId === 'string' ? c.originalSetId : undefined,
         originalSetName: typeof c.originalSetName === 'string' ? c.originalSetName : undefined
       };
@@ -577,7 +555,7 @@ export const parseInput = (text: string): Partial<Card>[] => {
     // Format: Term/Definition///Year ||| ImageURL
     // Separator: &&& on its own line
 
-    const cardsRaw = text.split(/\n\s*&&&\s*\n/);
+    const cardsRaw = cleanText.split(/\n\s*&&&\s*\n/);
 
     return cardsRaw.map(block => {
       const fullText = block.trim();

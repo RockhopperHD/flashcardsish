@@ -16,6 +16,7 @@
 import { get, set, del, keys } from 'idb-keyval';
 import { CardSet, Card, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
+import { normalizeCardMastery, normalizeCardStar } from './cardNormalization';
 
 // ============================================================================
 // CONSTANTS
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: Settings = {
     forgiveThe: true,
     wiggleRoom: 3,
     retypeOnMistake: false,
+    reduceStreakMotion: false,
     starredOnly: false,
     answerWithDefinition: false,
     mode: 'standard',
@@ -228,8 +230,9 @@ const recoverCardsFromCorruptedSet = (text: string): { cards: Card[]; recovered:
         if (Array.isArray(parsed.cards)) {
             for (const card of parsed.cards) {
                 total++;
-                if (isValidCard(card)) {
-                    cards.push(card);
+                const normalizedCard = normalizeCard(card);
+                if (normalizedCard) {
+                    cards.push(normalizedCard);
                     recovered++;
                 }
             }
@@ -246,8 +249,9 @@ const recoverCardsFromCorruptedSet = (text: string): { cards: Card[]; recovered:
             for (const match of matches) {
                 try {
                     const card = JSON.parse(match);
-                    if (isValidCard(card)) {
-                        cards.push(card);
+                    const normalizedCard = normalizeCard(card);
+                    if (normalizedCard) {
+                        cards.push(normalizedCard);
                         recovered++;
                     }
                 } catch {
@@ -261,42 +265,48 @@ const recoverCardsFromCorruptedSet = (text: string): { cards: Card[]; recovered:
 };
 
 /**
- * Validate that a card object has required fields
+ * Normalize a possibly malformed card object into the strict runtime schema.
  */
-const isValidCard = (card: any): card is Card => {
-    return typeof card === 'object' &&
-        typeof card.id === 'string' &&
-        Array.isArray(card.term) &&
-        typeof card.content === 'string' &&
-        typeof card.mastery === 'number' &&
-        typeof card.star === 'boolean';
-};
+const normalizeCard = (rawCard: any): Card | null => {
+    const card = sanitizeStrings(rawCard);
 
-/**
- * Convert a CardSet to FlashcardFile format
- */
-const setToFile = (set: CardSet, modifiedAt?: number): FlashcardFile => ({
-    version: set.version || CURRENT_VERSION,
-    id: set.id,
-    name: set.name,
-    cards: set.cards,
-    customFieldNames: set.customFieldNames,
-    tags: set.tags,
-    sourceId: set.sourceId,
-    termLabel: set.termLabel,
-    definitionLabel: set.definitionLabel,
-    termSideFields: set.termSideFields,
-    defSideFields: set.defSideFields,
-    enableTermCards: set.enableTermCards,
-    lastPlayed: set.lastPlayed,
-    elapsedTime: set.elapsedTime,
-    topStreak: set.topStreak,
-    isSessionActive: set.isSessionActive,
-    isMultistudy: set.isMultistudy,
-    sourceSetIds: set.sourceSetIds,
-    isLocalOnly: set.isLocalOnly,
-    modifiedAt: modifiedAt ?? Date.now()
-});
+    if (typeof card !== 'object' || card === null) {
+        return null;
+    }
+    if (typeof card.id !== 'string' || !Array.isArray(card.term)) {
+        return null;
+    }
+
+    const normalizedCustomFields = Array.isArray(card.customFields)
+        ? card.customFields
+            .map((field: any) => ({
+                name: String(field?.name ?? '').trim(),
+                value: String(field?.value ?? '')
+            }))
+            .filter((field: { name: string; value: string }) => field.name.length > 0)
+        : undefined;
+
+    const normalizedTags = Array.isArray(card.tags)
+        ? card.tags.map((tag: any) => String(tag).trim()).filter(Boolean)
+        : undefined;
+
+    return {
+        id: card.id,
+        term: card.term.map((term: any) => String(term ?? '')),
+        content: Array.isArray(card.content)
+            ? card.content.map((part: any) => String(part ?? '')).join('\n')
+            : String(card.content ?? ''),
+        year: card.year === undefined || card.year === null || card.year === '' ? undefined : String(card.year),
+        image: card.image === undefined || card.image === null || card.image === '' ? undefined : String(card.image),
+        termImage: card.termImage === undefined || card.termImage === null || card.termImage === '' ? undefined : String(card.termImage),
+        customFields: normalizedCustomFields && normalizedCustomFields.length > 0 ? normalizedCustomFields : undefined,
+        tags: normalizedTags && normalizedTags.length > 0 ? normalizedTags : undefined,
+        mastery: normalizeCardMastery(card.mastery),
+        star: normalizeCardStar(card.star),
+        originalSetId: typeof card.originalSetId === 'string' ? card.originalSetId : undefined,
+        originalSetName: typeof card.originalSetName === 'string' ? card.originalSetName : undefined
+    };
+};
 
 /**
  * Fix mojibake / encoding-corrupted Unicode characters in a string.
@@ -362,12 +372,124 @@ export function sanitizeStrings<T>(data: T): T {
     return data;
 }
 
+const cardContentSignature = (card: Card): string => JSON.stringify({
+    term: Array.isArray(card.term) ? card.term : [],
+    content: card.content || '',
+    year: card.year || '',
+    image: card.image || '',
+    termImage: card.termImage || '',
+    customFields: Array.isArray(card.customFields) ? card.customFields : [],
+    tags: Array.isArray(card.tags) ? card.tags : [],
+    originalSetId: card.originalSetId || '',
+    originalSetName: card.originalSetName || ''
+});
+
+const mergeDuplicateCards = (base: Card, duplicate: Card): Card => ({
+    ...base,
+    mastery: Math.max(base.mastery, duplicate.mastery),
+    star: base.star === true || duplicate.star === true,
+    originalSetId: base.originalSetId || duplicate.originalSetId,
+    originalSetName: base.originalSetName || duplicate.originalSetName
+});
+
+const createDuplicateCardId = (baseId: string, usedIds: Set<string>): string => {
+    let counter = 2;
+    let candidate = `${baseId}__dup_${counter}`;
+    while (usedIds.has(candidate)) {
+        counter += 1;
+        candidate = `${baseId}__dup_${counter}`;
+    }
+    return candidate;
+};
+
+const normalizeCards = (cards: Card[] = []): Card[] => {
+    const normalizedCards: Card[] = [];
+    const usedIds = new Set<string>();
+    const indexById = new Map<string, number>();
+
+    for (const rawCard of cards) {
+        const card = normalizeCard(rawCard);
+        if (!card) {
+            continue;
+        }
+
+        const existingIndex = indexById.get(card.id);
+        if (existingIndex === undefined) {
+            normalizedCards.push(card);
+            usedIds.add(card.id);
+            indexById.set(card.id, normalizedCards.length - 1);
+            continue;
+        }
+
+        const existingCard = normalizedCards[existingIndex];
+        if (cardContentSignature(existingCard) === cardContentSignature(card)) {
+            normalizedCards[existingIndex] = mergeDuplicateCards(existingCard, card);
+            continue;
+        }
+
+        const dedupedCard = {
+            ...card,
+            id: createDuplicateCardId(card.id, usedIds)
+        };
+
+        normalizedCards.push(dedupedCard);
+        usedIds.add(dedupedCard.id);
+        indexById.set(dedupedCard.id, normalizedCards.length - 1);
+    }
+
+    return normalizedCards;
+};
+
+export const normalizeCardSet = (cardSet: CardSet): CardSet => {
+    const cleanSet = sanitizeStrings(cardSet);
+    return {
+        ...cleanSet,
+        cards: normalizeCards(cleanSet.cards || [])
+    };
+};
+
+const normalizeFlashcardFile = (file: FlashcardFile): FlashcardFile => {
+    const cleanFile = sanitizeStrings(file);
+    return {
+        ...cleanFile,
+        cards: normalizeCards(cleanFile.cards || [])
+    };
+};
+
+/**
+ * Convert a CardSet to FlashcardFile format
+ */
+const setToFile = (set: CardSet, modifiedAt?: number): FlashcardFile => {
+    const normalizedSet = normalizeCardSet(set);
+    return {
+        version: normalizedSet.version || CURRENT_VERSION,
+        id: normalizedSet.id,
+        name: normalizedSet.name,
+        cards: normalizedSet.cards,
+        customFieldNames: normalizedSet.customFieldNames,
+        tags: normalizedSet.tags,
+        sourceId: normalizedSet.sourceId,
+        termLabel: normalizedSet.termLabel,
+        definitionLabel: normalizedSet.definitionLabel,
+        termSideFields: normalizedSet.termSideFields,
+        defSideFields: normalizedSet.defSideFields,
+        enableTermCards: normalizedSet.enableTermCards,
+        lastPlayed: normalizedSet.lastPlayed,
+        elapsedTime: normalizedSet.elapsedTime,
+        topStreak: normalizedSet.topStreak,
+        isSessionActive: normalizedSet.isSessionActive,
+        isMultistudy: normalizedSet.isMultistudy,
+        sourceSetIds: normalizedSet.sourceSetIds,
+        isLocalOnly: normalizedSet.isLocalOnly,
+        modifiedAt: modifiedAt ?? Date.now()
+    };
+};
+
 /**
  * Convert a FlashcardFile to CardSet format
  */
 const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
-    // Sanitize all string content to fix encoding corruption
-    const cleanFile = sanitizeStrings(file);
+    const cleanFile = normalizeFlashcardFile(file);
     return {
         id: cleanFile.id,
         name: cleanFile.name,
@@ -766,7 +888,7 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
     if (!forceCloud) {
         const cached = await get<CardSet>(`${SET_CACHE_PREFIX}${setId}`);
         if (cached) {
-            return { set: cached, wasCorrupted: false };
+            return { set: normalizeCardSet(cached), wasCorrupted: false };
         }
     }
 
@@ -792,14 +914,14 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
 
             if (recovered > 0) {
                 console.warn(`[StorageV2] Recovered ${recovered}/${total} cards from corrupted set ${setId}`);
-                const recoveredSet: CardSet = {
+                const recoveredSet = normalizeCardSet({
                     id: setId,
                     name: 'Recovered Set',
                     cards,
                     lastPlayed: Date.now(),
                     elapsedTime: 0,
                     topStreak: 0
-                };
+                });
 
                 // Non-destructive recovery: do not overwrite cloud set with partial recovery.
                 await set(`${SET_CACHE_PREFIX}${setId}`, recoveredSet);
@@ -843,13 +965,14 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
  */
 export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions): Promise<void> => {
     const now = Date.now();
-    const file = setToFile(cardSet, now);
+    const normalizedSet = normalizeCardSet(cardSet);
+    const file = setToFile(normalizedSet, now);
 
     // Cache locally
-    await set(`${SET_CACHE_PREFIX}${cardSet.id}`, cardSet);
+    await set(`${SET_CACHE_PREFIX}${normalizedSet.id}`, normalizedSet);
 
     // If local only, stop here (do not upload to Drive)
-    if (cardSet.isLocalOnly) {
+    if (normalizedSet.isLocalOnly) {
         return;
     }
 
@@ -861,7 +984,7 @@ export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions
         const setsFolderId = await ensureSetsFolder(folderId);
         await googleDrive.writeFile(
             setsFolderId,
-            `${cardSet.id}.flashcards`,
+            `${normalizedSet.id}.flashcards`,
             JSON.stringify(file, null, 2),
             { ignoreConflicts: options?.ignoreConflicts }
         );

@@ -7,6 +7,7 @@ import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
 import { CardTagPill } from './CardTagPill';
 import { StreakCornerBadge } from './StreakCornerBadge';
+import { normalizeCardMastery } from '../cardNormalization';
 
 interface GameProps {
    set: CardSet;
@@ -366,6 +367,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       return () => window.removeEventListener('keydown', handleKeyDown);
    }, [isMixupModalOpen]);
 
+   useEffect(() => {
+      const hasMixup =
+         feedback.type === 'incorrect' &&
+         !!feedback.mixupInfo &&
+         feedback.mixupInfo.mixups.length > 0;
+      setIsMixupModalOpen(hasMixup);
+   }, [feedback]);
+
    // Streak state needs to track if it's "pending break"
    const [streak, setStreak] = useState(0);
    const [pendingStreakBreak, setPendingStreakBreak] = useState(false);
@@ -524,7 +533,10 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const counts = useMemo(() => {
       const c = [0, 0, 0];
       const cardsToCount = settings.starredOnly ? set.cards.filter(c => c.star) : set.cards;
-      cardsToCount.forEach(card => c[card.mastery]++);
+      cardsToCount.forEach(card => {
+         const mastery = normalizeCardMastery(card.mastery);
+         c[mastery] += 1;
+      });
       return c;
    }, [set.cards, settings.starredOnly]);
 
@@ -739,13 +751,18 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const handleAttempt = () => {
       if (!currentCard) return;
       const currentCardKey = getCardKey(currentCard);
+      const isRetyping = feedback.type === 'retype_needed';
       // Check if any input is provided
       const hasCustomInput = Object.values(inputCustom).some(v => v.trim());
       if (!inputTerm.trim() && (!currentCard.year || !inputYear.trim()) && !hasCustomInput) {
-         if (!confirmBlankSubmit) {
+         if (!isRetyping && !confirmBlankSubmit) {
             setConfirmBlankSubmit(true);
             return;
          }
+      }
+
+      if (confirmBlankSubmit) {
+         setConfirmBlankSubmit(false);
       }
 
       // Determine active definitions
@@ -767,7 +784,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
       if (result.isMatch) {
          // CORRECT
-         const wasRetyping = feedback.type === 'retype_needed';
+         const wasRetyping = isRetyping;
 
          if (!wasRetyping) {
             // Logic for Mastery and Streak
@@ -836,7 +853,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          });
       } else {
          // INCORRECT
-         if (feedback.type === 'retype_needed') {
+         if (isRetyping) {
             // Shake if still wrong
             setIsShaking(true);
             setTimeout(() => setIsShaking(false), 500);
@@ -916,13 +933,15 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                const cardState = batchCardStates.get(currentCardKey);
                if (cardState) {
                   const newRepeated = cardState.repeatedMistakes + 1;
+                  const mixupIncrement = mixupItems.length > 0 ? 1 : 0;
                   const newStates = new Map(batchCardStates);
                   newStates.set(currentCardKey, {
                      ...cardState,
                      firstTry: false, // Mark as failed first try
                      mistakeCount: cardState.mistakeCount + 1,
                      trickyCount: cardState.trickyCount + 1,
-                     repeatedMistakes: newRepeated
+                     repeatedMistakes: newRepeated,
+                     mixupCount: cardState.mixupCount + mixupIncrement
                   });
                   setBatchCardStates(newStates);
 
@@ -1629,7 +1648,11 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             feedback.type === 'correct' ? "border-green/50 shadow-[0_0_30px_rgba(147,210,108,0.1)]" : "border-outline",
             feedback.type === 'retype_needed' && "border-red/50"
          )}>
-            <StreakCornerBadge streak={streak} isTooltipEnabled={!settings.hideTooltips} />
+            <StreakCornerBadge
+               streak={streak}
+               isTooltipEnabled={!settings.hideTooltips}
+               reduceMotion={settings.reduceStreakMotion}
+            />
 
             {/* Top Controls */}
             <div className="flex justify-between items-start mb-8">

@@ -14,8 +14,9 @@ import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
 import { saveLibrary, saveDirtySets, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, CloudConflictDetail } from './storage';
-import { sanitizeStrings, readFlashcardSet, readStructure } from './storageV2';
+import { normalizeCardSet, readFlashcardSet, readStructure } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
+import { normalizeCardMastery } from './cardNormalization';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
@@ -30,9 +31,15 @@ const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
 const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
 const LIBRARY_LOCAL_FALLBACK_KEY = 'flashcard-library-v3';
 const LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY = 'flashcard-library-v3-updated-at';
+const ALPHABET_SAMPLE_NAME = 'The Alphabet';
+type AppToast = {
+   id: number;
+   type: 'success' | 'error';
+   message: string;
+};
 
 const normalizeLoadedSet = (set: CardSet): CardSet => {
-   const sanitized = sanitizeSet(sanitizeStrings(set));
+   const sanitized = sanitizeSet(normalizeCardSet(set));
    // Local-only sets should always live in the Local section at root.
    const normalized = sanitized.isLocalOnly && sanitized.folderId
       ? { ...sanitized, folderId: undefined }
@@ -140,8 +147,8 @@ const mergeSetWithoutLosingCards = (localSet: CardSet, cloudSet: CardSet): CardS
    ): CardSet['cards'][number] => ({
       ...preferredContent,
       // Keep study state from whichever side progressed further.
-      mastery: Math.max(localCard.mastery || 0, cloudCard.mastery || 0),
-      star: Boolean(localCard.star || cloudCard.star),
+      mastery: Math.max(normalizeCardMastery(localCard.mastery), normalizeCardMastery(cloudCard.mastery)),
+      star: localCard.star === true || cloudCard.star === true,
       originalSetId: preferredContent.originalSetId || localCard.originalSetId || cloudCard.originalSetId,
       originalSetName: preferredContent.originalSetName || localCard.originalSetName || cloudCard.originalSetName
    });
@@ -353,6 +360,7 @@ const SettingsModal: React.FC<{
    onImportData: (file: File) => Promise<void>;
    onResetSettings: () => void;
    onStartOnboarding: () => void;
+   onCreateAlphabetSet: () => void;
    librarySets: CardSet[];
    // User props for "You" tab
    user: GoogleDriveUser | null;
@@ -363,12 +371,13 @@ const SettingsModal: React.FC<{
    tags: Tag[];
    onUpdateTags: (tags: Tag[]) => void;
    onOpenPrivacy?: () => void;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy }) => {
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, onCreateAlphabetSet, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
    const [isImportingBackup, setIsImportingBackup] = useState(false);
+   const [isBuilderShiftHeld, setIsBuilderShiftHeld] = useState(false);
    const backupImportInputRef = useRef<HTMLInputElement>(null);
 
    const [deleteConfirmTagId, setDeleteConfirmTagId] = useState<string | null>(null);
@@ -405,14 +414,36 @@ const SettingsModal: React.FC<{
    React.useEffect(() => {
       if (!isOpen) return;
       const handleKeyDown = (e: KeyboardEvent) => {
+         if (e.key === 'Shift') {
+            setIsBuilderShiftHeld(true);
+         }
          if (e.key === 'Escape') {
             e.preventDefault();
             onClose();
          }
       };
+      const handleKeyUp = (e: KeyboardEvent) => {
+         if (e.key === 'Shift') {
+            setIsBuilderShiftHeld(false);
+         }
+      };
+      const handleWindowBlur = () => setIsBuilderShiftHeld(false);
+
       window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
+      window.addEventListener('keyup', handleKeyUp);
+      window.addEventListener('blur', handleWindowBlur);
+      return () => {
+         window.removeEventListener('keydown', handleKeyDown);
+         window.removeEventListener('keyup', handleKeyUp);
+         window.removeEventListener('blur', handleWindowBlur);
+      };
    }, [isOpen, onClose]);
+
+   React.useEffect(() => {
+      if (!isOpen || activeTab !== 'builder') {
+         setIsBuilderShiftHeld(false);
+      }
+   }, [activeTab, isOpen]);
 
    React.useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
@@ -460,6 +491,8 @@ const SettingsModal: React.FC<{
       learnModeRightKey1: "Primary key for Option B / False.",
       learnModeRightKey2: "Secondary key for Option B / False.",
       autoAdvanceOnAnswer: "If enabled, selecting an A / B or True / False option will automatically advance to the next field or the Submit button. If disabled, you must press Tab or Enter to continue.",
+      reduceStreakMotion: "Control whether or not the streak star spins or not.",
+      alphabetSampleSet: "Create a sample library set with A/A through Z/Z.",
       tabSelectsEverythingInBuilder: "When enabled, pressing tab in the Visual Editor will skip you to the next button on the screen instead of to the next text field."
    };
 
@@ -828,6 +861,9 @@ const SettingsModal: React.FC<{
                         {/* Auto Advance */}
                         <SettingRow id="autoAdvanceOnAnswer" label="Auto-Advance on Answer" settingKey="autoAdvanceOnAnswer" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
+                        {/* Reduce Streak Motion */}
+                        <SettingRow id="reduceStreakMotion" label="Reduce Streak Motion" settingKey="reduceStreakMotion" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
+
                         {/* Brutal Mode */}
                         <SettingRow id="brutalMode" label="Brutal Mode" settingKey="brutalMode" settings={settings} tooltips={tooltips} onUpdate={onUpdate} />
 
@@ -858,6 +894,21 @@ const SettingsModal: React.FC<{
                               </div>
                            </label>
                         </TooltipWrapper>
+                        {isBuilderShiftHeld && (
+                           <TooltipWrapper id="alphabetSampleSet" tooltip={tooltips.alphabetSampleSet} settings={settings}>
+                              <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
+                                 <div className="flex items-center justify-between gap-4">
+                                    <div className="font-medium text-text">Add The Alphabet</div>
+                                    <button
+                                       onClick={onCreateAlphabetSet}
+                                       className="shrink-0 px-3 py-2 rounded-lg bg-accent text-bg text-sm font-bold hover:opacity-90 transition-opacity"
+                                    >
+                                       Add Set
+                                    </button>
+                                 </div>
+                              </div>
+                           </TooltipWrapper>
+                        )}
                      </div>
                   )}
 
@@ -1235,6 +1286,7 @@ const App: React.FC = () => {
    const [folders, setFolders] = useState<Folder[]>([]);
    const [tags, setTags] = useState<Tag[]>([]);
    const [activeSetId, setActiveSetId] = useState<string | null>(null);
+   const [completedSession, setCompletedSession] = useState<CardSet | null>(null);
    const [menuHomeClickNonce, setMenuHomeClickNonce] = useState(0);
 
    const effectiveLibrarySets = React.useMemo(() => {
@@ -1242,6 +1294,7 @@ const App: React.FC = () => {
    }, [librarySets]);
 
    const activeSession = effectiveLibrarySets.find(s => s.id === activeSetId) || null;
+   const winSession = completedSession ?? activeSession;
    const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
    const shouldHighlightSignIn = !user && gameState === GameState.MENU && isHomeScreenActive;
 
@@ -1252,6 +1305,7 @@ const App: React.FC = () => {
       forgiveThe: false,
       wiggleRoom: 1,
       retypeOnMistake: false,
+      reduceStreakMotion: false,
       darkMode: true,
       starredOnly: false,
       mode: 'standard',
@@ -1275,7 +1329,7 @@ const App: React.FC = () => {
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
    const [isKeybindsModalOpen, setIsKeybindsModalOpen] = useState(false);
-
+   const [appToast, setAppToast] = useState<AppToast | null>(null);
 
    const [uiAuditRequest, setUiAuditRequest] = useState<UiAuditRequest | null>(null);
    const [uiAuditToastReports, setUiAuditToastReports] = useState<CorruptionReport[]>([]);
@@ -1295,6 +1349,16 @@ const App: React.FC = () => {
       window.addEventListener('keydown', handleKeybindsShortcut, true);
       return () => window.removeEventListener('keydown', handleKeybindsShortcut, true);
    }, []);
+
+   useEffect(() => {
+      if (!appToast) return;
+
+      const timer = window.setTimeout(() => {
+         setAppToast(current => current?.id === appToast.id ? null : current);
+      }, 3200);
+
+      return () => window.clearTimeout(timer);
+   }, [appToast]);
 
    // Set Detail View
    const [detailSetId, setDetailSetId] = useState<string | null>(null);
@@ -2060,6 +2124,12 @@ const App: React.FC = () => {
 
       hasPendingLocalLibraryChangesRef.current = true;
 
+      // Keep track of changed sets even when Drive writes are temporarily blocked.
+      // We flush these once cloud reconciliation finishes.
+      for (const setId of changedSetIds) {
+         dirtySetIdsRef.current.add(setId);
+      }
+
       // V3: Debounce cloud saves (2s) but save locally immediately
       if (saveDebounceTimerRef.current) {
          clearTimeout(saveDebounceTimerRef.current);
@@ -2087,6 +2157,36 @@ const App: React.FC = () => {
          }, 2000);
       }
    }, [librarySets, isLibraryLoaded, isCloudLoading, user]);
+
+   useEffect(() => {
+      if (!isLibraryLoaded || !user) return;
+
+      const cloudWriteBlocked = Boolean(
+         syncInProgressRef.current ||
+         isCloudLoading ||
+         !hasSyncedOnceRef.current
+      );
+
+      if (cloudWriteBlocked) return;
+
+      if (dirtySetIdsRef.current.size === 0 && !structureChangedRef.current) {
+         return;
+      }
+
+      if (cloudSaveInFlightRef.current) {
+         return;
+      }
+
+      if (pendingLibrarySaveRef.current && !pendingLibrarySaveRef.current.skipCloud) {
+         return;
+      }
+
+      console.log('[App V3] Resuming deferred cloud save after sync unlock');
+      queueLibrarySave(latestLibrarySetsRef.current, folders, {
+         skipCloud: false,
+         changedSetIds: Array.from(dirtySetIdsRef.current)
+      });
+   }, [folders, isCloudLoading, isLibraryLoaded, user]);
 
    useEffect(() => {
       latestLibrarySetsRef.current = librarySets;
@@ -2236,6 +2336,7 @@ const App: React.FC = () => {
       // Sanitize and normalize before entering session flow.
       const sanitized = normalizeLoadedSet(libSet);
       const updatedSet = { ...sanitized, isSessionActive: true, lastPlayed: Date.now() };
+      setCompletedSession(null);
 
       setLibrarySets(prev => {
          const exists = prev.some(s => s.id === libSet.id);
@@ -2261,6 +2362,7 @@ const App: React.FC = () => {
          isSessionActive: true,
          lastPlayed: Date.now()
       };
+      setCompletedSession(null);
 
       // Update in library with sanitized version
       setLibrarySets(prev => {
@@ -2279,16 +2381,18 @@ const App: React.FC = () => {
    };
 
    const handleSaveToLibrary = (set: CardSet) => {
-      const existingIdx = librarySets.findIndex(s => s.id === set.id);
+      const sanitized = normalizeLoadedSet(set);
+      const existingIdx = librarySets.findIndex(s => s.id === sanitized.id);
       if (existingIdx !== -1) {
-         setLibrarySets(prev => prev.map(s => s.id === set.id ? set : s));
+         setLibrarySets(prev => prev.map(s => s.id === sanitized.id ? sanitized : s));
       } else {
-         setLibrarySets(prev => [set, ...prev]);
+         setLibrarySets(prev => [sanitized, ...prev]);
       }
    };
 
    const handleUpdateLibrarySet = (updatedSet: CardSet) => {
-      setLibrarySets(prev => prev.map(s => s.id === updatedSet.id ? updatedSet : s));
+      const sanitized = normalizeLoadedSet(updatedSet);
+      setLibrarySets(prev => prev.map(s => s.id === sanitized.id ? sanitized : s));
    };
 
    const handleDeleteLibrarySet = (id: string) => {
@@ -2397,16 +2501,24 @@ const App: React.FC = () => {
    };
 
    const handleFinish = () => {
-      if (activeSetId) {
+      if (activeSession) {
          const now = Date.now();
          const delta = isTimerPaused ? 0 : (now - timerStart);
-         setLibrarySets(prev => prev.map(s => s.id === activeSetId
-            ? {
-               ...s,
-               elapsedTime: s.elapsedTime + delta,
-               lastPlayed: now
+         const finishedSession: CardSet = {
+            ...activeSession,
+            elapsedTime: activeSession.elapsedTime + delta,
+            lastPlayed: now,
+            isSessionActive: false
+         };
+
+         setCompletedSession(finishedSession);
+         setLibrarySets(prev => {
+            if (finishedSession.isMultistudy) {
+               return prev.filter(s => s.id !== finishedSession.id);
             }
-            : s));
+
+            return prev.map(s => s.id === finishedSession.id ? finishedSession : s);
+         });
       }
       setGameState(GameState.WIN);
    };
@@ -2425,6 +2537,7 @@ const App: React.FC = () => {
       }
       setGameState(GameState.MENU);
       setActiveSetId(null);
+      setCompletedSession(null);
       setIsRenaming(false);
       setMenuHomeClickNonce(prev => prev + 1);
    };
@@ -2449,37 +2562,62 @@ const App: React.FC = () => {
    };
 
    const handleRestart = () => {
-      if (!activeSession) return;
+      const sessionToRestart = winSession;
+      if (!sessionToRestart) return;
 
       const resetSession = {
-         ...activeSession,
+         ...sessionToRestart,
          elapsedTime: 0,
          topStreak: 0,
-         cards: activeSession.cards.map(c => ({ ...c, mastery: 0 }))
+         isSessionActive: true,
+         cards: sessionToRestart.cards.map(c => ({ ...c, mastery: 0 }))
       };
 
-      setLibrarySets(prev => prev.map(s => s.id === resetSession.id ? resetSession : s));
+      setLibrarySets(prev => {
+         const exists = prev.some(s => s.id === resetSession.id);
+         if (exists) {
+            return prev.map(s => s.id === resetSession.id ? resetSession : s);
+         }
+         return [resetSession, ...prev];
+      });
+      setCompletedSession(null);
+      setActiveSetId(resetSession.id);
       setTimerStart(Date.now());
       setTimerNow(Date.now());
       setIsTimerPaused(false);
       setGameState(GameState.PLAYING);
    };
 
-   const handleSaveStarredToLibrary = () => {
-      if (!activeSession) return;
-      const starred = activeSession.cards.filter(c => c.star);
-      if (starred.length === 0) return;
+   const handleStudyStarred = () => {
+      const sessionToRestart = winSession;
+      if (!sessionToRestart) return;
 
-      const newSet: CardSet = {
-         id: generateId(),
-         name: `${activeSession.name} (Starred)`,
-         cards: starred.map(c => ({ ...c, mastery: 0 })),
+      const hasStarredCards = sessionToRestart.cards.some(c => c.star);
+      if (!hasStarredCards) return;
+
+      const restartedSession: CardSet = {
+         ...sessionToRestart,
          lastPlayed: Date.now(),
          elapsedTime: 0,
-         topStreak: 0
+         topStreak: 0,
+         isSessionActive: true,
+         cards: sessionToRestart.cards.map(c => c.star ? { ...c, mastery: 0 } : c)
       };
-      handleSaveToLibrary(newSet);
-      alert("Saved starred cards as a new set in Library!");
+
+      updateSettings({ ...settings, starredOnly: true });
+      setLibrarySets(prev => {
+         const exists = prev.some(s => s.id === restartedSession.id);
+         if (exists) {
+            return prev.map(s => s.id === restartedSession.id ? restartedSession : s);
+         }
+         return [restartedSession, ...prev];
+      });
+      setCompletedSession(null);
+      setActiveSetId(restartedSession.id);
+      setTimerStart(Date.now());
+      setTimerNow(Date.now());
+      setIsTimerPaused(false);
+      setGameState(GameState.PLAYING);
    };
 
    const handleResetSettings = async () => {
@@ -2492,6 +2630,49 @@ const App: React.FC = () => {
       setIsSettingsOpen(false);
       handleBackToMenu();
       setIsOnboardingTourOpen(true);
+   };
+
+   const handleCreateAlphabetSet = () => {
+      const normalizedSampleName = ALPHABET_SAMPLE_NAME.trim().toLocaleLowerCase();
+      const existingAlphabetSet = librarySets.find(
+         set => set.name.trim().toLocaleLowerCase() === normalizedSampleName
+      );
+
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+      const alphabetSet: CardSet = {
+         id: existingAlphabetSet?.id || generateId(),
+         name: ALPHABET_SAMPLE_NAME,
+         cards: letters.map(letter => ({
+            id: generateId(),
+            term: [letter],
+            content: letter,
+            year: '',
+            customFields: [],
+            mastery: 0,
+            star: false,
+            tags: []
+         })),
+         lastPlayed: Date.now(),
+         elapsedTime: 0,
+         topStreak: 0,
+         version: 2,
+         termLabel: 'Term',
+         definitionLabel: 'Definition',
+         termSideFields: [],
+         defSideFields: [],
+         enableTermCards: false,
+         tags: [],
+         folderId: existingAlphabetSet?.folderId
+      };
+
+      handleSaveToLibrary(alphabetSet);
+      setAppToast({
+         id: Date.now(),
+         type: 'success',
+         message: existingAlphabetSet
+            ? `Updated "${ALPHABET_SAMPLE_NAME}" in your library.`
+            : `Added "${ALPHABET_SAMPLE_NAME}" to your library.`
+      });
    };
 
    const handleOnboardingComplete = () => {
@@ -2517,6 +2698,7 @@ const App: React.FC = () => {
             onImportData={handleImportData}
             onResetSettings={handleResetSettings}
             onStartOnboarding={handleStartOnboarding}
+            onCreateAlphabetSet={handleCreateAlphabetSet}
             librarySets={librarySets}
             user={user}
             lifetimeCorrect={lifetimeCorrect}
@@ -2579,6 +2761,25 @@ const App: React.FC = () => {
             reports={corruptionReports}
             onDismiss={() => setCorruptionReports([])}
          />
+         {appToast && (
+            <div className="fixed bottom-4 right-4 z-[120] max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-200">
+               <div className="bg-panel rounded-xl border border-outline shadow-2xl px-4 py-3 flex items-start gap-3">
+                  {appToast.type === 'success' ? (
+                     <CheckCircle2 className="w-5 h-5 text-green shrink-0 mt-0.5" />
+                  ) : (
+                     <XCircle className="w-5 h-5 text-red shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 text-sm text-text">{appToast.message}</div>
+                  <button
+                     onClick={() => setAppToast(null)}
+                     className="text-muted hover:text-text transition-colors"
+                     aria-label="Dismiss notification"
+                  >
+                     <X size={16} />
+                  </button>
+               </div>
+            </div>
+         )}
          {/* UI Audit disabled. Uncomment these and the UiAuditPanel block below to re-enable. */}
          {/*
          <CorruptionNotification
@@ -2765,6 +2966,26 @@ const App: React.FC = () => {
             </div>
          </header>
 
+         {user && isCloudLoading && (
+            <div className="fixed inset-0 z-40 bg-bg/72 backdrop-blur-sm">
+               <div className="flex min-h-screen items-center justify-center p-6">
+                  <div className="w-full max-w-md rounded-2xl border border-outline bg-panel px-6 py-5 shadow-2xl">
+                     <div className="flex items-start gap-4">
+                        <div className="mt-0.5 rounded-xl border border-accent/20 bg-accent/10 p-3">
+                           <Loader2 size={22} className="animate-spin text-accent" />
+                        </div>
+                        <div className="space-y-1">
+                           <h2 className="text-lg font-bold text-text">Syncing with Google Drive</h2>
+                           <p className="text-sm text-muted">
+                              Flashcardsish is reconciling your latest cloud data. Editing is paused for a moment so your next change starts from the final synced version.
+                           </p>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
+
          {user && cloudConflicts.length > 0 && (
             <div className="px-6 pt-4">
                <div className="max-w-5xl mx-auto bg-yellow/10 border border-yellow/40 rounded-2xl p-4 space-y-3">
@@ -2946,39 +3167,32 @@ const App: React.FC = () => {
                      <p className="text-xl text-muted">Excellent work.</p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-lg px-6">
+                  <div className="flex w-full max-w-lg flex-col gap-4 px-6">
                      <button
                         onClick={handleRestart}
-                        className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-all shadow-sm flex items-center justify-center gap-2"
+                        className="w-full bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-all shadow-sm flex items-center justify-center gap-2"
                      >
                         <RotateCcw size={20} /> Restart Session
                      </button>
 
-                     {activeSession && activeSession.cards.some(c => c.star) && (
-                        <button
-                           onClick={handleSaveStarredToLibrary}
-                           className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-sm flex items-center justify-center gap-2"
-                        >
-                           <Star size={20} className="text-accent" fill="currentColor" />
-                           Save Starred
-                        </button>
-                     )}
-
                      <button
-                        onClick={handleBackToMenu}
-                        className="bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-sm flex items-center justify-center gap-2 md:col-span-2"
+                        onClick={handleStudyStarred}
+                        disabled={!winSession?.cards.some(c => c.star)}
+                        className={clsx(
+                           "w-full border px-6 py-4 rounded-xl font-bold text-lg transition-colors shadow-sm flex items-center justify-center gap-2",
+                           winSession?.cards.some(c => c.star)
+                              ? "bg-panel-2 border-outline text-text hover:border-accent"
+                              : "bg-panel border-outline/70 text-muted cursor-not-allowed opacity-60"
+                        )}
                      >
-                        <FolderOpen size={20} /> Save & Back to Menu
+                        <Star size={20} className="text-accent" fill="currentColor" /> Study Starred Terms
                      </button>
 
                      <button
-                        onClick={() => {
-                           if (activeSession) handleDeleteSession(activeSession.id);
-                           handleBackToMenu();
-                        }}
-                        className="bg-panel-2 border border-outline text-red px-6 py-4 rounded-xl font-bold text-lg hover:border-red hover:bg-red/10 transition-colors shadow-sm flex items-center justify-center gap-2 md:col-span-2"
+                        onClick={handleBackToMenu}
+                        className="w-full bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-colors shadow-sm flex items-center justify-center gap-2"
                      >
-                        <Trash2 size={20} /> Finish & Remove Session
+                        <FolderOpen size={20} /> Back to Menu
                      </button>
                   </div>
                </div>

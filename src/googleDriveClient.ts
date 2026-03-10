@@ -700,24 +700,27 @@ class GoogleDriveClient {
 
     // Helper: Update file content
     private async uploadFileContent(fileId: string, blob: Blob): Promise<void> {
-        const reader = new FileReader();
-        const base64Data = await new Promise<string>((resolve) => {
-            reader.onloadend = () => {
-                const base64 = (reader.result as string).split(',')[1];
-                resolve(base64);
-            };
-            reader.readAsDataURL(blob);
-        });
+        if (!this.accessToken) {
+            throw new Error('Not authenticated');
+        }
 
-        await window.gapi.client.request({
-            path: `/upload/drive/v3/files/${fileId}`,
-            method: 'PATCH',
-            params: { uploadType: 'media' },
-            headers: {
-                'Content-Type': blob.type,
-            },
-            body: atob(base64Data),
-        });
+        // Send the Blob directly so UTF-8 JSON stays intact during updates.
+        const response = await fetch(
+            `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=media`,
+            {
+                method: 'PATCH',
+                headers: {
+                    Authorization: `Bearer ${this.accessToken}`,
+                    'Content-Type': blob.type,
+                },
+                body: blob,
+            }
+        );
+
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            throw new Error(errorText || `Drive upload failed with status ${response.status}`);
+        }
     }
 
     // =========================================================================

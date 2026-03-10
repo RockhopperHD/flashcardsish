@@ -70,6 +70,7 @@ import {
   getModifierKeyLabel,
   isMacPlatform,
 } from "../utils";
+import { normalizeCardStar } from "../cardNormalization";
 import { RichInput, RichInputRef } from "./RichInput";
 import clsx from "clsx";
 import { AddSetModal } from "./AddSetModal";
@@ -77,6 +78,7 @@ import { RawTextImport } from "./RawTextImport";
 import BreathingLoader from "./BreathingLoader";
 import { TagPill } from "./TagPill";
 import { CardTagPill } from "./CardTagPill";
+import { sanitizeStrings } from "../storageV2";
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -123,6 +125,11 @@ interface BuilderRow {
   originalCardId?: string;
   star: boolean;
 }
+
+const LEADING_TAG_REGEX = /^(\s*\([^)]+\)\s*)+/;
+
+const getBuilderDuplicateKey = (term: string): string =>
+  term.replace(LEADING_TAG_REGEX, "").trim().toLowerCase();
 
 export type UiAuditRequest =
   | { type: "add-set" }
@@ -2027,7 +2034,12 @@ const BuilderRowItem: React.FC<{
       <div
         ref={innerRef}
         {...draggableProps}
-        className="relative group bg-panel border border-outline rounded-xl mb-6 shadow-sm hover:border-accent/50 transition-all"
+        className={clsx(
+          "relative group bg-panel border rounded-xl mb-6 shadow-sm transition-all",
+          isDuplicate
+            ? "border-red/70 bg-red/5 hover:border-red"
+            : "border-outline hover:border-accent/50",
+        )}
       >
         {/* Drag Handle - Floating Left */}
         <div
@@ -2044,6 +2056,11 @@ const BuilderRowItem: React.FC<{
             <div className="text-xs font-bold text-accent font-mono select-none opacity-50">
               {index + 1}
             </div>
+            {isDuplicate && (
+              <div className="rounded-full border border-red/40 bg-red/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-red">
+                Duplicate term
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
@@ -2212,6 +2229,7 @@ const BuilderRowItem: React.FC<{
                     row.term
                       ? "border-outline"
                       : "border-outline text-muted italic",
+                    isDuplicate && "border-red/70 hover:border-red focus:border-red",
                   )}
                 >
                   {row.term ? (wysiwyg ? termData.body : renderMarkdown(termData.body)) : "Enter term..."}
@@ -2551,6 +2569,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onStartOnboardingTour,
   signedInUserName,
 }) => {
+  const topAnchorRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showAddSetModal, setShowAddSetModal] = useState(false);
@@ -3160,6 +3179,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   }, [view, builderMode, editingSetId]);
 
+  useEffect(() => {
+    if (view !== "builder" && view !== "raw-text") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      topAnchorRef.current?.scrollIntoView({ block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, editingSetId]);
+
   // Handle edit request from SetDetail
   useEffect(() => {
     if (initialEditSetId && onClearEditRequest) {
@@ -3757,7 +3786,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         termImage: c.termImage || "",
         customFields: c.customFields || [],
         tags: c.tags || [],
-        star: c.star || false
+        star: normalizeCardStar(c.star)
       };
     });
 
@@ -3889,7 +3918,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         termImage: c.termImage || "",
         customFields: c.customFields || [],
         tags: c.tags || [],
-        star: c.star || false,
+        star: normalizeCardStar(c.star),
       };
     });
 
@@ -3966,7 +3995,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         customFields: c.customFields || [],
         tags: c.tags || [],
         originalCardId: c.id,
-        star: c.star || false,
+        star: normalizeCardStar(c.star),
       };
     });
 
@@ -4023,8 +4052,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       setIsProcessingFile(true);
       try {
         const text = await e.target.files[0].text();
+        const cleanText = sanitizeStrings(text);
         // Basic validation: if text is empty or binary-looking (though text() cleans up some)
-        if (!text.trim()) {
+        if (!cleanText.trim()) {
           throw new Error("Empty file");
         }
 
@@ -4036,12 +4066,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         let parsedCards: Partial<Card>[] = [];
 
         try {
-          const json = JSON.parse(text);
+          const json = JSON.parse(cleanText);
           if (json.name) loadedName = json.name;
-          parsedCards = parseInput(text); // parseInput handles both JSON structure and raw
+          parsedCards = parseInput(cleanText); // parseInput handles both JSON structure and raw
         } catch {
           // Raw text fallback
-          parsedCards = parseInput(text);
+          parsedCards = parseInput(cleanText);
         }
 
         // If no cards found, or parser return empty
@@ -4053,7 +4083,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         // Extract V2 Metadata if JSON
         try {
-          const json = JSON.parse(text);
+          const json = JSON.parse(cleanText);
           if (json.version >= 2 || json.termLabel || json.definitionLabel) {
             const mapJsonFields = (fields: any[]) => {
               if (!fields) return [];
@@ -4110,12 +4140,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             customFields: c.customFields || [],
             tags: c.tags || [],
             originalCardId: c.id,
-            star: c.star || false,
+            star: normalizeCardStar(c.star),
           };
         });
 
         setBuilderRows(rows);
-        setRawText(text);
+        setRawText(cleanText);
 
         setSetName(loadedName);
         setView("builder");
@@ -4211,7 +4241,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       year: c.year,
       image: c.image,
       mastery: 0,
-      star: c.star || false,
+      star: normalizeCardStar(c.star),
       customFields: c.customFields || [],
       tags: c.tags || [],
     }));
@@ -4237,6 +4267,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const handleSaveToLibrary = () => {
     if (!setName.trim()) {
       alert("Please name your set!");
+      return;
+    }
+
+    if (duplicateInfo.labels.length > 0) {
+      alert(
+        `Duplicate card terms found in the visual editor: ${duplicateInfo.labels.join(", ")}. Please remove or rename them before saving.`,
+      );
       return;
     }
 
@@ -4553,21 +4590,33 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   };
 
-  const duplicateIds = useMemo(() => {
+  const duplicateInfo = useMemo(() => {
     const counts = new Map<string, number>();
+    const labels = new Map<string, string>();
     const ids = new Set<string>();
-    builderRows.forEach((r) => {
-      const t = r.term.trim().toLowerCase();
-      if (!t) return;
-      counts.set(t, (counts.get(t) || 0) + 1);
-    });
-    builderRows.forEach((r) => {
-      const t = r.term.trim().toLowerCase();
-      if (t && (counts.get(t) || 0) > 1) {
-        ids.add(r.id);
+
+    builderRows.forEach((row) => {
+      const key = getBuilderDuplicateKey(row.term);
+      if (!key) return;
+      counts.set(key, (counts.get(key) || 0) + 1);
+      if (!labels.has(key)) {
+        labels.set(key, row.term.replace(LEADING_TAG_REGEX, "").trim() || row.term.trim());
       }
     });
-    return ids;
+
+    builderRows.forEach((row) => {
+      const key = getBuilderDuplicateKey(row.term);
+      if (key && (counts.get(key) || 0) > 1) {
+        ids.add(row.id);
+      }
+    });
+
+    return {
+      ids,
+      labels: Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([key]) => labels.get(key) || key),
+    };
   }, [builderRows]);
 
   const handleDeleteClick = (id: string, type: "session" | "library") => {
@@ -4649,7 +4698,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700">
+    <div
+      ref={topAnchorRef}
+      className="max-w-5xl mx-auto w-full pb-20 animate-in fade-in duration-700"
+    >
       <SetConfigurationModal
         isOpen={isConfigModalOpen}
         onClose={() => setIsConfigModalOpen(false)}
@@ -6003,6 +6055,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <div className="min-h-[200px]">
               {builderMode === "visual" ? (
                 <div className="space-y-6">
+                  {duplicateInfo.labels.length > 0 && (
+                    <div className="rounded-2xl border border-red/30 bg-red/10 px-4 py-3 text-sm text-red">
+                      <span className="font-bold">Duplicate card terms detected.</span>{" "}
+                      Rename or remove these before saving: {duplicateInfo.labels.join(", ")}.
+                    </div>
+                  )}
                   <div className="flex justify-end mb-2">
                     <button
                       onClick={() => setShowMarkdownHelp(true)}
@@ -6047,7 +6105,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       index={index}
                                       termLabel={termLabel}
                                       definitionLabel={definitionLabel}
-                                      isDuplicate={duplicateIds.has(row.id)}
+                                      isDuplicate={duplicateInfo.ids.has(row.id)}
                                       isLast={index === builderRows.length - 1}
                                       termSideFields={termSideFields}
                                       defSideFields={defSideFields}

@@ -67,6 +67,7 @@ export interface Settings {
   forgiveThe: boolean;
   wiggleRoom: number;
   retypeOnMistake: boolean;
+  reduceStreakMotion: boolean;
   darkMode: boolean;
   starredOnly: boolean;
   mode: 'standard' | 'multiple_choice';

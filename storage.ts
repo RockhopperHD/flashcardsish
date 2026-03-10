@@ -405,7 +405,7 @@ const normalizedCardSignature = (card: Card): string => {
         termImage: card.termImage || '',
         tags: [...(card.tags || [])].sort(),
         customFields: normalizedCustomFields,
-        star: !!card.star
+        star: card.star === true
     });
 };
 
