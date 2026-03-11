@@ -20,6 +20,7 @@ interface KeybindKey {
     locked?: boolean;
     lockedTooltip?: string;
     displayValue?: string;
+    boundKey?: string;
 }
 
 interface KeybindAction {
@@ -92,6 +93,10 @@ const keyToSelector = (key: string, keyCode?: number): string | null => {
     };
     if (stringMap[key]) return stringMap[key];
 
+    if (/^\d$/.test(key)) {
+        return `[data-key="${key.charCodeAt(0)}"]`;
+    }
+
     // Single characters (A-Z, 0-9)
     if (key.length === 1) {
         return `[data-char="${key.toUpperCase()}"]`;
@@ -112,6 +117,10 @@ const keyToSelector = (key: string, keyCode?: number): string | null => {
 const ACTION_COLORS: Record<string, string> = {
     optionA: '#3b82f6',    // blue
     optionB: '#f97316',    // orange
+    mcqOption1: '#ef4444', // red
+    mcqOption2: '#3b82f6', // blue
+    mcqOption3: '#eab308', // yellow
+    mcqOption4: '#22c55e', // green
     flipCard: '#a855f7',   // purple
     submitAnswer: '#10b981', // emerald
     nextField: '#64748b',  // slate/gray
@@ -125,6 +134,10 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
     const [activeInput, setActiveInput] = useState<string | null>(null); // settingKey being captured
     const [pressedKeys, setPressedKeys] = useState<Set<string>>(new Set()); // IDs of pressed keys (selector strings)
     const keyboardRef = useRef<HTMLDivElement>(null);
+    const multipleChoiceKeybindStyle = draft.multipleChoiceKeybindStyle || 'letters';
+    const multipleChoiceBindings = multipleChoiceKeybindStyle === 'numbers'
+        ? ['1', '2', '3', '4']
+        : ['A', 'B', 'C', 'D'];
 
     // Reset draft when opened
     useEffect(() => {
@@ -199,6 +212,58 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
             ]
         },
         {
+            id: 'mcqOption1',
+            label: 'Select First Option (MCQ A)',
+            keys: [
+                {
+                    label: 'Shortcut',
+                    locked: true,
+                    displayValue: multipleChoiceBindings[0],
+                    boundKey: multipleChoiceBindings[0],
+                    lockedTooltip: 'Controlled by the Multiple Choice Shortcut Style setting below.'
+                },
+            ]
+        },
+        {
+            id: 'mcqOption2',
+            label: 'Select Second Option (MCQ B)',
+            keys: [
+                {
+                    label: 'Shortcut',
+                    locked: true,
+                    displayValue: multipleChoiceBindings[1],
+                    boundKey: multipleChoiceBindings[1],
+                    lockedTooltip: 'Controlled by the Multiple Choice Shortcut Style setting below.'
+                },
+            ]
+        },
+        {
+            id: 'mcqOption3',
+            label: 'Select Third Option (MCQ C)',
+            keys: [
+                {
+                    label: 'Shortcut',
+                    locked: true,
+                    displayValue: multipleChoiceBindings[2],
+                    boundKey: multipleChoiceBindings[2],
+                    lockedTooltip: 'Controlled by the Multiple Choice Shortcut Style setting below.'
+                },
+            ]
+        },
+        {
+            id: 'mcqOption4',
+            label: 'Select Fourth Option (MCQ D)',
+            keys: [
+                {
+                    label: 'Shortcut',
+                    locked: true,
+                    displayValue: multipleChoiceBindings[3],
+                    boundKey: multipleChoiceBindings[3],
+                    lockedTooltip: 'Controlled by the Multiple Choice Shortcut Style setting below.'
+                },
+            ]
+        },
+        {
             id: 'flipCard',
             label: 'Flip Card',
             keys: [
@@ -234,8 +299,9 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
         const result: { key: string; actionId: string }[] = [];
         for (const action of actions) {
             for (const k of action.keys) {
-                if (!k.settingKey) continue;
-                const val = draft[k.settingKey] as string | undefined;
+                const val = k.settingKey
+                    ? draft[k.settingKey] as string | undefined
+                    : k.boundKey;
                 if (val) {
                     result.push({ key: val, actionId: action.id });
                 }
@@ -344,6 +410,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
             flipCardKey2: DEFAULT_SETTINGS.flipCardKey2,
             submitAnswerKey1: DEFAULT_SETTINGS.submitAnswerKey1,
             nextFieldKey1: DEFAULT_SETTINGS.nextFieldKey1,
+            multipleChoiceKeybindStyle: DEFAULT_SETTINGS.multipleChoiceKeybindStyle,
         }));
     };
 
@@ -533,6 +600,43 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
 
                 {/* Content: Scrollable Settings Only */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                    <div className="p-4 bg-panel-2 rounded-xl border border-outline/50 space-y-4">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <div className="font-bold text-text text-lg">Multiple Choice Shortcut Style</div>
+                                <p className="text-sm text-muted mt-1">
+                                    Four-option multiple choice uses this shortcut set, and holding Shift during review reveals the matching keycap on each answer.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                onClick={() => setDraft(prev => ({ ...prev, multipleChoiceKeybindStyle: 'letters' }))}
+                                className={clsx(
+                                    "rounded-xl border px-4 py-3 text-left transition-all",
+                                    multipleChoiceKeybindStyle === 'letters'
+                                        ? "border-accent bg-accent/10 text-text"
+                                        : "border-outline bg-panel hover:border-accent/40 text-muted hover:text-text"
+                                )}
+                            >
+                                <div className="font-bold">ABCD</div>
+                                <div className="text-xs mt-1 opacity-80">A, B, C, and D choose options 1 through 4.</div>
+                            </button>
+                            <button
+                                onClick={() => setDraft(prev => ({ ...prev, multipleChoiceKeybindStyle: 'numbers' }))}
+                                className={clsx(
+                                    "rounded-xl border px-4 py-3 text-left transition-all",
+                                    multipleChoiceKeybindStyle === 'numbers'
+                                        ? "border-accent bg-accent/10 text-text"
+                                        : "border-outline bg-panel hover:border-accent/40 text-muted hover:text-text"
+                                )}
+                            >
+                                <div className="font-bold">1234</div>
+                                <div className="text-xs mt-1 opacity-80">1, 2, 3, and 4 choose options 1 through 4.</div>
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Keybind Actions */}
                     <div className="space-y-4">
                         {actions.map(action => (
@@ -581,7 +685,7 @@ export const KeybindsModal: React.FC<KeybindsModalProps> = ({ isOpen, onClose, s
                                         if (isLocked && k.lockedTooltip) {
                                             return (
                                                 <CursorTooltip
-                                                    key={k.settingKey}
+                                                    key={keySetting ?? `${action.id}-${k.label}`}
                                                     content={k.lockedTooltip}
                                                     isEnabled={true}
                                                     tooltipClassName="w-64"

@@ -53,7 +53,8 @@ export const DEFAULT_SETTINGS: Settings = {
     flipCardKey1: ' ',
     flipCardKey2: 'Enter',
     submitAnswerKey1: 'Enter',
-    nextFieldKey1: 'Tab'
+    nextFieldKey1: 'Tab',
+    multipleChoiceKeybindStyle: 'letters'
 };
 
 const CURRENT_VERSION = 3;
@@ -112,6 +113,7 @@ export interface FlashcardFile {
     elapsedTime: number;
     topStreak: number;
     isSessionActive?: boolean;
+    learnSessionStats?: CardSet['learnSessionStats'];
     isMultistudy?: boolean;
     sourceSetIds?: string[];
     isLocalOnly?: boolean;
@@ -478,6 +480,7 @@ const setToFile = (set: CardSet, modifiedAt?: number): FlashcardFile => {
         elapsedTime: normalizedSet.elapsedTime,
         topStreak: normalizedSet.topStreak,
         isSessionActive: normalizedSet.isSessionActive,
+        learnSessionStats: normalizedSet.learnSessionStats,
         isMultistudy: normalizedSet.isMultistudy,
         sourceSetIds: normalizedSet.sourceSetIds,
         isLocalOnly: normalizedSet.isLocalOnly,
@@ -507,6 +510,7 @@ const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
         elapsedTime: cleanFile.elapsedTime,
         topStreak: cleanFile.topStreak,
         isSessionActive: cleanFile.isSessionActive,
+        learnSessionStats: cleanFile.learnSessionStats,
         isMultistudy: cleanFile.isMultistudy,
         sourceSetIds: cleanFile.sourceSetIds,
         isLocalOnly: cleanFile.isLocalOnly,

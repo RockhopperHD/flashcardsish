@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition } from '../types';
-import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat } from '../utils';
-import { ArrowLeft, ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2 } from 'lucide-react';
+import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition, LearnSessionStats } from '../types';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat, normalizeLearnSessionStats, resetSetStudyProgress } from '../utils';
+import { ArrowLeft, ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2, BarChart3, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
@@ -77,6 +77,44 @@ const getAutoBatchSize = (cardCount: number): number => {
    const clampedTarget = Math.max(5, Math.min(25, target));
 
    return Math.min(cardCount, halfDeck, clampedTarget);
+};
+
+const getMultipleChoiceShortcutKeys = (settings: Settings): string[] =>
+   settings.multipleChoiceKeybindStyle === 'numbers'
+      ? ['1', '2', '3', '4']
+      : ['A', 'B', 'C', 'D'];
+
+const matchesMultipleChoiceShortcut = (event: KeyboardEvent, shortcut: string): boolean => {
+   const normalizedKey = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+   const normalizedShortcut = shortcut.toLowerCase();
+
+   if (normalizedKey === normalizedShortcut) return true;
+
+   if (/^\d$/.test(shortcut)) {
+      return event.code === `Digit${shortcut}` || event.code === `Numpad${shortcut}`;
+   }
+
+   return false;
+};
+
+const getMasteryDotClassNames = (level: 0 | 1 | 2) => {
+   if (level === 0) {
+      return ["border border-outline", "border border-outline"];
+   }
+   if (level === 1) {
+      return ["bg-green", "border border-outline"];
+   }
+   return ["bg-green", "bg-green"];
+};
+
+const renderMasteryDots = (level: 0 | 1 | 2, sizeClass = "w-2 h-2") => {
+   const [firstDot, secondDot] = getMasteryDotClassNames(level);
+   return (
+      <div className="flex items-center gap-1">
+         <div className={clsx(sizeClass, "rounded-full", firstDot)} />
+         <div className={clsx(sizeClass, "rounded-full", secondDot)} />
+      </div>
+   );
 };
 
 // Helper Component for Rendering Edit Fields
@@ -327,6 +365,8 @@ const ABInput = ({
 export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect, onStartGame }) => {
    // Learn Sub-Mode Selection
    const [subMode, setSubMode] = useState<LearnSubMode | null>(null);
+   const [pendingStartMode, setPendingStartMode] = useState<LearnSubMode | null>(null);
+   const [continueSession, setContinueSession] = useState(true);
 
    // Game State
    const [currentId, setCurrentId] = useState<string | null>(null);
@@ -335,12 +375,22 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [inputCustom, setInputCustom] = useState<Record<string, string>>({});
    const [feedback, setFeedback] = useState<FeedbackState>({ type: 'idle' });
    const [isEditOpen, setIsEditOpen] = useState(false);
+   const [isManageSessionOpen, setIsManageSessionOpen] = useState(false);
+   const [isResetSessionConfirmOpen, setIsResetSessionConfirmOpen] = useState(false);
    const [isShaking, setIsShaking] = useState(false);
    const [confirmBlankSubmit, setConfirmBlankSubmit] = useState(false);
+   const [sessionStats, setSessionStats] = useState<LearnSessionStats>(() => normalizeLearnSessionStats(set.learnSessionStats));
+   const [isMultipleChoiceShiftHeld, setIsMultipleChoiceShiftHeld] = useState(false);
 
    useEffect(() => {
       setConfirmBlankSubmit(false);
    }, [inputTerm, inputYear, inputCustom, currentId]);
+
+   useEffect(() => {
+      if (settings.mode !== 'multiple_choice') {
+         setIsMultipleChoiceShiftHeld(false);
+      }
+   }, [settings.mode]);
 
    // Toolbar State
    const [toolbarVisible, setToolbarVisible] = useState(false);
@@ -380,11 +430,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    const [pendingStreakBreak, setPendingStreakBreak] = useState(false);
    const [topStreak, setTopStreak] = useState(set.topStreak || 0);
 
-   // Mastery Reset Confirmation State
-   const [confirmResetLevel, setConfirmResetLevel] = useState<number | null>(null);
-
    // Multiple Choice State
    const [options, setOptions] = useState<string[]>([]);
+   const multipleChoiceShortcutKeys = useMemo(() => getMultipleChoiceShortcutKeys(settings), [settings.multipleChoiceKeybindStyle]);
 
    // Multistudy Edit Warning
    const [showEditWarning, setShowEditWarning] = useState(false);
@@ -408,11 +456,49 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    const submitButtonRef = useRef<HTMLButtonElement>(null);
    const customInputRefs = useRef<Record<string, HTMLElement | null>>({});
+   const lastTrackedCardKeyRef = useRef<string | null>(null);
+   const sessionStatsRef = useRef(normalizeLearnSessionStats(set.learnSessionStats));
 
    const getCardKey = useCallback((card: Card): string => {
       if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
       return card.id;
    }, [set.isMultistudy]);
+
+   const fullSessionCounts = useMemo(() => {
+      const learning = set.cards.filter(card => normalizeCardMastery(card.mastery) === 1).length;
+      const mastered = set.cards.filter(card => normalizeCardMastery(card.mastery) >= 2).length;
+      return { learning, mastered };
+   }, [set.cards]);
+
+   const hasOngoingSession = useMemo(() => (
+      Boolean(set.isSessionActive) &&
+      (
+         fullSessionCounts.learning > 0 ||
+         fullSessionCounts.mastered > 0 ||
+         sessionStats.cardsPresented > 0 ||
+         sessionStats.correctAnswers > 0 ||
+         sessionStats.wrongAnswers > 0 ||
+         set.elapsedTime > 0
+      )
+   ), [fullSessionCounts.learning, fullSessionCounts.mastered, sessionStats.cardsPresented, sessionStats.correctAnswers, sessionStats.wrongAnswers, set.elapsedTime, set.isSessionActive]);
+
+   useEffect(() => {
+      setContinueSession(true);
+      const normalizedStats = normalizeLearnSessionStats(set.learnSessionStats);
+      setSessionStats(normalizedStats);
+      sessionStatsRef.current = normalizedStats;
+      setTopStreak(set.topStreak || 0);
+      setStreak(0);
+      lastTrackedCardKeyRef.current = null;
+   }, [set.id]);
+
+   useEffect(() => {
+      if (!pendingStartMode) return;
+      if (set.cards.some(card => normalizeCardMastery(card.mastery) > 0)) return;
+      setPendingStartMode(null);
+      setSubMode(pendingStartMode);
+      onStartGame();
+   }, [pendingStartMode, set.cards, onStartGame]);
 
    // Helper for focusing next field
    const focusNext = (currentFieldName: string, direction: 'next' | 'prev' = 'next') => {
@@ -468,7 +554,88 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             }
          }
       }
-   }
+   };
+
+   const getCardStatLabel = useCallback((card: Card) => {
+      const primary = settings.answerWithDefinition ? card.content : card.term[0];
+      return primary || card.term[0] || card.content || 'Untitled Card';
+   }, [settings.answerWithDefinition]);
+
+   const commitSessionStats = useCallback((nextStats: LearnSessionStats) => {
+      sessionStatsRef.current = nextStats;
+      setSessionStats(nextStats);
+   }, []);
+
+   const applySessionStatsUpdate = useCallback((updater: (prev: LearnSessionStats) => LearnSessionStats) => {
+      const nextStats = updater(sessionStatsRef.current);
+      commitSessionStats(nextStats);
+      return nextStats;
+   }, [commitSessionStats]);
+
+   const persistSet = useCallback((nextSet: CardSet, statsOverride?: LearnSessionStats) => {
+      onUpdateSet({
+         ...nextSet,
+         learnSessionStats: statsOverride ?? sessionStatsRef.current
+      });
+   }, [onUpdateSet]);
+
+   const resetLocalSessionState = useCallback(() => {
+      setSubMode(null);
+      setPendingStartMode(null);
+      setCurrentId(null);
+      setInputTerm('');
+      setInputYear('');
+      setInputCustom({});
+      setFeedback({ type: 'idle' });
+      setConfirmBlankSubmit(false);
+      setStreak(0);
+      setPendingStreakBreak(false);
+      setTopStreak(0);
+      setBatchCards([]);
+      setBatchIndex(0);
+      setBatchCardStates(new Map());
+      setBatchProgress(0);
+      setBatchCorrectInBatch(new Set());
+      setBatchPerfectInBatch(new Set());
+      setShowBatchBreak(false);
+      setBatchBreakMessage('');
+      setSeenCardIds(new Set());
+      setBatchProgressBarWidth(0);
+      setOptions([]);
+      setIsManageSessionOpen(false);
+      setIsResetSessionConfirmOpen(false);
+      lastTrackedCardKeyRef.current = null;
+   }, []);
+
+   const startLearnSubMode = useCallback((mode: LearnSubMode) => {
+      if (!continueSession && hasOngoingSession) {
+         const resetSet = {
+            ...resetSetStudyProgress(set),
+            isSessionActive: true,
+            lastPlayed: Date.now()
+         };
+         const resetStats = normalizeLearnSessionStats(resetSet.learnSessionStats);
+         commitSessionStats(resetStats);
+         setPendingStartMode(mode);
+         persistSet(resetSet, resetStats);
+         return;
+      }
+
+      setSubMode(mode);
+      onStartGame();
+   }, [commitSessionStats, continueSession, hasOngoingSession, onStartGame, persistSet, set]);
+
+   const resetSessionProgress = useCallback(() => {
+      const resetSet = {
+         ...resetSetStudyProgress(set),
+         isSessionActive: true,
+         lastPlayed: Date.now()
+      };
+      const resetStats = normalizeLearnSessionStats(resetSet.learnSessionStats);
+      commitSessionStats(resetStats);
+      resetLocalSessionState();
+      persistSet(resetSet, resetStats);
+   }, [commitSessionStats, persistSet, resetLocalSessionState, set]);
 
    // Base cards (respecting starred only setting)
    const baseCards = useMemo(() => {
@@ -539,6 +706,26 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       });
       return c;
    }, [set.cards, settings.starredOnly]);
+
+   const sessionCardStats = useMemo(() => Object.entries(sessionStats.cardStats), [sessionStats.cardStats]);
+
+   const uniqueCardsSeen = sessionCardStats.length;
+   const oneShotCards = useMemo(
+      () => sessionCardStats.filter(([, stat]) => stat.correct > 0 && stat.wrong === 0).length,
+      [sessionCardStats]
+   );
+   const mostStudiedCard = useMemo(
+      () => sessionCardStats.reduce<{ key: string; stat: LearnSessionStats['cardStats'][string] } | null>((best, [key, stat]) => {
+         if (!best || stat.prompts > best.stat.prompts || (stat.prompts === best.stat.prompts && stat.lastSeenAt > best.stat.lastSeenAt)) {
+            return { key, stat };
+         }
+         return best;
+      }, null),
+      [sessionCardStats]
+   );
+   const accuracy = sessionStats.correctAnswers + sessionStats.wrongAnswers > 0
+      ? Math.round((sessionStats.correctAnswers / (sessionStats.correctAnswers + sessionStats.wrongAnswers)) * 100)
+      : 0;
 
    // Initialize & Stable Card Selection (for Zen mode)
    useEffect(() => {
@@ -664,6 +851,35 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setBatchBreakMessage(pool[Math.floor(Math.random() * pool.length)]);
    }, [subMode, showBatchBreak, batchPerfectInBatch.size, effectiveBatchSize]);
 
+   useEffect(() => {
+      if (!subMode || !currentCard) return;
+      const currentKey = getCardKey(currentCard);
+      if (lastTrackedCardKeyRef.current === currentKey) return;
+
+      lastTrackedCardKeyRef.current = currentKey;
+      const now = Date.now();
+      const label = getCardStatLabel(currentCard);
+
+      const nextSessionStats = applySessionStatsUpdate(prev => {
+         const currentStats = prev.cardStats[currentKey];
+         return {
+            ...prev,
+            cardsPresented: prev.cardsPresented + 1,
+            cardStats: {
+               ...prev.cardStats,
+               [currentKey]: {
+                  prompts: (currentStats?.prompts || 0) + 1,
+                  correct: currentStats?.correct || 0,
+                  wrong: currentStats?.wrong || 0,
+                  label,
+                  lastSeenAt: now
+               }
+            }
+         };
+      });
+      persistSet(set, nextSessionStats);
+   }, [applySessionStatsUpdate, currentCard, getCardKey, getCardStatLabel, persistSet, set, subMode]);
+
    // Focus Management
    useEffect(() => {
       if (isEditOpen) return; // Don't steal focus when edit modal is open
@@ -675,7 +891,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    // Handlers
    const handleUpdateCard = (cardKey: string, updates: Partial<Card>) => {
       const newCards = set.cards.map(c => (getCardKey(c) === cardKey ? { ...c, ...updates } : c));
-      onUpdateSet({ ...set, cards: newCards, topStreak });
+      persistSet({ ...set, cards: newCards, topStreak });
    };
 
    const demoteLevel = (level: number) => {
@@ -685,8 +901,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          }
          return c;
       });
-      onUpdateSet({ ...set, cards: newCards, topStreak });
-      setConfirmResetLevel(null);
+      persistSet({ ...set, cards: newCards, topStreak });
    };
 
    const nextCard = (keepStreak = false) => {
@@ -799,6 +1014,25 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          : [];
 
       if (result.isMatch) {
+         const nextSessionStats = applySessionStatsUpdate(prev => {
+            const currentStats = prev.cardStats[currentCardKey];
+            return {
+               ...prev,
+               correctAnswers: prev.correctAnswers + 1,
+               cardStats: {
+                  ...prev.cardStats,
+                  [currentCardKey]: {
+                     prompts: currentStats?.prompts || 0,
+                     correct: (currentStats?.correct || 0) + 1,
+                     wrong: currentStats?.wrong || 0,
+                     label: currentStats?.label || getCardStatLabel(currentCard),
+                     lastSeenAt: Date.now()
+                  }
+               }
+            };
+         });
+         persistSet(set, nextSessionStats);
+
          // CORRECT
          const wasRetyping = isRetyping;
 
@@ -817,7 +1051,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
                const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
-               onUpdateSet({ ...set, cards: newCards, topStreak: newTopStreak });
+               persistSet({ ...set, cards: newCards, topStreak: newTopStreak }, nextSessionStats);
                setPendingStreakBreak(false);
             } else if (subMode === 'batch') {
                // BATCH MODE CORRECT LOGIC
@@ -834,7 +1068,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   if (cardState?.firstTry) {
                      const newMastery = Math.min(2, currentCard.mastery + 1);
                      const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
-                     onUpdateSet({ ...set, cards: newCards });
+                     persistSet({ ...set, cards: newCards }, nextSessionStats);
 
                      const newPerfectSet = new Set(batchPerfectInBatch);
                      newPerfectSet.add(currentCardKey);
@@ -868,6 +1102,25 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                : undefined
          });
       } else {
+         const nextSessionStats = applySessionStatsUpdate(prev => {
+            const currentStats = prev.cardStats[currentCardKey];
+            return {
+               ...prev,
+               wrongAnswers: prev.wrongAnswers + 1,
+               cardStats: {
+                  ...prev.cardStats,
+                  [currentCardKey]: {
+                     prompts: currentStats?.prompts || 0,
+                     correct: currentStats?.correct || 0,
+                     wrong: (currentStats?.wrong || 0) + 1,
+                     label: currentStats?.label || getCardStatLabel(currentCard),
+                     lastSeenAt: Date.now()
+                  }
+               }
+            };
+         });
+         persistSet(set, nextSessionStats);
+
          // INCORRECT
          if (isRetyping) {
             // Shake if still wrong
@@ -925,7 +1178,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
                if (settings.brutalMode && currentCard.mastery === 1) {
                   const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: 0 } : c);
-                  onUpdateSet({ ...set, cards: newCards });
+                  persistSet({ ...set, cards: newCards }, nextSessionStats);
                }
             } else if (subMode === 'batch') {
                // BATCH MODE INCORRECT LOGIC
@@ -952,7 +1205,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   // Reset Mastery if "tricky" or repeated mistakes >= 2
                   if (currentCard.mastery === 1 && newRepeated >= 2) {
                      const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: 0 } : c);
-                     onUpdateSet({ ...set, cards: newCards });
+                     persistSet({ ...set, cards: newCards }, nextSessionStats);
                   }
                }
             }
@@ -1061,6 +1314,25 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          : currentCard.term.some(t => t.toLowerCase() === option.toLowerCase());
 
       if (isCorrect) {
+         const nextSessionStats = applySessionStatsUpdate(prev => {
+            const currentStats = prev.cardStats[currentCardKey];
+            return {
+               ...prev,
+               correctAnswers: prev.correctAnswers + 1,
+               cardStats: {
+                  ...prev.cardStats,
+                  [currentCardKey]: {
+                     prompts: currentStats?.prompts || 0,
+                     correct: (currentStats?.correct || 0) + 1,
+                     wrong: currentStats?.wrong || 0,
+                     label: currentStats?.label || getCardStatLabel(currentCard),
+                     lastSeenAt: Date.now()
+                  }
+               }
+            };
+         });
+         persistSet(set, nextSessionStats);
+
          // Correct
          const newMastery = Math.min(2, currentCard.mastery + 1);
          const newStreak = streak + 1;
@@ -1074,7 +1346,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
          const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
-         onUpdateSet({ ...set, cards: newCards, topStreak: newTopStreak });
+         persistSet({ ...set, cards: newCards, topStreak: newTopStreak }, nextSessionStats);
          setPendingStreakBreak(false);
 
          onCorrect(); // Update lifetime stats
@@ -1083,6 +1355,25 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          // Auto advance after short delay if correct? Or wait for user?
          // Let's wait for user to hit Continue or Enter, same as standard mode
       } else {
+         const nextSessionStats = applySessionStatsUpdate(prev => {
+            const currentStats = prev.cardStats[currentCardKey];
+            return {
+               ...prev,
+               wrongAnswers: prev.wrongAnswers + 1,
+               cardStats: {
+                  ...prev.cardStats,
+                  [currentCardKey]: {
+                     prompts: currentStats?.prompts || 0,
+                     correct: currentStats?.correct || 0,
+                     wrong: (currentStats?.wrong || 0) + 1,
+                     label: currentStats?.label || getCardStatLabel(currentCard),
+                     lastSeenAt: Date.now()
+                  }
+               }
+            };
+         });
+         persistSet(set, nextSessionStats);
+
          // Incorrect
          const correctAnswer = settings.answerWithDefinition
             ? currentCard.content
@@ -1106,7 +1397,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
          if (subMode === 'zen' && settings.brutalMode && currentCard.mastery === 1) {
             const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: 0 } : c);
-            onUpdateSet({ ...set, cards: newCards });
+            persistSet({ ...set, cards: newCards }, nextSessionStats);
          }
       }
    };
@@ -1153,7 +1444,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const newMastery = Math.min(2, currentCard.mastery + 1);
          const newCards = set.cards.map(c => getCardKey(c) === currentCardKey ? { ...c, mastery: newMastery } : c);
 
-         onUpdateSet({
+         persistSet({
             ...set,
             cards: newCards,
             topStreak: newTopStreak
@@ -1165,7 +1456,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          setStreak(0);
          setPendingStreakBreak(false);
 
-         onUpdateSet({
+         persistSet({
             ...set,
             cards: newCards
             // topStreak unchanged
@@ -1186,6 +1477,29 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
    useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
          if (isEditOpen) return;
+
+         if (settings.mode === 'multiple_choice' && e.key === 'Shift') {
+            setIsMultipleChoiceShiftHeld(true);
+         }
+
+         if (
+            settings.mode === 'multiple_choice' &&
+            feedback.type === 'idle' &&
+            currentCard &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            !e.altKey
+         ) {
+            const optionIndex = multipleChoiceShortcutKeys.findIndex(shortcut => matchesMultipleChoiceShortcut(e, shortcut));
+            if (optionIndex !== -1) {
+               const selectedOption = options[optionIndex];
+               if (selectedOption) {
+                  e.preventDefault();
+                  handleOptionClick(selectedOption);
+                  return;
+               }
+            }
+         }
 
          // 'O' for Override
          if (e.key.toLowerCase() === 'o') {
@@ -1212,9 +1526,26 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             }
          }
       };
+
+      const handleKeyUp = (e: KeyboardEvent) => {
+         if (e.key === 'Shift') {
+            setIsMultipleChoiceShiftHeld(false);
+         }
+      };
+
+      const handleWindowBlur = () => {
+         setIsMultipleChoiceShiftHeld(false);
+      };
+
       window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-   }, [feedback, currentCard, nextCard, handleOverride, isEditOpen]);
+      window.addEventListener('keyup', handleKeyUp);
+      window.addEventListener('blur', handleWindowBlur);
+      return () => {
+         window.removeEventListener('keydown', handleKeyDown);
+         window.removeEventListener('keyup', handleKeyUp);
+         window.removeEventListener('blur', handleWindowBlur);
+      };
+   }, [currentCard, feedback.type, handleOptionClick, handleOverride, isEditOpen, multipleChoiceShortcutKeys, nextCard, options, settings.mode]);
 
 
    const toggleStar = () => {
@@ -1491,7 +1822,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
                {/* Zen Mode */}
                <button
-                  onClick={() => { setSubMode('zen'); onStartGame(); }}
+                  onClick={() => startLearnSubMode('zen')}
                   className="group relative bg-panel border-2 border-outline hover:border-accent rounded-2xl p-8 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10 text-left"
                >
                   <div className="absolute top-4 right-4 p-2 rounded-lg bg-panel-2 text-muted group-hover:text-accent transition-colors">
@@ -1511,7 +1842,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
                {/* Batch Mode */}
                <button
-                  onClick={() => { if (!isBatchDisabled) { setSubMode('batch'); onStartGame(); } }}
+                  onClick={() => { if (!isBatchDisabled) { startLearnSubMode('batch'); } }}
                   disabled={isBatchDisabled}
                   className={clsx(
                      "group relative bg-panel border-2 rounded-2xl p-8 transition-all text-left",
@@ -1562,11 +1893,45 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             {/* Card count info */}
             <div className="text-center mt-8 text-muted text-sm">
                {settings.starredOnly ? (
-                  <span>Studying {baseCards.length} starred cards</span>
+                  <span>Studying {baseCards.length} starred cards in this set</span>
                ) : (
                   <span>{baseCards.length} cards in this set</span>
                )}
             </div>
+
+            {hasOngoingSession && (
+               <label className="mt-6 mx-auto max-w-xl flex items-start gap-4 rounded-2xl border border-outline bg-panel p-4 cursor-pointer">
+                  <input
+                     type="checkbox"
+                     checked={continueSession}
+                     onChange={(e) => setContinueSession(e.target.checked)}
+                     className="sr-only"
+                  />
+                  <div
+                     className={clsx(
+                        "mt-0.5 h-6 w-6 shrink-0 rounded-md border-2 transition-all flex items-center justify-center",
+                        continueSession ? "border-accent bg-accent" : "border-outline bg-panel-2"
+                     )}
+                  >
+                     {continueSession && (
+                        <div className="w-3 h-1.5 border-b-2 border-l-2 border-bg -rotate-45 -mt-0.5" />
+                     )}
+                  </div>
+                  <div className="flex-1 text-left">
+                     <div className="font-bold text-text">Continue where I left off</div>
+                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+                        <span className="flex items-center gap-2">
+                           <span>{fullSessionCounts.learning}</span>
+                           {renderMasteryDots(1)}
+                        </span>
+                        <span className="flex items-center gap-2">
+                           <span>{fullSessionCounts.mastered}</span>
+                           {renderMasteryDots(2)}
+                        </span>
+                     </div>
+                  </div>
+               </label>
+            )}
          </div>
       );
    }
@@ -1605,42 +1970,36 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                )}
             </div>
 
-            {subMode === 'zen' && (
-               <div className="flex flex-wrap justify-end items-end gap-3">
-                  <div className="flex gap-3">
-                     {[0, 1, 2].map(level => (
-                        <div key={level} className="relative">
-                           {confirmResetLevel === level && (
-                              <div className="absolute -top-5 left-0 w-full text-center text-[10px] font-bold text-red animate-pulse">
-                                 CONFIRM?
-                              </div>
-                           )}
-                           <div
-                              onClick={() => {
-                                 if (confirmResetLevel === level) demoteLevel(level);
-                                 else if (counts[level] > 0) {
-                                    setConfirmResetLevel(level);
-                                    setTimeout(() => setConfirmResetLevel(null), 3000);
-                                 }
-                              }}
-                              className={clsx(
-                                 "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all cursor-pointer active:scale-95",
-                                 "bg-panel border-outline",
-                                 counts[level] > 0 && "hover:border-accent"
-                              )}
-                           >
-                              <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
-                              <div className="flex gap-1">
-                                 {level >= 1 && <div className={clsx("w-2 h-2 rounded-full", level >= 1 ? "bg-green" : "bg-outline")} />}
-                                 {level >= 2 && <div className={clsx("w-2 h-2 rounded-full", level >= 2 ? "bg-green" : "bg-outline")} />}
-                                 {level === 0 && <div className="w-2 h-2 rounded-full border border-outline" />}
-                              </div>
-                           </div>
-                        </div>
-                     ))}
-                  </div>
+            <div className="flex flex-wrap justify-end items-end gap-3">
+               <div className="flex gap-3">
+                  {[0, 1, 2].map(level => (
+                     <button
+                        key={level}
+                        type="button"
+                        onDoubleClick={() => {
+                           if (counts[level] > 0) demoteLevel(level);
+                        }}
+                        className={clsx(
+                           "flex flex-col items-center justify-center w-16 py-2 rounded-xl border transition-all active:scale-95",
+                           "bg-panel border-outline",
+                           counts[level] > 0 ? "hover:border-accent cursor-pointer" : "cursor-default opacity-80"
+                        )}
+                        title={counts[level] > 0 ? "Double-click to move these cards down a mastery level." : undefined}
+                     >
+                        <span className="text-lg font-bold leading-none mb-1 text-text">{counts[level]}</span>
+                        {renderMasteryDots(level as 0 | 1 | 2)}
+                     </button>
+                  ))}
                </div>
-            )}
+               <button
+                  type="button"
+                  onClick={() => setIsManageSessionOpen(true)}
+                  className="h-16 px-4 rounded-xl border border-outline bg-panel text-text font-bold hover:border-accent hover:text-accent transition-colors inline-flex items-center gap-2"
+               >
+                  <BarChart3 size={16} />
+                  Manage Session
+               </button>
+            </div>
          </div>
 
          {/* Batch Progress Bar */}
@@ -1796,13 +2155,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {options.map((opt, i) => {
                            const isSelected = false; // Could track selected for styling
+                           const isCorrectOption = settings.answerWithDefinition
+                              ? opt.toLowerCase() === currentCard.content.toLowerCase()
+                              : currentCard.term.some(term => term.toLowerCase() === opt.toLowerCase());
                            let stateClass = "border-outline hover:border-accent bg-panel-2";
 
-                           if (feedback.type === 'correct' && currentCard.term.includes(opt)) {
+                           if (feedback.type === 'correct' && isCorrectOption) {
                               stateClass = "border-green bg-green/10 text-green";
-                           } else if (feedback.type === 'incorrect' && currentCard.term.includes(opt)) {
+                           } else if (feedback.type === 'incorrect' && isCorrectOption) {
                               stateClass = "border-green bg-green/10 text-green"; // Show correct answer
-                           } else if (feedback.type !== 'idle' && !currentCard.term.includes(opt)) {
+                           } else if (feedback.type !== 'idle' && !isCorrectOption) {
                               stateClass = "opacity-50 border-transparent bg-panel-2";
                            }
 
@@ -1812,11 +2174,16 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                                  onClick={() => isInteractive && handleOptionClick(opt)}
                                  disabled={!isInteractive}
                                  className={clsx(
-                                    "p-6 rounded-xl text-lg font-bold text-left transition-all border-2",
+                                    "relative p-6 rounded-xl text-lg font-bold text-left transition-all border-2",
                                     stateClass,
                                     isInteractive && "hover:scale-[1.02] active:scale-[0.98]"
                                  )}
                               >
+                                 {isMultipleChoiceShiftHeld && multipleChoiceShortcutKeys[i] && (
+                                    <kbd className="absolute top-3 right-3 px-2 py-1 bg-panel border-b-2 border-outline/70 rounded-md text-[11px] font-bold text-muted font-sans shadow-sm">
+                                       {multipleChoiceShortcutKeys[i]}
+                                    </kbd>
+                                 )}
                                  <>{renderInline(opt, `option-${i}`)}</>
                               </button>
                            );
@@ -1891,7 +2258,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                         }
 
                         const renderTerm = () => (
-                           <div key="term" className={clsx("relative flex flex-col", termClass)}>
+                           <div key="term" className={clsx("relative flex min-w-0 flex-col", termClass)}>
                               {feedback.type === 'retype_needed' && !feedback.results?.isTermMatch && (
                                  <div className="absolute -top-6 left-0 text-xs font-bold text-accent animate-in fade-in">
                                     <span>Answer: </span>
@@ -2129,6 +2496,135 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                </div>
             )}
          </div>
+
+         {isManageSessionOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsManageSessionOpen(false)}>
+               <div className="w-full max-w-4xl rounded-[28px] border border-outline bg-panel shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-start justify-between gap-4 border-b border-outline/60 px-8 py-6">
+                     <div>
+                        <div className="text-xs font-bold uppercase tracking-[0.28em] text-accent">Manage Session</div>
+                        <h2
+                           className="mt-2 text-4xl text-text"
+                           style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                        >
+                           {set.name}
+                        </h2>
+                        <p className="mt-2 text-muted">A quick look at how this study run is shaping up.</p>
+                     </div>
+                     <button onClick={() => setIsManageSessionOpen(false)} className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-text transition-colors">
+                        <X size={22} />
+                     </button>
+                  </div>
+
+                  <div className="px-8 py-8 space-y-8">
+                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+                        <div className="rounded-2xl border border-outline bg-panel-2/70 p-4">
+                           <div className="text-xs font-bold uppercase tracking-widest text-muted">Cards Gone Through</div>
+                           <div className="mt-2 text-3xl font-bold text-text">{sessionStats.cardsPresented}</div>
+                           <div className="mt-1 text-sm text-muted">{uniqueCardsSeen} unique cards seen</div>
+                        </div>
+                        <div className="rounded-2xl border border-outline bg-panel-2/70 p-4">
+                           <div className="text-xs font-bold uppercase tracking-widest text-muted">Correct</div>
+                           <div className="mt-2 text-3xl font-bold text-green">{sessionStats.correctAnswers}</div>
+                           <div className="mt-1 text-sm text-muted">{accuracy}% accuracy</div>
+                        </div>
+                        <div className="rounded-2xl border border-outline bg-panel-2/70 p-4">
+                           <div className="text-xs font-bold uppercase tracking-widest text-muted">Errors</div>
+                           <div className="mt-2 text-3xl font-bold text-red">{sessionStats.wrongAnswers}</div>
+                           <div className="mt-1 text-sm text-muted">Retype misses included</div>
+                        </div>
+                        <div className="rounded-2xl border border-outline bg-panel-2/70 p-4">
+                           <div className="text-xs font-bold uppercase tracking-widest text-muted">One-Shot Cards</div>
+                           <div className="mt-2 text-3xl font-bold text-text">{oneShotCards}</div>
+                           <div className="mt-1 text-sm text-muted">Correct with no mistakes this session</div>
+                        </div>
+                        <div className="rounded-2xl border border-outline bg-panel-2/70 p-4">
+                           <div className="text-xs font-bold uppercase tracking-widest text-muted">Most Studied</div>
+                           <div className="mt-2 text-lg font-bold text-text line-clamp-2">
+                              {mostStudiedCard?.stat.label || 'Nothing yet'}
+                           </div>
+                           <div className="mt-1 text-sm text-muted">
+                              {mostStudiedCard ? `${mostStudiedCard.stat.prompts} prompts` : 'Answer a few cards to populate this.'}
+                           </div>
+                        </div>
+                     </div>
+
+                     <div className="rounded-2xl border border-outline bg-panel-2/50 p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                           <div>
+                              <div className="text-sm font-bold uppercase tracking-widest text-muted">Current Mastery Split</div>
+                              <div className="mt-3 flex flex-wrap items-center gap-4 text-text">
+                                 <span className="flex items-center gap-2"><span className="font-bold">{counts[0]}</span>{renderMasteryDots(0, "w-2.5 h-2.5")}</span>
+                                 <span className="flex items-center gap-2"><span className="font-bold">{counts[1]}</span>{renderMasteryDots(1, "w-2.5 h-2.5")}</span>
+                                 <span className="flex items-center gap-2"><span className="font-bold">{counts[2]}</span>{renderMasteryDots(2, "w-2.5 h-2.5")}</span>
+                              </div>
+                           </div>
+                           <button
+                              type="button"
+                              onClick={() => {
+                                 setIsManageSessionOpen(false);
+                                 setIsResetSessionConfirmOpen(true);
+                              }}
+                              className="inline-flex items-center gap-2 rounded-2xl bg-red px-6 py-4 font-bold text-bg hover:opacity-90 transition-opacity"
+                           >
+                              <RotateCcw size={18} />
+                              Reset Session Progress
+                           </button>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+         )}
+
+         {isResetSessionConfirmOpen && (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsResetSessionConfirmOpen(false)}>
+               <div className="w-full max-w-xl rounded-3xl border border-outline bg-panel p-8 shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-start justify-between gap-4">
+                     <div>
+                        <div className="text-xs font-bold uppercase tracking-[0.28em] text-red">Reset Session</div>
+                        <h3
+                           className="mt-2 text-3xl text-text"
+                           style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
+                        >
+                           Are you sure?
+                        </h3>
+                     </div>
+                     <button onClick={() => setIsResetSessionConfirmOpen(false)} className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-text transition-colors">
+                        <X size={22} />
+                     </button>
+                  </div>
+
+                  <p className="mt-4 flex flex-wrap items-center gap-2 text-muted leading-relaxed">
+                     <span>This will clear your progress for this set, resetting mastery of all cards to</span>
+                     {renderMasteryDots(0, "w-2.5 h-2.5")}
+                     <span className="relative inline-flex items-center group">
+                        <Info size={15} className="text-accent cursor-help" />
+                        <span className="pointer-events-none absolute left-full top-1/2 ml-3 w-64 -translate-y-1/2 rounded-xl border border-outline bg-panel-2 p-3 text-xs font-medium text-text opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
+                           You can double-click the mastery counters at the top of Learn Mode to move cards down a mastery level whenever you want.
+                        </span>
+                     </span>
+                  </p>
+
+                  <div className="mt-8 flex gap-3">
+                     <button
+                        type="button"
+                        onClick={() => setIsResetSessionConfirmOpen(false)}
+                        className="flex-1 rounded-2xl border border-outline bg-panel-2 px-5 py-3 font-bold text-text hover:bg-panel-3 transition-colors"
+                     >
+                        Cancel
+                     </button>
+                     <button
+                        type="button"
+                        onClick={resetSessionProgress}
+                        className="flex-1 rounded-2xl bg-red px-5 py-3 font-bold text-bg hover:opacity-90 transition-opacity"
+                     >
+                        Yes, Reset Progress
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
 
          {/* Edit Modal */}
 

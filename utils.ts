@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardSet, CustomFieldDefinition } from './types';
+import { Card, CardSet, CustomFieldDefinition, LearnSessionStats } from './types';
 import { sanitizeStrings } from './storageV2';
 import { normalizeCardMastery, normalizeCardStar } from './cardNormalization';
 
@@ -219,6 +219,44 @@ export const fmtTime = (ms: number): string => {
     String(s % 60).padStart(2, '0')
   );
 };
+
+export const createEmptyLearnSessionStats = (): LearnSessionStats => ({
+  cardsPresented: 0,
+  correctAnswers: 0,
+  wrongAnswers: 0,
+  cardStats: {}
+});
+
+export const normalizeLearnSessionStats = (stats?: LearnSessionStats | null): LearnSessionStats => {
+  if (!stats || typeof stats !== 'object') return createEmptyLearnSessionStats();
+
+  const normalizedCardStats = Object.entries(stats.cardStats || {}).reduce<LearnSessionStats['cardStats']>((acc, [key, value]) => {
+    if (!value || typeof value !== 'object') return acc;
+    acc[key] = {
+      prompts: Number.isFinite(value.prompts) ? Math.max(0, value.prompts) : 0,
+      correct: Number.isFinite(value.correct) ? Math.max(0, value.correct) : 0,
+      wrong: Number.isFinite(value.wrong) ? Math.max(0, value.wrong) : 0,
+      label: typeof value.label === 'string' ? value.label : '',
+      lastSeenAt: Number.isFinite(value.lastSeenAt) ? Math.max(0, value.lastSeenAt) : 0
+    };
+    return acc;
+  }, {});
+
+  return {
+    cardsPresented: Number.isFinite(stats.cardsPresented) ? Math.max(0, stats.cardsPresented) : 0,
+    correctAnswers: Number.isFinite(stats.correctAnswers) ? Math.max(0, stats.correctAnswers) : 0,
+    wrongAnswers: Number.isFinite(stats.wrongAnswers) ? Math.max(0, stats.wrongAnswers) : 0,
+    cardStats: normalizedCardStats
+  };
+};
+
+export const resetSetStudyProgress = (set: CardSet): CardSet => ({
+  ...set,
+  elapsedTime: 0,
+  topStreak: 0,
+  learnSessionStats: createEmptyLearnSessionStats(),
+  cards: set.cards.map(card => ({ ...card, mastery: 0 }))
+});
 
 // Levenshtein Distance for Fuzzy Matching
 export const distance = (a: string, b: string): number => {

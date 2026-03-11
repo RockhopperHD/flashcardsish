@@ -402,9 +402,10 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
 
     // Sync value to HTML (only when not typing to avoid cursor jumps / loops)
     useEffect(() => {
-        if (isTyping.current) return;
         if (contentEditableRef.current) {
             const currentMd = getMarkdownFromContent();
+            if (isTyping.current && value === currentMd) return;
+
             if (value !== currentMd) {
                 // Preserve cursor
                 const caretPos = getCaretIndex(contentEditableRef.current);
@@ -944,7 +945,7 @@ export const RichInput = forwardRef<RichInputRef, RichInputProps>(({
             id={id}
             ref={contentEditableRef}
             contentEditable={!disabled}
-            className={clsx("outline-none whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className, disabled && "opacity-50 pointer-events-none")}
+            className={clsx("min-w-0 max-w-full outline-none whitespace-pre-wrap break-words [overflow-wrap:anywhere] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5", className, disabled && "opacity-50 pointer-events-none")}
             onInput={handleInput}
             onBlur={() => {
                 // On blur, force a sync so the user sees formatted content

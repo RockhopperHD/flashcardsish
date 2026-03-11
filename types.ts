@@ -47,10 +47,26 @@ export interface CardSet {
   elapsedTime: number; // Time spent in ms
   topStreak: number;
   isSessionActive?: boolean;
+  learnSessionStats?: LearnSessionStats;
   isMultistudy?: boolean;
   sourceSetIds?: string[]; // IDs of sets that this multistudy session draws from
   folderId?: string; // If belongs to a folder
   isLocalOnly?: boolean; // If true, this set is not synced to the cloud
+}
+
+export interface LearnSessionCardStat {
+  prompts: number;
+  correct: number;
+  wrong: number;
+  label: string;
+  lastSeenAt: number;
+}
+
+export interface LearnSessionStats {
+  cardsPresented: number;
+  correctAnswers: number;
+  wrongAnswers: number;
+  cardStats: Record<string, LearnSessionCardStat>;
 }
 
 export interface Folder {
@@ -88,6 +104,7 @@ export interface Settings {
   flipCardKey2?: string; // Secondary key for flipping flashcard (default 'Enter')
   submitAnswerKey1?: string; // Primary key for submitting answer in Learn mode (default 'Enter')
   nextFieldKey1?: string; // Primary key for moving to next field (default 'Tab', locked)
+  multipleChoiceKeybindStyle?: 'letters' | 'numbers'; // Which shortcuts four-option multiple choice uses
 }
 
 export interface Badge {

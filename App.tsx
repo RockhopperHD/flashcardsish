@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder, Tag } from './types';
-import { fmtTime, generateId, sanitizeSet, syncMultistudySet } from './utils';
+import { fmtTime, generateId, sanitizeSet, syncMultistudySet, resetSetStudyProgress } from './utils';
 import { StartMenu, type UiAuditRequest } from './components/StartMenu';
 import { Game } from './components/Game';
 import { SetDetail } from './components/SetDetail';
@@ -232,6 +232,7 @@ const mergeSetWithoutLosingCards = (localSet: CardSet, cloudSet: CardSet): CardS
       elapsedTime: Math.max(localSet.elapsedTime || 0, cloudSet.elapsedTime || 0),
       topStreak: Math.max(localSet.topStreak || 0, cloudSet.topStreak || 0),
       isSessionActive: Boolean(localSet.isSessionActive || cloudSet.isSessionActive),
+      learnSessionStats: metadataSource.learnSessionStats ?? cloudSet.learnSessionStats ?? localSet.learnSessionStats,
       isLocalOnly: false,
       folderId: cloudSet.folderId ?? (localSet.isLocalOnly ? undefined : localSet.folderId),
       cards: mergedCards
@@ -2423,13 +2424,14 @@ const App: React.FC = () => {
    const handleDuplicateLibrarySet = (id: string) => {
       const set = librarySets.find(s => s.id === id);
       if (set) {
-         const newSet: CardSet = {
+        const newSet: CardSet = {
             ...set,
             id: generateId(),
             name: `${set.name} (Copy)`,
             lastPlayed: Date.now(),
             elapsedTime: 0,
             topStreak: 0,
+            learnSessionStats: undefined,
             cards: set.cards.map(c => ({ ...c, mastery: 0 }))
          };
          setLibrarySets(prev => [newSet, ...prev]);
@@ -2583,11 +2585,10 @@ const App: React.FC = () => {
       if (!sessionToRestart) return;
 
       const resetSession = {
-         ...sessionToRestart,
+         ...resetSetStudyProgress(sessionToRestart),
          elapsedTime: 0,
          topStreak: 0,
-         isSessionActive: true,
-         cards: sessionToRestart.cards.map(c => ({ ...c, mastery: 0 }))
+         isSessionActive: true
       };
 
       setLibrarySets(prev => {
@@ -2618,6 +2619,7 @@ const App: React.FC = () => {
          elapsedTime: 0,
          topStreak: 0,
          isSessionActive: true,
+         learnSessionStats: undefined,
          cards: sessionToRestart.cards.map(c => c.star ? { ...c, mastery: 0 } : c)
       };
 
