@@ -748,6 +748,14 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       downloadFile(`${set.name}.flashcards`, JSON.stringify(exportSet, null, 2), 'json');
    };
 
+   const getActiveCustomFieldDefs = () => (
+      set.version && set.version >= 2
+         ? (settings.answerWithDefinition ? set.defSideFields : set.termSideFields)?.map(f =>
+            typeof f === 'string' ? { name: f, type: 'text' as const } : f
+         )
+         : set.customFieldNames?.map(name => ({ name, type: 'text' as const }))
+   );
+
    const handleAttempt = () => {
       if (!currentCard) return;
       const currentCardKey = getCardKey(currentCard);
@@ -766,11 +774,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       }
 
       // Determine active definitions
-      const activeFieldDefs = set.version && set.version >= 2
-         ? (settings.answerWithDefinition ? set.defSideFields : set.termSideFields)?.map(f =>
-            typeof f === 'string' ? { name: f, type: 'text' as const } : f
-         )
-         : set.customFieldNames?.map(name => ({ name, type: 'text' as const }));
+      const activeFieldDefs = getActiveCustomFieldDefs();
 
       // Use appropriate check function based on answerWithDefinition setting
       const result = settings.answerWithDefinition
@@ -781,6 +785,18 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       const isMainAnswerMatch = settings.answerWithDefinition
          ? (result as ReturnType<typeof checkDefinitionAnswer>).isDefinitionMatch
          : (result as ReturnType<typeof checkAnswer>).isTermMatch;
+
+      const mixupItems = !isRetyping
+         ? findMixup(
+            inputTerm,
+            inputYear,
+            inputCustom,
+            currentCard,
+            set.cards,
+            settings.answerWithDefinition,
+            getActiveCustomFieldDefs()
+         )
+         : [];
 
       if (result.isMatch) {
          // CORRECT
@@ -863,6 +879,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          if (settings.retypeOnMistake) {
             setFeedback({
                type: 'retype_needed',
+               mixupInfo: mixupItems.length > 0 ? { mixups: mixupItems } : undefined,
                results: {
                   isTermMatch: isMainAnswerMatch,
                   isYearMatch: result.isYearMatch,
@@ -880,7 +897,6 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                });
                setInputCustom(newCustom);
             }
-            return;
          } else {
             // Standard Incorrect Feedback
             let msg = settings.answerWithDefinition
@@ -896,23 +912,6 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                   msg = `${settings.answerWithDefinition ? 'Definition' : 'Term'}/Year correct, but ${wrongField} is ${correctVal}`;
                }
             }
-
-            // Detect mixups with other cards
-            const customFieldDefs = set.version && set.version >= 2
-               ? (settings.answerWithDefinition ? set.defSideFields : set.termSideFields)?.map(f =>
-                  typeof f === 'string' ? { name: f, type: 'text' as const } : f
-               )
-               : set.customFieldNames?.map(name => ({ name, type: 'text' as const }));
-
-            const mixupItems = findMixup(
-               inputTerm,
-               inputYear,
-               inputCustom,
-               currentCard,
-               set.cards,
-               settings.answerWithDefinition,
-               customFieldDefs
-            );
 
             setFeedback({
                type: 'incorrect',
@@ -1088,7 +1087,20 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          const correctAnswer = settings.answerWithDefinition
             ? currentCard.content
             : currentCard.term.join(' / ');
-         setFeedback({ type: 'incorrect', message: `Correct Answer: ${correctAnswer}` });
+         const mixupItems = findMixup(
+            option,
+            '',
+            {},
+            currentCard,
+            set.cards,
+            settings.answerWithDefinition,
+            getActiveCustomFieldDefs()
+         );
+         setFeedback({
+            type: 'incorrect',
+            message: `Correct Answer: ${correctAnswer}`,
+            mixupInfo: mixupItems.length > 0 ? { mixups: mixupItems } : undefined
+         });
          setPendingStreakBreak(true);
 
          // Brutal Mode: In Zen mode, if card is at mastery 1 and user gets it wrong, demote to 0
@@ -2019,7 +2031,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                )}
 
                {/* Mixup Alert Trigger */}
-               {feedback.type === 'incorrect' && feedback.mixupInfo && feedback.mixupInfo.mixups.length > 0 && (
+               {(feedback.type === 'incorrect' || feedback.type === 'retype_needed') && feedback.mixupInfo && feedback.mixupInfo.mixups.length > 0 && (
                   <div className="flex justify-start -mt-4 mb-2 animate-in fade-in slide-in-from-top-1">
                      <button
                         onClick={() => setIsMixupModalOpen(true)}
@@ -2300,7 +2312,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             </div>
          )}
          {/* Mixup Details Modal */}
-         {isMixupModalOpen && feedback.type === 'incorrect' && feedback.mixupInfo && feedback.mixupInfo.mixups.length > 0 && (
+         {isMixupModalOpen && (feedback.type === 'incorrect' || feedback.type === 'retype_needed') && feedback.mixupInfo && feedback.mixupInfo.mixups.length > 0 && (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsMixupModalOpen(false)}>
                <div className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-2xl shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-between items-center mb-6 border-b border-outline pb-4">

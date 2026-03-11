@@ -147,6 +147,7 @@ export type FeedbackState =
   | { type: 'reveal'; message: string }
   | {
     type: 'retype_needed';
+    mixupInfo?: MixupInfo;
     results?: {
       isTermMatch: boolean;
       isYearMatch: boolean;
