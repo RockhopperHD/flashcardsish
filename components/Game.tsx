@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition, LearnSessionStats } from '../types';
 import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat, normalizeLearnSessionStats, resetSetStudyProgress } from '../utils';
-import { ArrowLeft, ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2, BarChart3, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { FloatingToolbar } from './FloatingToolbar';
 import { RichInput, RichInputRef } from './RichInput';
 import { CardTagPill } from './CardTagPill';
 import { StreakCornerBadge } from './StreakCornerBadge';
+import { CursorTooltip } from './CursorTooltip';
 import { normalizeCardMastery } from '../cardNormalization';
 
 interface GameProps {
@@ -474,13 +475,9 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       Boolean(set.isSessionActive) &&
       (
          fullSessionCounts.learning > 0 ||
-         fullSessionCounts.mastered > 0 ||
-         sessionStats.cardsPresented > 0 ||
-         sessionStats.correctAnswers > 0 ||
-         sessionStats.wrongAnswers > 0 ||
-         set.elapsedTime > 0
+         fullSessionCounts.mastered > 0
       )
-   ), [fullSessionCounts.learning, fullSessionCounts.mastered, sessionStats.cardsPresented, sessionStats.correctAnswers, sessionStats.wrongAnswers, set.elapsedTime, set.isSessionActive]);
+   ), [fullSessionCounts.learning, fullSessionCounts.mastered, set.isSessionActive]);
 
    useEffect(() => {
       setContinueSession(true);
@@ -1971,6 +1968,13 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
             </div>
 
             <div className="flex flex-wrap justify-end items-end gap-3">
+               <button
+                  type="button"
+                  onClick={() => setIsManageSessionOpen(true)}
+                  className="h-12 px-4 rounded-xl border border-outline bg-panel text-sm text-text font-bold hover:border-accent hover:text-accent transition-colors inline-flex items-center whitespace-nowrap"
+               >
+                  Manage Session
+               </button>
                <div className="flex gap-3">
                   {[0, 1, 2].map(level => (
                      <button
@@ -1991,14 +1995,6 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      </button>
                   ))}
                </div>
-               <button
-                  type="button"
-                  onClick={() => setIsManageSessionOpen(true)}
-                  className="h-16 px-4 rounded-xl border border-outline bg-panel text-text font-bold hover:border-accent hover:text-accent transition-colors inline-flex items-center gap-2"
-               >
-                  <BarChart3 size={16} />
-                  Manage Session
-               </button>
             </div>
          </div>
 
@@ -2502,14 +2498,12 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                <div className="w-full max-w-4xl rounded-[28px] border border-outline bg-panel shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-start justify-between gap-4 border-b border-outline/60 px-8 py-6">
                      <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.28em] text-accent">Manage Session</div>
                         <h2
-                           className="mt-2 text-4xl text-text"
+                           className="text-3xl text-text"
                            style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
                         >
-                           {set.name}
+                           Manage Session
                         </h2>
-                        <p className="mt-2 text-muted">A quick look at how this study run is shaping up.</p>
                      </div>
                      <button onClick={() => setIsManageSessionOpen(false)} className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-text transition-colors">
                         <X size={22} />
@@ -2578,48 +2572,50 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
          )}
 
          {isResetSessionConfirmOpen && (
-            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in" onClick={() => setIsResetSessionConfirmOpen(false)}>
-               <div className="w-full max-w-xl rounded-3xl border border-outline bg-panel p-8 shadow-2xl animate-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-start justify-between gap-4">
-                     <div>
-                        <div className="text-xs font-bold uppercase tracking-[0.28em] text-red">Reset Session</div>
-                        <h3
-                           className="mt-2 text-3xl text-text"
-                           style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}
-                        >
-                           Are you sure?
-                        </h3>
-                     </div>
-                     <button onClick={() => setIsResetSessionConfirmOpen(false)} className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-text transition-colors">
-                        <X size={22} />
-                     </button>
-                  </div>
-
-                  <p className="mt-4 flex flex-wrap items-center gap-2 text-muted leading-relaxed">
-                     <span>This will clear your progress for this set, resetting mastery of all cards to</span>
-                     {renderMasteryDots(0, "w-2.5 h-2.5")}
-                     <span className="relative inline-flex items-center group">
-                        <Info size={15} className="text-accent cursor-help" />
-                        <span className="pointer-events-none absolute left-full top-1/2 ml-3 w-64 -translate-y-1/2 rounded-xl border border-outline bg-panel-2 p-3 text-xs font-medium text-text opacity-0 shadow-xl transition-opacity group-hover:opacity-100">
-                           You can double-click the mastery counters at the top of Learn Mode to move cards down a mastery level whenever you want.
+            <div
+               className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
+               onMouseDown={() => setIsResetSessionConfirmOpen(false)}
+            >
+               <div
+                  className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95"
+                  onMouseDown={(e) => e.stopPropagation()}
+               >
+                  <div className="mb-4">
+                     <h3 className="text-xl font-bold text-text mb-2">Reset Session Progress</h3>
+                     <p className="text-text leading-relaxed">
+                        This will clear your progress for this set, resetting mastery of all cards to{" "}
+                        <span className="inline-flex items-center gap-1 align-middle">
+                           <span className="h-2.5 w-2.5 rounded-full border border-text" />
+                           <span className="h-2.5 w-2.5 rounded-full border border-text" />
                         </span>
-                     </span>
-                  </p>
-
-                  <div className="mt-8 flex gap-3">
-                     <button
-                        type="button"
-                        onClick={() => setIsResetSessionConfirmOpen(false)}
-                        className="flex-1 rounded-2xl border border-outline bg-panel-2 px-5 py-3 font-bold text-text hover:bg-panel-3 transition-colors"
-                     >
-                        Cancel
-                     </button>
+                        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                           .
+                           <CursorTooltip
+                              content="You can double-click the mastery counters at the top of Learn Mode to move cards down a mastery level whenever you want."
+                              isEnabled={!settings.hideTooltips}
+                              tooltipClassName="w-64"
+                           >
+                              <button type="button" className="inline-flex items-center text-accent" aria-label="Mastery help">
+                                 <Info size={15} className="text-accent" />
+                              </button>
+                           </CursorTooltip>
+                        </span>
+                     </p>
+                  </div>
+                  <div className="flex flex-col gap-3">
                      <button
                         type="button"
                         onClick={resetSessionProgress}
-                        className="flex-1 rounded-2xl bg-red px-5 py-3 font-bold text-bg hover:opacity-90 transition-opacity"
+                        className="w-full py-3 bg-panel-2 border border-outline text-red rounded-xl font-bold hover:bg-red/10 transition-colors"
                      >
                         Yes, Reset Progress
+                     </button>
+                     <button
+                        type="button"
+                        onClick={() => setIsResetSessionConfirmOpen(false)}
+                        className="w-full py-3 text-muted hover:text-text font-medium rounded-xl hover:bg-panel-2 transition-colors duration-150"
+                     >
+                        Cancel
                      </button>
                   </div>
                </div>
