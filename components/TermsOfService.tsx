@@ -38,7 +38,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
-                    <p className="text-sm text-muted">Last updated: February 9, 2026</p>
+                    <p className="text-sm text-muted">Last updated: March 15, 2026</p>
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Acceptance of Terms</h3>
                         <p>By accessing or using Flashcardsish, you agree to be bound by these Terms of Service and the Privacy Policy. If you do not agree, do not use the Service.</p>
@@ -74,6 +74,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                             <li>Contains malicious code</li>
                             <li>Abuses or exploits the Service</li>
                         </ul>
+                        <p className="mt-2">When you use the share feature, a snapshot of your card set is uploaded to Google Firebase and made publicly accessible to anyone with the link for up to 7 days. <strong>Do not share sets containing sensitive, private, or confidential information.</strong> You are solely responsible for the content you share.</p>
                     </section>
 
                     <section>
@@ -92,7 +93,7 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">7. Third-Party Services</h3>
-                        <p>Flashcardsish depends on third-party services, primarily Google. We are not responsible for:</p>
+                        <p>Flashcardsish depends on third-party services including Google OAuth, Google Drive, and Google Firebase Firestore. We are not responsible for:</p>
                         <ul className="list-disc pl-5 my-2 space-y-1">
                             <li>Third-party outages or failures</li>
                             <li>Data loss caused by third-party services</li>

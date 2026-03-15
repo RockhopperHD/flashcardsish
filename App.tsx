@@ -24,6 +24,8 @@ import { CursorTooltip } from './components/CursorTooltip';
 import { CorruptionNotification, CorruptionPopup } from './components/CorruptionNotification';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
+import { SharedSetView } from './components/SharedSetView';
+import { SharedSetSnapshot } from './src/sharing';
 // UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
 // import { UiAuditPanel } from './components/UiAuditPanel';
 
@@ -1277,6 +1279,9 @@ const SettingsModal: React.FC<{
 
 
 const App: React.FC = () => {
+   const [incomingShareId, setIncomingShareId] = useState<string | null>(
+      () => new URLSearchParams(window.location.search).get('share')
+   );
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
    const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
 
@@ -2699,6 +2704,39 @@ const App: React.FC = () => {
       localStorage.setItem(ONBOARDING_TOUR_COMPLETED_KEY, 'true');
    };
 
+   const handleImportSharedSet = (snapshot: SharedSetSnapshot) => {
+      const existingNames = new Set(librarySets.map(s => s.name));
+      let name = snapshot.name;
+      if (existingNames.has(name)) {
+         let i = 1;
+         while (existingNames.has(`${snapshot.name} (${i})`)) i++;
+         name = `${snapshot.name} (${i})`;
+      }
+
+      const newSet: CardSet = {
+         id: generateId(),
+         name,
+         cards: snapshot.cards.map(c => ({ ...c, mastery: 0 as const, star: false as const })),
+         termLabel: snapshot.termLabel,
+         definitionLabel: snapshot.definitionLabel,
+         termSideFields: snapshot.termSideFields,
+         defSideFields: snapshot.defSideFields,
+         lastPlayed: Date.now(),
+         elapsedTime: 0,
+         topStreak: 0,
+      };
+      setLibrarySets(prev => [newSet, ...prev]);
+      history.replaceState(null, '', window.location.pathname);
+      setIncomingShareId(null);
+      setDetailSetId(newSet.id);
+      setGameState(GameState.SET_DETAIL);
+   };
+
+   const handleDismissSharedSet = () => {
+      history.replaceState(null, '', window.location.pathname);
+      setIncomingShareId(null);
+   };
+
    return (
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
@@ -3059,7 +3097,14 @@ const App: React.FC = () => {
          )}
 
          <main className="flex-grow p-6 md:p-8 max-w-5xl mx-auto w-full">
-            {gameState === GameState.MENU && (
+            {incomingShareId && (
+               <SharedSetView
+                  shareId={incomingShareId}
+                  onImport={handleImportSharedSet}
+                  onDismiss={handleDismissSharedSet}
+               />
+            )}
+            {!incomingShareId && gameState === GameState.MENU && (
                <StartMenu
                   isCloudLoading={isCloudLoading || !isLibraryLoaded}
                   librarySets={effectiveLibrarySets}

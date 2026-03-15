@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings, Tag, CustomFieldDefinition } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2 } from 'lucide-react';
 import { downloadFile } from '../utils';
+import { createSharedLink } from '../src/sharing';
 import clsx from 'clsx';
 import { TagPill } from './TagPill';
 import { CardPreview } from './CardPreview';
@@ -98,6 +99,9 @@ export const SetDetail: React.FC<SetDetailProps> = ({
 }) => {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    const [shareUrl, setShareUrl] = useState<string | null>(null);
+    const [shareStatus, setShareStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
+    const [shareError, setShareError] = useState<string | null>(null);
 
     const toggleGroup = (groupKey: string) => {
         setCollapsedGroups(prev => {
@@ -148,6 +152,30 @@ export const SetDetail: React.FC<SetDetailProps> = ({
 
     const handleExport = () => {
         downloadFile(set.name + '.flashcards', JSON.stringify(set, null, 2), 'json');
+    };
+
+    const handleShare = async () => {
+        if (shareStatus === 'loading' || shareStatus === 'done') return;
+        setShareStatus('loading');
+        setShareError(null);
+        try {
+            const id = await createSharedLink(set);
+            const url = `${window.location.origin}${window.location.pathname}?share=${id}`;
+            setShareUrl(url);
+            setShareStatus('done');
+        } catch (e) {
+            setShareError(e instanceof Error ? e.message : 'Failed to create share link. Please try again.');
+            setShareStatus('error');
+            setTimeout(() => { setShareStatus('idle'); setShareError(null); }, 5000);
+        }
+    };
+
+    const [copied, setCopied] = useState(false);
+    const handleCopyShareUrl = () => {
+        if (!shareUrl) return;
+        navigator.clipboard.writeText(shareUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
 
     const handleDeleteClick = () => {
@@ -238,6 +266,15 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                     <Copy size={16} />
                     <span className="text-sm font-medium hidden sm:inline">Duplicate</span>
                 </button>
+                <button
+                    onClick={handleShare}
+                    className="flex items-center gap-2 px-3 py-2 text-muted hover:text-text hover:bg-panel-3 rounded-lg transition-all"
+                    title="Share Set"
+                    disabled={shareStatus === 'loading'}
+                >
+                    {shareStatus === 'loading' ? <Loader2 size={16} className="animate-spin" /> : shareStatus === 'done' ? <Check size={16} className="text-green" /> : <Share2 size={16} />}
+                    <span className="text-sm font-medium hidden sm:inline">Share</span>
+                </button>
                 <div className="flex-1" />
                 <button
                     onClick={handleDeleteClick}
@@ -255,6 +292,31 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                     </span>
                 </button>
             </div>
+
+            {/* Share URL Banner */}
+            {shareStatus === 'done' && shareUrl && (
+                <div className="mb-6 flex items-center gap-3 p-3 bg-accent/10 border border-accent/30 rounded-xl">
+                    <Share2 size={16} className="text-accent shrink-0" />
+                    <span className="text-sm text-muted flex-1 truncate font-mono">{shareUrl}</span>
+                    <button
+                        onClick={handleCopyShareUrl}
+                        className="text-xs font-bold text-accent hover:text-accent/80 transition-colors shrink-0"
+                    >
+                        {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                    <button
+                        onClick={() => { setShareStatus('idle'); setShareUrl(null); }}
+                        className="text-muted hover:text-text transition-colors shrink-0"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
+            {shareStatus === 'error' && (
+                <div className="mb-6 p-3 bg-red/10 border border-red/30 rounded-xl text-sm text-red">
+                    {shareError ?? 'Failed to create share link. Please try again.'}
+                </div>
+            )}
 
             {/* Modes Grid */}
             <div className="mb-12">

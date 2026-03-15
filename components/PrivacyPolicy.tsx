@@ -38,7 +38,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-6 text-text">
-                    <p className="text-sm text-muted">Last updated: March 10, 2026</p>
+                    <p className="text-sm text-muted">Last updated: March 15, 2026</p>
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">1. Overview</h3>
                         <p>Flashcardsish ("the Service") is an experimental, open-source flashcard application created and maintained by an individual developer as a personal project. This Privacy Policy explains how data is handled when you use the Service.</p>
@@ -85,13 +85,25 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         </div>
 
                         <div className="mb-4">
-                            <h4 className="font-bold mb-1">3.3 Google Drive Access</h4>
+                            <h4 className="font-bold mb-1">3.3 Shared Set Snapshots</h4>
+                            <p>When you choose to share a card set using the share feature, a snapshot of that set is uploaded to Google Firebase Firestore, a third-party cloud database operated by Google. This snapshot includes:</p>
+                            <ul className="list-disc pl-5 my-2 space-y-1">
+                                <li>The set name</li>
+                                <li>Card terms, definitions, and custom fields</li>
+                                <li>Card images (excluding base64 data URIs, which are stripped)</li>
+                            </ul>
+                            <p className="mt-2">Shared snapshots do <strong>not</strong> include study progress, mastery data, stars, tags, or your identity. Sharing is entirely optional and always initiated by you.</p>
+                            <p className="mt-2">Shared snapshots are accessible to anyone with the link and are <strong>automatically deleted after 7 days.</strong> You cannot delete a shared snapshot early. Do not share sets containing sensitive information.</p>
+                        </div>
+
+                        <div className="mb-4">
+                            <h4 className="font-bold mb-1">3.4 Google Drive Access</h4>
                             <p>When enabled, the Service accesses Google Drive using the specific scope: <strong>drive.file</strong>.</p>
                             <p>This means the Service can <strong>only</strong> access files that it has created itself. It cannot see, read, or modify any other files in your Google Drive (such as your personal photos, documents, or files created by other apps).</p>
                         </div>
 
                         <div className="mb-4">
-                            <h4 className="font-bold mb-1">3.4 Developer API Keys (Optional Features)</h4>
+                            <h4 className="font-bold mb-1">3.5 Developer API Keys (Optional Features)</h4>
                             <p>Some optional features allow you to supply your own third-party API keys and project IDs (for example, Google Cloud Vertex AI). When using a Bring Your Own Key (BYOK) model, data is processed directly via your specified Google Cloud project.</p>
                             <ul className="list-disc pl-5 my-2 space-y-1">
                                 <li>API credentials are entered by you</li>
@@ -103,7 +115,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         </div>
 
                         <div>
-                            <h4 className="font-bold mb-1">3.5 Local Storage</h4>
+                            <h4 className="font-bold mb-1">3.6 Local Storage</h4>
                             <p>The Service uses browser local storage and IndexedDB to support offline access and performance. This data remains on your device unless you enable Google Drive synchronization.</p>
                         </div>
                     </section>
@@ -144,7 +156,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">7. Data Retention</h3>
-                        <p>We retain no copies of your content outside your device or your Google Drive. If you stop using the Service, your data remains wherever you stored it until you delete it.</p>
+                        <p>We retain no copies of your content outside your device or your Google Drive, except for shared set snapshots (see §3.3), which are stored on Google Firebase and automatically deleted after 7 days. If you stop using the Service, your data remains wherever you stored it until you delete it.</p>
                     </section>
 
                     <section>
@@ -154,7 +166,12 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">9. Third-Party Services</h3>
-                        <p>The Service relies on Google services, including Google OAuth and Google Drive. Your use of those services is governed by Google's own policies. Flashcardsish is not responsible for Google service outages, Google data breaches, Google account issues, or changes to Google APIs or terms.</p>
+                        <p>The Service relies on the following third-party services:</p>
+                        <ul className="list-disc pl-5 my-2 space-y-1">
+                            <li><strong>Google OAuth & Google Drive</strong> — for authentication and optional cloud sync</li>
+                            <li><strong>Google Firebase Firestore</strong> — for temporary storage of shared set snapshots</li>
+                        </ul>
+                        <p>Your use of these services is governed by Google's own policies. Flashcardsish is not responsible for outages, data breaches, account issues, or changes to Google or Firebase APIs or terms.</p>
                     </section>
 
                     <section>
