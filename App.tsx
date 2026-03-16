@@ -1959,6 +1959,10 @@ const App: React.FC = () => {
 
       // Listen for sign-in state changes (e.g. user signs in via popup)
       const unsubscribe = googleDrive.onAuthStateChange(async (newUser) => {
+         if (newUser) {
+            // Reset so sync triggers for this sign-in (handles sign-out → sign-in within same session)
+            hasSyncedOnceRef.current = false;
+         }
          setUser(newUser);
       });
 
