@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings, Tag, CustomFieldDefinition } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2, Brain, CalendarDays, X as XIcon } from 'lucide-react';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2, Brain, CalendarDays } from 'lucide-react';
 import { downloadFile } from '../utils';
 import { createSharedLink } from '../src/sharing';
 import clsx from 'clsx';
@@ -142,24 +142,9 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     const dueCount = countDueCards(set.cards);
     const nextDueAt = dueCount === 0 ? getNextDueAt(set.cards) : null;
 
-    // Test date helpers
-    const targetDateValue = set.srTargetDate
-        ? new Date(set.srTargetDate).toISOString().split('T')[0]
-        : '';
     const daysUntilTarget = set.srTargetDate
         ? Math.ceil((set.srTargetDate - Date.now()) / (1000 * 60 * 60 * 24))
         : null;
-
-    const handleSetTargetDate = (dateStr: string) => {
-        if (!dateStr) {
-            onUpdateSet({ ...set, srTargetDate: undefined });
-        } else {
-            // Parse as local midnight so date doesn't shift by timezone
-            const [y, m, d] = dateStr.split('-').map(Number);
-            const ts = new Date(y, m - 1, d, 23, 59, 59).getTime();
-            onUpdateSet({ ...set, srTargetDate: ts });
-        }
-    };
 
     const formatNextDueAt = (dueAt: number): string => {
         const diffMs = dueAt - Date.now();
@@ -412,28 +397,6 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                             </div>
                         </button>
 
-                        {/* Test date row */}
-                        <div className="flex items-center gap-3 px-1">
-                            <CalendarDays size={14} className="text-muted shrink-0" />
-                            <span className="text-xs text-muted font-bold uppercase tracking-wider">Test date</span>
-                            <input
-                                type="date"
-                                value={targetDateValue}
-                                min={new Date().toISOString().split('T')[0]}
-                                onChange={e => handleSetTargetDate(e.target.value)}
-                                className="flex-1 bg-transparent text-xs text-text border-b border-outline focus:border-accent outline-none transition-colors py-0.5 cursor-pointer"
-                                title="Set your exam date — SR intervals will be capped to fit"
-                            />
-                            {set.srTargetDate && (
-                                <button
-                                    onClick={() => handleSetTargetDate('')}
-                                    className="text-muted hover:text-red transition-colors"
-                                    title="Clear test date"
-                                >
-                                    <XIcon size={14} />
-                                </button>
-                            )}
-                        </div>
                     </div>
                 </div>
             </div>

@@ -485,7 +485,7 @@ const SettingsModal: React.FC<{
       cloudSync: "Sign in to sync your flashcard sets across all your devices for free.",
       exportData: "Download all your flashcard sets, folders, and settings as a JSON file for backup or transfer.",
       dangerZone: "Permanently delete all your data from this device and the cloud. This cannot be undone.",
-      shuffleCards: "When in Learn mode, shuffle terms so they don't appear in the same order as they are listed in the set.",
+      shuffleCards: "Shuffle terms so they don't appear in the same order as listed. Applies to Learn mode and Spaced Review.",
       brutalMode: "When enabled, if you get a term incorrect and mastery is at 1 of 2, its mastery is set to 0 of 2. Only affects Zen.",
       importAppend: "When importing raw text, append new cards to the existing list instead of replacing them. If this setting is disabled, then importing raw text can delete your whole set -- be careful!",
       importOverride: "Choose how Flashcardsish handles duplicates when pasting raw text. If a card in your raw text matches the term or definition of one already in the set...\n\n- Keep Old: the one already in the set will be kept and the one in the raw text will be ignored.\n- Add Duplicate: the new one in the raw text will be added anyway, creating a duplicate card.\n- Override Old: the new card in the raw text will replace the old card that already exists.",

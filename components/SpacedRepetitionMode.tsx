@@ -8,6 +8,7 @@ import {
     RefreshCw,
     Clock,
     CalendarDays,
+    X as XIcon,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { renderInline, renderMarkdown, sanitizeImageUrl } from '../utils';
@@ -118,22 +119,36 @@ interface SessionCard {
     isCram?: boolean;
 }
 
-const buildReviewQueue = (cards: Card[], daysUntilTarget: number | null): SessionCard[] => {
+const buildReviewQueue = (
+    cards: Card[],
+    daysUntilTarget: number | null,
+    shuffleCards: boolean
+): SessionCard[] => {
     const now = Date.now();
     const cramMode = daysUntilTarget !== null && daysUntilTarget <= 2;
 
+    let result: SessionCard[];
+
     if (cramMode) {
-        // Include every card — test is imminent
-        return cards.map(c => ({
+        result = cards.map(c => ({
             card: c,
             isNew: c.srDueAt === undefined,
-            isCram: c.srDueAt !== undefined && c.srDueAt > now, // previously scheduled but pulled forward
+            isCram: c.srDueAt !== undefined && c.srDueAt > now,
         }));
+    } else {
+        result = cards
+            .filter(c => c.srDueAt === undefined || c.srDueAt <= now)
+            .map(c => ({ card: c, isNew: c.srDueAt === undefined }));
     }
 
-    return cards
-        .filter(c => c.srDueAt === undefined || c.srDueAt <= now)
-        .map(c => ({ card: c, isNew: c.srDueAt === undefined }));
+    if (shuffleCards) {
+        for (let i = result.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [result[i], result[j]] = [result[j], result[i]];
+        }
+    }
+
+    return result;
 };
 
 /** Count how many cards are due right now (new + overdue). */
@@ -159,6 +174,21 @@ const getTextSizeClass = (text: string): string => {
     if (len > 100) return 'text-2xl';
     if (len > 50) return 'text-3xl';
     return 'text-4xl';
+};
+
+// ─── Date string helpers ──────────────────────────────────────────────────────
+
+const tsToDateStr = (ts: number): string => {
+    const d = new Date(ts);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+const dateStrToTs = (str: string): number => {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d, 23, 59, 59).getTime();
 };
 
 // ─── Rating Button ────────────────────────────────────────────────────────────
@@ -196,24 +226,51 @@ interface SpacedRepetitionModeProps {
     onUpdateSet: (set: CardSet) => void;
 }
 
+type Phase = 'setup' | 'active' | 'done';
+
 export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
     set,
     settings,
     onExit,
     onUpdateSet,
 }) => {
-    const daysUntilTarget = useMemo(() => getDaysUntilTarget(set.srTargetDate), [set.srTargetDate]);
+    // ── Setup phase state ─────────────────────────────────────────────────────
+    const [phase, setPhase] = useState<Phase>('setup');
+    const [setupDateStr, setSetupDateStr] = useState(() =>
+        set.srTargetDate ? tsToDateStr(set.srTargetDate) : ''
+    );
+
+    // During active session, use the target date that was confirmed at start
+    const [sessionTargetDate, setSessionTargetDate] = useState<number | null>(null);
+
+    const daysUntilTarget = useMemo(
+        () => getDaysUntilTarget(sessionTargetDate ?? undefined),
+        [sessionTargetDate]
+    );
     const cramMode = daysUntilTarget !== null && daysUntilTarget <= 2;
 
-    const [queue, setQueue] = useState<SessionCard[]>(() => buildReviewQueue(set.cards, daysUntilTarget));
+    // ── Session state ──────────────────────────────────────────────────────────
+    const [queue, setQueue] = useState<SessionCard[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFlipped, setIsFlipped] = useState(false);
-    const [isDone, setIsDone] = useState(false);
     const [sessionStats, setSessionStats] = useState({ again: 0, hard: 0, good: 0, easy: 0, total: 0 });
     const [nextReviewAt, setNextReviewAt] = useState<number | null>(null);
 
     const updatedCardsRef = useRef<Map<string, Card>>(new Map());
     const currentItem: SessionCard | undefined = queue[currentIndex];
+
+    // ── Start session ─────────────────────────────────────────────────────────
+
+    const handleStartSession = useCallback((withDate: boolean) => {
+        const targetTs = withDate && setupDateStr ? dateStrToTs(setupDateStr) : undefined;
+        const computedDays = getDaysUntilTarget(targetTs);
+        const initialQueue = buildReviewQueue(set.cards, computedDays, settings.shuffleCards);
+
+        setSessionTargetDate(targetTs ?? null);
+        setQueue(initialQueue);
+        onUpdateSet({ ...set, srTargetDate: targetTs });
+        setPhase('active');
+    }, [setupDateStr, set, onUpdateSet, settings.shuffleCards]);
 
     // ── Exit (flush partial progress) ─────────────────────────────────────────
 
@@ -261,7 +318,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
 
         const isLast = currentIndex >= queue.length - 1;
         if (isLast) {
-            // Capture next review time before clearing ref
             const now = Date.now();
             const dueTimes = [...updatedCardsRef.current.values()]
                 .map(c => c.srDueAt ?? 0)
@@ -269,20 +325,20 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
             setNextReviewAt(dueTimes.length > 0 ? Math.min(...dueTimes) : null);
 
             const finalCards = set.cards.map(c => updatedCardsRef.current.get(c.id) ?? c);
-            onUpdateSet({ ...set, cards: finalCards });
+            onUpdateSet({ ...set, cards: finalCards, srTargetDate: sessionTargetDate ?? undefined });
             updatedCardsRef.current.clear();
-            setIsDone(true);
+            setPhase('done');
         } else {
             setCurrentIndex(prev => prev + 1);
             setIsFlipped(false);
         }
-    }, [currentItem, currentIndex, queue.length, daysUntilTarget, set, onUpdateSet]);
+    }, [currentItem, currentIndex, queue.length, daysUntilTarget, set, onUpdateSet, sessionTargetDate]);
 
     // ── Keyboard shortcuts ────────────────────────────────────────────────────
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
-            if (isDone || !currentItem) return;
+            if (phase !== 'active' || !currentItem) return;
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
             if (!isFlipped) {
@@ -300,11 +356,109 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isDone, isFlipped, currentItem, handleFlip, handleRate]);
+    }, [phase, isFlipped, currentItem, handleFlip, handleRate]);
 
-    // ── Empty state ───────────────────────────────────────────────────────────
+    // ── Setup screen ──────────────────────────────────────────────────────────
 
-    if (queue.length === 0) {
+    if (phase === 'setup') {
+        const setupDays = setupDateStr ? getDaysUntilTarget(dateStrToTs(setupDateStr)) : null;
+        const isCramDate = setupDays !== null && setupDays <= 2;
+
+        return (
+            <div className="max-w-lg mx-auto w-full pt-4 pb-20 animate-in fade-in duration-300">
+                <button
+                    onClick={onExit}
+                    className="mb-10 flex items-center gap-2 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
+                >
+                    <div className="p-2 rounded-full border border-outline group-hover:border-accent group-hover:bg-panel transition-colors">
+                        <ArrowLeft size={16} />
+                    </div>
+                    Back
+                </button>
+
+                <div className="bg-panel border border-outline rounded-[24px] shadow-2xl p-10">
+                    {/* Header */}
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="p-3 rounded-xl bg-panel-2">
+                            <Brain size={22} className="text-accent" />
+                        </div>
+                        <div>
+                            <h2
+                                className="text-2xl font-bold text-text leading-tight"
+                                style={{ fontFamily: "'Red Hat Display', sans-serif" }}
+                            >
+                                Spaced Review
+                            </h2>
+                            <p className="text-xs text-muted">{set.name}</p>
+                        </div>
+                    </div>
+
+                    <div className="my-8 border-t border-outline" />
+
+                    {/* Test date */}
+                    <div className="mb-8">
+                        <p className="text-sm font-bold text-text mb-1">Do you have a test or exam date?</p>
+                        <p className="text-xs text-muted mb-5 leading-relaxed">
+                            Setting a date adapts the algorithm — intervals are capped to fit, and cram mode activates when your test is 2 days away.
+                        </p>
+
+                        <div className="flex items-center gap-3">
+                            <CalendarDays size={16} className="text-muted shrink-0" />
+                            <input
+                                type="date"
+                                value={setupDateStr}
+                                min={new Date().toISOString().split('T')[0]}
+                                onChange={e => setSetupDateStr(e.target.value)}
+                                className="flex-1 bg-panel-2 border border-outline rounded-xl px-4 py-2.5 text-sm text-text focus:border-accent focus:outline-none transition-colors"
+                            />
+                            {setupDateStr && (
+                                <button
+                                    onClick={() => setSetupDateStr('')}
+                                    className="p-2 text-muted hover:text-red transition-colors"
+                                    title="Clear date"
+                                >
+                                    <XIcon size={16} />
+                                </button>
+                            )}
+                        </div>
+
+                        {setupDateStr && setupDays !== null && (
+                            <p className={clsx(
+                                'text-xs mt-3 font-medium',
+                                isCramDate ? 'text-red' : 'text-muted'
+                            )}>
+                                {isCramDate
+                                    ? `Test in ${Math.ceil(setupDays)} day${Math.ceil(setupDays) !== 1 ? 's' : ''} — cram mode will activate`
+                                    : `${Math.ceil(setupDays)} day${Math.ceil(setupDays) !== 1 ? 's' : ''} until test`}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col gap-3">
+                        <button
+                            onClick={() => handleStartSession(true)}
+                            className="w-full py-3.5 bg-accent text-bg font-bold rounded-xl hover:opacity-90 transition-opacity text-sm"
+                        >
+                            Start Review
+                        </button>
+                        {setupDateStr && (
+                            <button
+                                onClick={() => { setSetupDateStr(''); handleStartSession(false); }}
+                                className="w-full py-3 border border-outline rounded-xl font-medium text-muted hover:text-text hover:border-accent transition-colors text-sm"
+                            >
+                                Start without a date
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ── Empty state (all caught up) ───────────────────────────────────────────
+
+    if (phase === 'active' && queue.length === 0) {
         const nextDueAt = getNextDueAt(set.cards);
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4 animate-in fade-in duration-500">
@@ -328,9 +482,9 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                         No cards are due for review right now. Come back later to reinforce what you've learned.
                     </p>
                 )}
-                {set.srTargetDate && (
+                {sessionTargetDate && (
                     <p className="text-sm text-muted mb-6">
-                        Test on {new Date(set.srTargetDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
+                        Test on {new Date(sessionTargetDate).toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
                     </p>
                 )}
                 <button
@@ -345,7 +499,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
 
     // ── Session complete ──────────────────────────────────────────────────────
 
-    if (isDone) {
+    if (phase === 'done') {
         const accuracy = sessionStats.total > 0
             ? Math.round(((sessionStats.good + sessionStats.easy) / sessionStats.total) * 100)
             : 0;
@@ -359,7 +513,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                     Review Complete
                 </h2>
 
-                {/* Big accuracy */}
                 <div className="text-7xl font-bold text-accent mb-2" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
                     {accuracy}%
                 </div>
@@ -367,7 +520,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                     {sessionStats.total} reviewed &nbsp;·&nbsp; {sessionStats.good + sessionStats.easy} remembered
                 </p>
 
-                {/* Come-back block */}
                 {nextReviewAt && (
                     <div className="mb-10 w-full max-w-xs">
                         <p className="text-xs font-bold text-muted uppercase tracking-widest mb-3">Next review</p>
@@ -375,16 +527,15 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                             <p className="text-4xl font-bold text-text" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
                                 {formatComeback(nextReviewAt)}
                             </p>
-                            {set.srTargetDate && (
+                            {sessionTargetDate && (
                                 <p className="text-xs text-muted mt-3">
-                                    Test: {new Date(set.srTargetDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                    Test: {new Date(sessionTargetDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                                 </p>
                             )}
                         </div>
                     </div>
                 )}
 
-                {/* Per-rating breakdown */}
                 <div className="flex items-center gap-6 text-sm mb-10 text-muted">
                     <span className="text-red font-bold">{sessionStats.again} again</span>
                     <span className="text-yellow font-bold">{sessionStats.hard} hard</span>
@@ -404,7 +555,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
 
     // ── Active session ────────────────────────────────────────────────────────
 
-    const card = currentItem.card;
+    const card = currentItem!.card;
     const termText = Array.isArray(card.term) ? card.term[0] ?? '' : card.term;
     const termAliases = Array.isArray(card.term) ? card.term.slice(1) : [];
     const termImageUrl = sanitizeImageUrl(card.termImage);
@@ -446,7 +597,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                             {cramMode && (
                                 <span className="text-xs font-bold text-red uppercase tracking-widest">· Cram</span>
                             )}
-                            {set.srTargetDate && !cramMode && daysUntilTarget !== null && (
+                            {sessionTargetDate && !cramMode && daysUntilTarget !== null && (
                                 <span className="text-xs text-muted">
                                     · Test in {Math.ceil(daysUntilTarget)}d
                                 </span>
@@ -463,41 +614,12 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 </div>
             </div>
 
-            {/* ── Card label row ─────────────────────────────────────────────── */}
-            <div className="flex items-center gap-3 mb-3 h-5">
-                {currentItem.isNew && (
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-blue uppercase tracking-widest">
-                        <Sparkles size={12} /> New
-                    </div>
-                )}
-                {currentItem.isCram && !currentItem.isNew && (
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-red uppercase tracking-widest">
-                        <CalendarDays size={12} /> Cram
-                    </div>
-                )}
-                {!currentItem.isNew && !currentItem.isCram && card.srInterval !== undefined && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted">
-                        <Clock size={12} /> Was every {card.srInterval} day{card.srInterval !== 1 ? 's' : ''}
-                    </div>
-                )}
-                {againPending > 0 && (
-                    <div className="flex items-center gap-1 text-xs text-red ml-auto">
-                        <RefreshCw size={12} /> {againPending} to retry
-                    </div>
-                )}
-            </div>
-
-            {/* ── Side label (above card, like FlashcardsMode) ───────────────── */}
-            <div className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted mb-2 pl-1">
-                {isFlipped ? defLabel : termLabel}
-            </div>
-
-            {/* ── Card (matches Learn mode style) ────────────────────────────── */}
+            {/* ── Card (matches Learn mode structure) ─────────────────────────── */}
             <div
                 className={clsx(
                     'relative cursor-pointer select-none mb-6',
                     'bg-panel border rounded-[24px] shadow-2xl p-10',
-                    'transition-all duration-200 min-h-[220px] flex flex-col justify-center',
+                    'transition-all duration-200',
                     isFlipped ? 'border-accent/40' : 'border-outline hover:border-accent/30',
                 )}
                 onClick={handleFlip}
@@ -508,59 +630,91 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                     if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleFlip(); }
                 }}
             >
-                {!isFlipped ? (
-                    <>
-                        {termImageUrl && (
-                            <img
-                                src={termImageUrl}
-                                alt=""
-                                className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
-                            />
-                        )}
-                        <div className={clsx('font-medium leading-tight text-text', termSizeClass)}>
-                            {renderInline(termText, 'sr-term')}
-                        </div>
-                        {termAliases.length > 0 && (
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-sm text-muted">
-                                {termAliases.map((a, i) => (
-                                    <span key={i}>{renderInline(a, `sr-alias-${i}`)}</span>
-                                ))}
+                {/* Top controls row — inside card, mirrors Learn mode */}
+                <div className="flex justify-between items-start mb-8">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted">
+                        {isFlipped ? defLabel : termLabel}
+                    </span>
+                    <div className="flex items-center gap-3">
+                        {currentItem!.isNew && (
+                            <div className="flex items-center gap-1 text-xs font-bold text-blue uppercase tracking-wider">
+                                <Sparkles size={12} /> New
                             </div>
                         )}
-                    </>
-                ) : (
-                    <>
-                        {defImageUrl && (
-                            <img
-                                src={defImageUrl}
-                                alt=""
-                                className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
-                            />
-                        )}
-                        <div className={clsx('font-medium leading-tight text-text', defSizeClass)}>
-                            {renderMarkdown(card.content)}
-                        </div>
-                        {card.year && (
-                            <div className="mt-4 inline-block px-3 py-1 bg-accent/10 border border-accent/30 rounded-lg text-accent font-mono text-sm">
-                                {card.year}
+                        {currentItem!.isCram && !currentItem!.isNew && (
+                            <div className="flex items-center gap-1 text-xs font-bold text-red uppercase tracking-wider">
+                                <CalendarDays size={12} /> Cram
                             </div>
                         )}
-                        {card.customFields && card.customFields.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mt-4">
-                                {card.customFields.map(f => (
-                                    <span key={f.name} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm text-muted font-medium">
-                                        <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-1">{f.name}:</span>
-                                        {f.value}
-                                    </span>
-                                ))}
+                        {!currentItem!.isNew && !currentItem!.isCram && card.srInterval !== undefined && (
+                            <div className="flex items-center gap-1 text-xs text-muted">
+                                <Clock size={12} /> {card.srInterval}d
                             </div>
                         )}
-                    </>
-                )}
+                        {againPending > 0 && (
+                            <div className="flex items-center gap-1 text-xs text-red">
+                                <RefreshCw size={12} /> {againPending}
+                            </div>
+                        )}
+                    </div>
+                </div>
 
-                {/* Flip hint */}
+                {/* Content area — min height matches Learn mode */}
+                <div className="min-h-[200px] mb-10 flex flex-col justify-center">
+                    {!isFlipped ? (
+                        <>
+                            {termImageUrl && (
+                                <img
+                                    src={termImageUrl}
+                                    alt=""
+                                    className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
+                                />
+                            )}
+                            <div className={clsx('font-medium leading-tight text-text font-sans text-left transition-all', termSizeClass)}>
+                                {renderInline(termText, 'sr-term')}
+                            </div>
+                            {termAliases.length > 0 && (
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-sm text-muted">
+                                    {termAliases.map((a, i) => (
+                                        <span key={i}>{renderInline(a, `sr-alias-${i}`)}</span>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <>
+                            {defImageUrl && (
+                                <img
+                                    src={defImageUrl}
+                                    alt=""
+                                    className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
+                                />
+                            )}
+                            <div className={clsx('font-medium leading-tight text-text font-sans text-left transition-all', defSizeClass)}>
+                                {renderMarkdown(card.content)}
+                            </div>
+                            {card.year && (
+                                <div className="mt-4 inline-block px-3 py-1 bg-accent/10 border border-accent/30 rounded-lg text-accent font-mono text-sm">
+                                    {card.year}
+                                </div>
+                            )}
+                            {card.customFields && card.customFields.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mt-4">
+                                    {card.customFields.map(f => (
+                                        <span key={f.name} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm text-muted font-medium">
+                                            <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-1">{f.name}:</span>
+                                            {f.value}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {/* Flip hint — bottom right, subtle */}
                 {!isFlipped && (
-                    <div className="absolute bottom-4 right-6 flex items-center gap-1.5 text-xs text-muted/40">
+                    <div className="flex items-center justify-end gap-1.5 text-xs text-muted/40">
                         <kbd className="px-1.5 py-0.5 bg-panel-2 border border-outline rounded text-xs">Space</kbd>
                         to flip
                     </div>
@@ -589,7 +743,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
             ) : (
                 <button
                     onClick={handleFlip}
-                    className="w-full py-4 bg-panel-2 border border-outline rounded-[24px] font-bold text-text hover:border-accent transition-colors shadow-sm"
+                    className="w-full py-4 bg-panel-2 border border-outline rounded-[24px] font-bold text-text hover:border-accent transition-colors shadow-sm text-lg"
                 >
                     Show Answer
                 </button>
