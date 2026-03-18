@@ -7,6 +7,20 @@ export interface CustomFieldDefinition {
   options?: { a: string; b: string }; // For 'ab' type
 }
 
+/**
+ * Spaced Repetition System data for a card (SM-2 algorithm)
+ */
+export interface CardSRS {
+  interval: number;     // Days until next review
+  easeFactor: number;   // Ease factor (min 1.3, default 2.5)
+  repetitions: number;  // Consecutive correct reviews
+  nextReview: number;   // Unix timestamp (ms) when card is next due
+  lastReview: number;   // Unix timestamp (ms) of last review
+}
+
+/** Quality rating used in SRS review: 0=Again, 1=Hard, 2=Good, 3=Easy */
+export type SRSQuality = 0 | 1 | 2 | 3;
+
 export interface Card {
   id: string;
   term: string[];
@@ -20,6 +34,7 @@ export interface Card {
   star: boolean;
   originalSetId?: string;
   originalSetName?: string;
+  srs?: CardSRS; // Optional SRS scheduling data
 }
 
 export interface Tag {
@@ -142,7 +157,8 @@ export enum GameState {
   PLAYING = 'PLAYING',
   FLASHCARDS = 'FLASHCARDS',
   WIN = 'WIN',
-  DOCUMENTATION = 'DOCUMENTATION'
+  DOCUMENTATION = 'DOCUMENTATION',
+  SRS_REVIEW = 'SRS_REVIEW'
 }
 
 // Mixup detection info - when user confuses content from different cards

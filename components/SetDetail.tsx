@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings, Tag, CustomFieldDefinition } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2 } from 'lucide-react';
-import { downloadFile } from '../utils';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2, Brain, CalendarClock } from 'lucide-react';
+import { downloadFile, getSRSDueCount } from '../utils';
 import { createSharedLink } from '../src/sharing';
 import clsx from 'clsx';
 import { TagPill } from './TagPill';
@@ -13,6 +13,7 @@ interface SetDetailProps {
     onBack: () => void;
     onStartLearn: () => void;
     onStartFlashcards: () => void;
+    onStartSRS: () => void;
     onUpdateSet: (set: CardSet) => void;
     onEdit: () => void;
     onDuplicate: () => void;
@@ -91,6 +92,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     onBack,
     onStartLearn,
     onStartFlashcards,
+    onStartSRS,
     onUpdateSet,
     onEdit,
     onDuplicate,
@@ -136,6 +138,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     const masteredCount = set.cards.filter(c => c.mastery >= 2).length;
     const starredCount = set.cards.filter(c => c.star).length;
     const progress = set.cards.length > 0 ? Math.round((masteredCount / set.cards.length) * 100) : 0;
+    const srsDueCount = getSRSDueCount(set.cards);
 
     const getCardKey = (card: Card): string => {
         if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
@@ -322,7 +325,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
             <div className="mb-12">
                 <h2 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 pl-1">Study Modes</h2>
                 <div className="grid grid-cols-2 gap-4">
-                    {/* Learn - Active */}
+                    {/* Learn */}
                     <ModeButton
                         label="Learn"
                         icon={<BookOpen size={24} />}
@@ -330,13 +333,59 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                         onClick={onStartLearn}
                     />
 
-                    {/* Flashcards - Active */}
+                    {/* Flashcards */}
                     <ModeButton
                         label="Flashcards"
                         icon={<Layers size={24} />}
                         isActive={false}
                         onClick={onStartFlashcards}
                     />
+                </div>
+
+                {/* Spaced Repetition — full-width, accent if cards are due */}
+                <div className="mt-4">
+                    <button
+                        onClick={onStartSRS}
+                        className={clsx(
+                            "w-full relative flex items-center justify-between gap-4 p-5 rounded-2xl border-2 transition-all duration-300 group",
+                            srsDueCount > 0
+                                ? "bg-accent/10 border-accent text-accent hover:bg-accent/20 hover:scale-[1.01] cursor-pointer shadow-lg shadow-accent/10"
+                                : "bg-panel-2 border-outline text-text hover:border-accent/50 hover:bg-panel-3 cursor-pointer"
+                        )}
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className={clsx(
+                                "p-3 rounded-xl transition-colors",
+                                srsDueCount > 0 ? "bg-accent/20" : "bg-panel-3"
+                            )}>
+                                <Brain size={24} />
+                            </div>
+                            <div className="text-left">
+                                <div className="font-black text-sm" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
+                                    Spaced Repetition
+                                </div>
+                                <div className={clsx(
+                                    "text-xs mt-0.5",
+                                    srsDueCount > 0 ? "text-accent/70" : "text-muted"
+                                )}>
+                                    SM-2 algorithm · adaptive scheduling
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            {srsDueCount > 0 ? (
+                                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent text-bg text-xs font-black">
+                                    <CalendarClock size={12} />
+                                    {srsDueCount} due
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-panel-3 border border-outline text-muted text-xs font-bold">
+                                    <CalendarClock size={12} />
+                                    {set.cards.filter(c => c.srs).length > 0 ? 'All caught up' : 'Start SRS'}
+                                </span>
+                            )}
+                        </div>
+                    </button>
                 </div>
             </div>
 

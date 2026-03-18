@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardSet, CustomFieldDefinition, LearnSessionStats } from './types';
+import { Card, CardSet, CardSRS, SRSQuality, CustomFieldDefinition, LearnSessionStats } from './types';
 import { sanitizeStrings } from './storageV2';
 import { normalizeCardMastery, normalizeCardStar } from './cardNormalization';
 
@@ -1225,3 +1225,124 @@ export const syncMultistudySet = (multistudySet: CardSet, librarySets: CardSet[]
     version: 2
   };
 };
+
+// ─────────────────────────────────────────────────────────────
+// Spaced Repetition System (SM-2 Algorithm)
+// ─────────────────────────────────────────────────────────────
+
+export const SRS_DEFAULT_EASE_FACTOR = 2.5;
+export const SRS_MIN_EASE_FACTOR = 1.3;
+
+/**
+ * Calculate the next SRS schedule for a card using the SM-2 algorithm.
+ * Quality: 0=Again, 1=Hard, 2=Good, 3=Easy
+ *
+ * SM-2 quality mapping (0–5 scale):
+ *   Again(0) → 1  Hard(1) → 3  Good(2) → 4  Easy(3) → 5
+ */
+export function calculateNextSRS(current: CardSRS | undefined, quality: SRSQuality): CardSRS {
+  const now = Date.now();
+  const sm2Q = ([1, 3, 4, 5] as const)[quality];
+
+  const ef = current?.easeFactor ?? SRS_DEFAULT_EASE_FACTOR;
+  const reps = current?.repetitions ?? 0;
+  const prevInterval = current?.interval ?? 0;
+
+  let newInterval: number;
+  let newReps: number;
+  let newEF: number;
+
+  if (sm2Q < 3) {
+    // "Again": failed response → reset repetitions
+    newReps = 0;
+    newInterval = 1;
+    newEF = Math.max(SRS_MIN_EASE_FACTOR, ef - 0.2);
+  } else {
+    // Correct response
+    if (reps === 0) {
+      newInterval = 1;
+    } else if (reps === 1) {
+      newInterval = 6;
+    } else if (quality === 1) {
+      // Hard: slightly shorter than standard
+      newInterval = Math.max(1, Math.round(prevInterval * 1.2));
+    } else {
+      newInterval = Math.round(prevInterval * ef);
+    }
+    newReps = reps + 1;
+    // ef' = ef + 0.1 − (5−q)(0.08 + (5−q)×0.02)
+    newEF = Math.max(
+      SRS_MIN_EASE_FACTOR,
+      ef + 0.1 - (5 - sm2Q) * (0.08 + (5 - sm2Q) * 0.02)
+    );
+  }
+
+  const nextReview = now + newInterval * 24 * 60 * 60 * 1000;
+  return { interval: newInterval, easeFactor: newEF, repetitions: newReps, nextReview, lastReview: now };
+}
+
+/**
+ * Preview what the next interval would be for a given quality rating,
+ * without modifying any state.
+ */
+export function previewNextInterval(current: CardSRS | undefined, quality: SRSQuality): number {
+  return calculateNextSRS(current, quality).interval;
+}
+
+/**
+ * Returns true if a card is due for SRS review (or is a new SRS card).
+ */
+export function isSRSDue(card: Card): boolean {
+  if (!card.srs) return true; // New card — always show
+  return card.srs.nextReview <= Date.now();
+}
+
+/**
+ * Returns the number of cards in a set that are due for SRS review.
+ */
+export function getSRSDueCount(cards: Card[]): number {
+  return cards.filter(isSRSDue).length;
+}
+
+/**
+ * Returns sorted list of cards due for SRS review.
+ * Ordering: most-overdue first, then new cards (no srs data).
+ */
+export function getSRSDueCards(cards: Card[]): Card[] {
+  const due = cards.filter(c => c.srs && c.srs.nextReview <= Date.now());
+  const newCards = cards.filter(c => !c.srs);
+  // Most overdue first (smallest nextReview timestamp)
+  due.sort((a, b) => (a.srs!.nextReview) - (b.srs!.nextReview));
+  return [...due, ...newCards];
+}
+
+/**
+ * Human-readable label for when a card is next due.
+ * e.g. "Due now", "Due tomorrow", "Due in 3 days", "Overdue by 2 days"
+ */
+export function formatSRSDueDate(card: Card): string {
+  if (!card.srs) return 'New';
+  const msUntilDue = card.srs.nextReview - Date.now();
+  const daysUntil = msUntilDue / (24 * 60 * 60 * 1000);
+
+  if (daysUntil <= 0) {
+    const daysOver = Math.floor(-daysUntil);
+    if (daysOver === 0) return 'Due now';
+    if (daysOver === 1) return 'Overdue by 1 day';
+    return `Overdue by ${daysOver} days`;
+  }
+  if (daysUntil < 1) return 'Due later today';
+  if (daysUntil < 2) return 'Due tomorrow';
+  return `Due in ${Math.round(daysUntil)} days`;
+}
+
+/**
+ * Human-readable next interval label for rating preview buttons.
+ * e.g. "1 day", "6 days", "15 days"
+ */
+export function formatSRSInterval(days: number): string {
+  if (days === 1) return '1 day';
+  if (days < 30) return `${days} days`;
+  const months = Math.round(days / 30);
+  return months === 1 ? '1 month' : `${months} months`;
+}

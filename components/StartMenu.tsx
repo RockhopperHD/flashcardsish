@@ -36,6 +36,7 @@ import {
   CheckCircle2,
   BookOpen,
   Search,
+  Brain,
 } from "lucide-react";
 import { FloatingToolbar } from "./FloatingToolbar";
 import {
@@ -68,6 +69,7 @@ import {
   sanitizeImageUrl,
   getTagColor,
   getModifierKeyLabel,
+  getSRSDueCount,
   isMacPlatform,
 } from "../utils";
 import { normalizeCardStar } from "../cardNormalization";
@@ -5386,6 +5388,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                   {folderSets.length} sets
                                 </span>
 
+                                {(() => {
+                                  const totalDue = folderSets.reduce((acc, s) => acc + getSRSDueCount(s.cards), 0);
+                                  if (totalDue === 0) return null;
+                                  return (
+                                    <span className="flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black/20 mr-1">
+                                      <Brain size={9} />
+                                      {totalDue}
+                                    </span>
+                                  );
+                                })()}
+
                                 {selectedSetIds.size === 0 && (
                                   <>
                                     <button
@@ -5503,6 +5516,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                   })}
                                 </div>
                               )}
+
+                              {/* SRS due badge */}
+                              {(() => {
+                                const dueCount = getSRSDueCount(set.cards);
+                                if (dueCount === 0) return null;
+                                return (
+                                  <div className="flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-[11px] font-bold w-fit">
+                                    <Brain size={10} />
+                                    {dueCount} due for review
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <div className="flex items-center gap-1">
                               {selectedSetIds.size === 0 && (
@@ -5698,6 +5723,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       })}
                                     </div>
                                   )}
+
+                                  {/* SRS due badge (local sets) */}
+                                  {(() => {
+                                    const dueCount = getSRSDueCount(set.cards);
+                                    if (dueCount === 0) return null;
+                                    return (
+                                      <div className="flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-accent/15 border border-accent/30 text-accent text-[11px] font-bold w-fit">
+                                        <Brain size={10} />
+                                        {dueCount} due for review
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="flex items-center gap-1">
                                   {selectedSetIds.size === 0 && (

@@ -10,6 +10,7 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
+import { SRSReview } from './components/SRSReview';
 import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
@@ -2359,6 +2360,13 @@ const App: React.FC = () => {
       setGameState(GameState.FLASHCARDS);
    };
 
+   // Start SRS Review mode from Set Detail
+   const handleStartSRSFromDetail = () => {
+      if (!detailSet) return;
+      setActiveSetId(detailSet.id);
+      setGameState(GameState.SRS_REVIEW);
+   };
+
    const handleStartFromLibrary = (libSet: CardSet) => {
       // Sanitize and normalize before entering session flow.
       const sanitized = normalizeLoadedSet(libSet);
@@ -3162,6 +3170,7 @@ const App: React.FC = () => {
                   onBack={handleBackFromDetail}
                   onStartLearn={handleStartLearnFromDetail}
                   onStartFlashcards={handleStartFlashcardsFromDetail}
+                  onStartSRS={handleStartSRSFromDetail}
                   onUpdateSet={handleUpdateLibrarySet}
                   tags={tags}
                   onEdit={() => {
@@ -3196,6 +3205,19 @@ const App: React.FC = () => {
 
             {gameState === GameState.FLASHCARDS && activeSession && (
                <FlashcardsMode
+                  set={activeSession}
+                  settings={settings}
+                  onExit={() => {
+                     setDetailSetId(activeSession.id);
+                     setGameState(GameState.SET_DETAIL);
+                     setActiveSetId(null);
+                  }}
+                  onUpdateSet={handleUpdateLibrarySet}
+               />
+            )}
+
+            {gameState === GameState.SRS_REVIEW && activeSession && (
+               <SRSReview
                   set={activeSession}
                   settings={settings}
                   onExit={() => {
