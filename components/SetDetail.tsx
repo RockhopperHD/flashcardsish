@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings, Tag, CustomFieldDefinition } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2, Brain } from 'lucide-react';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2, Brain, CalendarDays, X as XIcon } from 'lucide-react';
 import { downloadFile } from '../utils';
 import { createSharedLink } from '../src/sharing';
 import clsx from 'clsx';
 import { TagPill } from './TagPill';
 import { CardPreview } from './CardPreview';
-import { countDueCards } from './SpacedRepetitionMode';
+import { countDueCards, getNextDueAt } from './SpacedRepetitionMode';
 
 interface SetDetailProps {
     set: CardSet;
@@ -140,6 +140,36 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     const starredCount = set.cards.filter(c => c.star).length;
     const progress = set.cards.length > 0 ? Math.round((masteredCount / set.cards.length) * 100) : 0;
     const dueCount = countDueCards(set.cards);
+    const nextDueAt = dueCount === 0 ? getNextDueAt(set.cards) : null;
+
+    // Test date helpers
+    const targetDateValue = set.srTargetDate
+        ? new Date(set.srTargetDate).toISOString().split('T')[0]
+        : '';
+    const daysUntilTarget = set.srTargetDate
+        ? Math.ceil((set.srTargetDate - Date.now()) / (1000 * 60 * 60 * 24))
+        : null;
+
+    const handleSetTargetDate = (dateStr: string) => {
+        if (!dateStr) {
+            onUpdateSet({ ...set, srTargetDate: undefined });
+        } else {
+            // Parse as local midnight so date doesn't shift by timezone
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const ts = new Date(y, m - 1, d, 23, 59, 59).getTime();
+            onUpdateSet({ ...set, srTargetDate: ts });
+        }
+    };
+
+    const formatNextDueAt = (dueAt: number): string => {
+        const diffMs = dueAt - Date.now();
+        const diffHours = diffMs / (1000 * 60 * 60);
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        if (diffHours < 24) return 'today';
+        if (diffDays < 2) return 'tomorrow';
+        if (diffDays < 7) return `in ${Math.round(diffDays)} days`;
+        return `in ${Math.round(diffDays / 7)} week${Math.round(diffDays / 7) !== 1 ? 's' : ''}`;
+    };
 
     const getCardKey = (card: Card): string => {
         if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
@@ -343,15 +373,15 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                     />
 
                     {/* Spaced Repetition - spans full width */}
-                    <div className="col-span-2">
+                    <div className="col-span-2 space-y-2">
                         <button
                             onClick={onStartSpacedRepetition}
-                            className="relative w-full flex items-center gap-4 p-5 rounded-2xl border-2 bg-panel-2 border-outline text-text hover:border-accent/50 hover:bg-panel-2 hover:-translate-y-0.5 cursor-pointer transition-all duration-300 group"
+                            className="relative w-full flex items-center gap-4 p-5 rounded-2xl border-2 bg-panel-2 border-outline text-text hover:border-accent/50 hover:-translate-y-0.5 cursor-pointer transition-all duration-300 group"
                         >
                             <div className="p-3 rounded-xl bg-panel transition-colors group-hover:bg-accent/10">
                                 <Brain size={22} className="text-muted group-hover:text-accent transition-colors" />
                             </div>
-                            <div className="text-left">
+                            <div className="text-left flex-1">
                                 <div className="font-bold text-sm flex items-center gap-2">
                                     Spaced Review
                                     {dueCount > 0 && (
@@ -359,9 +389,20 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                                             {dueCount} due
                                         </span>
                                     )}
-                                    {dueCount === 0 && (
+                                    {dueCount === 0 && nextDueAt && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green/15 text-green border border-green/20">
+                                            Next: {formatNextDueAt(nextDueAt)}
+                                        </span>
+                                    )}
+                                    {dueCount === 0 && !nextDueAt && (
                                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green/15 text-green border border-green/20">
                                             All caught up
+                                        </span>
+                                    )}
+                                    {daysUntilTarget !== null && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-red/10 text-red border border-red/20">
+                                            <CalendarDays size={10} />
+                                            {daysUntilTarget <= 0 ? 'Test today!' : `${daysUntilTarget}d`}
                                         </span>
                                     )}
                                 </div>
@@ -370,6 +411,29 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                                 </div>
                             </div>
                         </button>
+
+                        {/* Test date row */}
+                        <div className="flex items-center gap-3 px-1">
+                            <CalendarDays size={14} className="text-muted shrink-0" />
+                            <span className="text-xs text-muted font-bold uppercase tracking-wider">Test date</span>
+                            <input
+                                type="date"
+                                value={targetDateValue}
+                                min={new Date().toISOString().split('T')[0]}
+                                onChange={e => handleSetTargetDate(e.target.value)}
+                                className="flex-1 bg-transparent text-xs text-text border-b border-outline focus:border-accent outline-none transition-colors py-0.5 cursor-pointer"
+                                title="Set your exam date — SR intervals will be capped to fit"
+                            />
+                            {set.srTargetDate && (
+                                <button
+                                    onClick={() => handleSetTargetDate('')}
+                                    className="text-muted hover:text-red transition-colors"
+                                    title="Clear test date"
+                                >
+                                    <XIcon size={14} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

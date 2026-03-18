@@ -57,6 +57,7 @@ export interface CardSet {
   sourceSetIds?: string[]; // IDs of sets that this multistudy session draws from
   folderId?: string; // If belongs to a folder
   isLocalOnly?: boolean; // If true, this set is not synced to the cloud
+  srTargetDate?: number; // Unix ms timestamp of user's test/exam date for SR scheduling
 }
 
 export interface LearnSessionCardStat {
