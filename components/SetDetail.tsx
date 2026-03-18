@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { CardSet, Card, Settings, Tag, CustomFieldDefinition } from '../types';
-import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Lock, BookOpen, Layers, FolderOpen, Pencil, Download, Copy, Trash2, Star, ChevronDown, ChevronUp, Share2, Check, Loader2, Brain } from 'lucide-react';
 import { downloadFile } from '../utils';
 import { createSharedLink } from '../src/sharing';
 import clsx from 'clsx';
 import { TagPill } from './TagPill';
 import { CardPreview } from './CardPreview';
+import { countDueCards } from './SpacedRepetitionMode';
 
 interface SetDetailProps {
     set: CardSet;
@@ -13,6 +14,7 @@ interface SetDetailProps {
     onBack: () => void;
     onStartLearn: () => void;
     onStartFlashcards: () => void;
+    onStartSpacedRepetition: () => void;
     onUpdateSet: (set: CardSet) => void;
     onEdit: () => void;
     onDuplicate: () => void;
@@ -91,6 +93,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     onBack,
     onStartLearn,
     onStartFlashcards,
+    onStartSpacedRepetition,
     onUpdateSet,
     onEdit,
     onDuplicate,
@@ -136,6 +139,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     const masteredCount = set.cards.filter(c => c.mastery >= 2).length;
     const starredCount = set.cards.filter(c => c.star).length;
     const progress = set.cards.length > 0 ? Math.round((masteredCount / set.cards.length) * 100) : 0;
+    const dueCount = countDueCards(set.cards);
 
     const getCardKey = (card: Card): string => {
         if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
@@ -337,6 +341,36 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                         isActive={false}
                         onClick={onStartFlashcards}
                     />
+
+                    {/* Spaced Repetition - spans full width */}
+                    <div className="col-span-2">
+                        <button
+                            onClick={onStartSpacedRepetition}
+                            className="relative w-full flex items-center gap-4 p-5 rounded-2xl border-2 bg-panel-2 border-outline text-text hover:border-accent/50 hover:bg-panel-2 hover:-translate-y-0.5 cursor-pointer transition-all duration-300 group"
+                        >
+                            <div className="p-3 rounded-xl bg-panel transition-colors group-hover:bg-accent/10">
+                                <Brain size={22} className="text-muted group-hover:text-accent transition-colors" />
+                            </div>
+                            <div className="text-left">
+                                <div className="font-bold text-sm flex items-center gap-2">
+                                    Spaced Review
+                                    {dueCount > 0 && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-accent/15 text-accent border border-accent/30">
+                                            {dueCount} due
+                                        </span>
+                                    )}
+                                    {dueCount === 0 && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-green/15 text-green border border-green/20">
+                                            All caught up
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-xs text-muted mt-0.5">
+                                    SM-2 algorithm · schedules each card at the optimal review time
+                                </div>
+                            </div>
+                        </button>
+                    </div>
                 </div>
             </div>
 

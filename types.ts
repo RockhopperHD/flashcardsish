@@ -20,6 +20,11 @@ export interface Card {
   star: boolean;
   originalSetId?: string;
   originalSetName?: string;
+  // Spaced Repetition (SM-2) fields
+  srInterval?: number;     // Current interval in days (undefined = never reviewed)
+  srEaseFactor?: number;   // Ease factor, default 2.5, min 1.3
+  srDueAt?: number;        // Next review due timestamp (ms). undefined = never added to SR
+  srReps?: number;         // Number of successful consecutive repetitions
 }
 
 export interface Tag {
@@ -141,6 +146,7 @@ export enum GameState {
   SET_DETAIL = 'SET_DETAIL',
   PLAYING = 'PLAYING',
   FLASHCARDS = 'FLASHCARDS',
+  SPACED_REPETITION = 'SPACED_REPETITION',
   WIN = 'WIN',
   DOCUMENTATION = 'DOCUMENTATION'
 }
