@@ -56,7 +56,9 @@ const applySM2 = (
         newEase = ease + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
         newEase = Math.max(SM2_MIN_EASE, newEase);
 
-        if (daysUntilTarget !== null && daysUntilTarget > 0) {
+        // Cap interval to test window only for low-confidence ratings (Again/Hard).
+        // Good/Easy land past the test date naturally — you know it, no pre-test cram needed.
+        if (daysUntilTarget !== null && daysUntilTarget > 0 && rating <= 1) {
             newInterval = Math.min(newInterval, Math.max(1, Math.floor(daysUntilTarget)));
         }
     }
@@ -73,6 +75,7 @@ const formatNextDue = (card: Card, rating: SR_Rating, daysUntilTarget: number | 
     if (rating === 0) return '< 1 day';
     const { srInterval } = applySM2(card, rating, daysUntilTarget);
     const d = srInterval ?? 1;
+    if (daysUntilTarget !== null && d > daysUntilTarget) return 'after test';
     if (d === 1) return '1 day';
     if (d < 7) return `${d} days`;
     const weeks = Math.round(d / 7);
