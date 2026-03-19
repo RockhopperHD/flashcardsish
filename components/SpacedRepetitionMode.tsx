@@ -6,9 +6,9 @@ import {
     CheckCircle2,
     Sparkles,
     RefreshCw,
-    Clock,
     CalendarDays,
     X as XIcon,
+    Triangle,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { renderInline, renderMarkdown, sanitizeImageUrl } from '../utils';
@@ -27,7 +27,6 @@ const getDaysUntilTarget = (srTargetDate?: number): number | null => {
     return Math.max(0, diffMs / (1000 * 60 * 60 * 24));
 };
 
-/** Apply one SM-2 step and return updated card fields. */
 const applySM2 = (
     card: Card,
     rating: SR_Rating,
@@ -38,7 +37,6 @@ const applySM2 = (
     const interval = card.srInterval ?? 1;
     const ease = card.srEaseFactor ?? SM2_INITIAL_EASE;
 
-    // Quality mapping — Again=1, Hard=3, Good=4, Easy=5
     const quality = [1, 3, 4, 5][rating];
 
     let newInterval: number;
@@ -50,34 +48,27 @@ const applySM2 = (
         newInterval = 1;
         newEase = ease;
     } else {
-        if (reps === 0) {
-            newInterval = 1;
-        } else if (reps === 1) {
-            newInterval = 6;
-        } else {
-            newInterval = Math.round(interval * ease);
-        }
+        if (reps === 0) newInterval = 1;
+        else if (reps === 1) newInterval = 6;
+        else newInterval = Math.round(interval * ease);
+
         newReps = reps + 1;
         newEase = ease + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
         newEase = Math.max(SM2_MIN_EASE, newEase);
 
-        // If a test date is set, cap interval so the card comes back before the test
         if (daysUntilTarget !== null && daysUntilTarget > 0) {
             newInterval = Math.min(newInterval, Math.max(1, Math.floor(daysUntilTarget)));
         }
     }
 
-    const dueAt = now + newInterval * 24 * 60 * 60 * 1000;
-
     return {
         srInterval: newInterval,
         srEaseFactor: parseFloat(newEase.toFixed(3)),
-        srDueAt: dueAt,
+        srDueAt: now + newInterval * 24 * 60 * 60 * 1000,
         srReps: newReps,
     };
 };
 
-/** Human-readable label for the proposed next interval. */
 const formatNextDue = (card: Card, rating: SR_Rating, daysUntilTarget: number | null): string => {
     if (rating === 0) return '< 1 day';
     const { srInterval } = applySM2(card, rating, daysUntilTarget);
@@ -91,7 +82,6 @@ const formatNextDue = (card: Card, rating: SR_Rating, daysUntilTarget: number | 
     return months === 1 ? '1 month' : `${months} months`;
 };
 
-/** Human-readable "come back in X" label. */
 const formatComeback = (dueAt: number): string => {
     const now = Date.now();
     const diffMs = dueAt - now;
@@ -99,15 +89,11 @@ const formatComeback = (dueAt: number): string => {
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
     if (diffHours < 1) return 'in a few minutes';
-    if (diffHours < 24) {
-        const h = Math.round(diffHours);
-        return `in ${h} hour${h !== 1 ? 's' : ''}`;
-    }
+    if (diffHours < 24) { const h = Math.round(diffHours); return `in ${h} hour${h !== 1 ? 's' : ''}`; }
     if (diffDays < 2) return 'tomorrow';
     if (diffDays < 7) return `in ${Math.round(diffDays)} days`;
     if (diffDays < 14) return 'in 1 week';
-    const weeks = Math.round(diffDays / 7);
-    return `in ${weeks} weeks`;
+    return `in ${Math.round(diffDays / 7)} weeks`;
 };
 
 // ─── Queue helpers ────────────────────────────────────────────────────────────
@@ -128,7 +114,6 @@ const buildReviewQueue = (
     const cramMode = daysUntilTarget !== null && daysUntilTarget <= 2;
 
     let result: SessionCard[];
-
     if (cramMode) {
         result = cards.map(c => ({
             card: c,
@@ -151,22 +136,18 @@ const buildReviewQueue = (
     return result;
 };
 
-/** Count how many cards are due right now (new + overdue). */
 export const countDueCards = (cards: Card[]): number => {
     const now = Date.now();
     return cards.filter(c => c.srDueAt === undefined || c.srDueAt <= now).length;
 };
 
-/** Timestamp of the soonest future review among all cards, or null if none scheduled. */
 export const getNextDueAt = (cards: Card[]): number | null => {
     const now = Date.now();
-    const future = cards
-        .filter(c => c.srDueAt !== undefined && c.srDueAt > now)
-        .map(c => c.srDueAt!);
+    const future = cards.filter(c => c.srDueAt !== undefined && c.srDueAt > now).map(c => c.srDueAt!);
     return future.length > 0 ? Math.min(...future) : null;
 };
 
-// ─── Dynamic text sizing (matches Learn mode) ─────────────────────────────────
+// ─── Dynamic text sizing ──────────────────────────────────────────────────────
 
 const getTextSizeClass = (text: string): string => {
     const len = text.length;
@@ -176,19 +157,44 @@ const getTextSizeClass = (text: string): string => {
     return 'text-4xl';
 };
 
-// ─── Date string helpers ──────────────────────────────────────────────────────
+// ─── Date helpers ─────────────────────────────────────────────────────────────
 
 const tsToDateStr = (ts: number): string => {
     const d = new Date(ts);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const dateStrToTs = (str: string): number => {
     const [y, m, d] = str.split('-').map(Number);
     return new Date(y, m - 1, d, 23, 59, 59).getTime();
+};
+
+// ─── SR Maturity Triangle ────────────────────────────────────────────────────
+// Single triangle, color = interval maturity. Matches the size of Learn mode dots.
+
+const SrTriangle: React.FC<{ card: Card }> = ({ card }) => {
+    const interval = card.srInterval ?? 0;
+    const reps = card.srReps ?? 0;
+
+    let colorClass: string;
+    if (reps === 0) {
+        colorClass = 'text-muted/30';
+    } else if (interval <= 3) {
+        colorClass = 'text-red';
+    } else if (interval <= 14) {
+        colorClass = 'text-yellow';
+    } else {
+        colorClass = 'text-green';
+    }
+
+    return (
+        <Triangle
+            size={14}
+            className={clsx('transition-colors duration-300', colorClass)}
+            fill="currentColor"
+            strokeWidth={0}
+        />
+    );
 };
 
 // ─── Rating Button ────────────────────────────────────────────────────────────
@@ -234,45 +240,40 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
     onExit,
     onUpdateSet,
 }) => {
-    // ── Setup phase state ─────────────────────────────────────────────────────
+    // ── Setup ─────────────────────────────────────────────────────────────────
     const [phase, setPhase] = useState<Phase>('setup');
     const [setupDateStr, setSetupDateStr] = useState(() =>
         set.srTargetDate ? tsToDateStr(set.srTargetDate) : ''
     );
 
-    // During active session, use the target date that was confirmed at start
+    // ── Session ───────────────────────────────────────────────────────────────
     const [sessionTargetDate, setSessionTargetDate] = useState<number | null>(null);
-
     const daysUntilTarget = useMemo(
         () => getDaysUntilTarget(sessionTargetDate ?? undefined),
         [sessionTargetDate]
     );
     const cramMode = daysUntilTarget !== null && daysUntilTarget <= 2;
 
-    // ── Session state ──────────────────────────────────────────────────────────
     const [queue, setQueue] = useState<SessionCard[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
-    const [isFlipped, setIsFlipped] = useState(false);
+    const [isRevealed, setIsRevealed] = useState(false);
     const [sessionStats, setSessionStats] = useState({ again: 0, hard: 0, good: 0, easy: 0, total: 0 });
     const [nextReviewAt, setNextReviewAt] = useState<number | null>(null);
 
     const updatedCardsRef = useRef<Map<string, Card>>(new Map());
     const currentItem: SessionCard | undefined = queue[currentIndex];
 
-    // ── Start session ─────────────────────────────────────────────────────────
+    // ── Handlers ──────────────────────────────────────────────────────────────
 
     const handleStartSession = useCallback((withDate: boolean) => {
         const targetTs = withDate && setupDateStr ? dateStrToTs(setupDateStr) : undefined;
         const computedDays = getDaysUntilTarget(targetTs);
         const initialQueue = buildReviewQueue(set.cards, computedDays, settings.shuffleCards);
-
         setSessionTargetDate(targetTs ?? null);
         setQueue(initialQueue);
         onUpdateSet({ ...set, srTargetDate: targetTs });
         setPhase('active');
     }, [setupDateStr, set, onUpdateSet, settings.shuffleCards]);
-
-    // ── Exit (flush partial progress) ─────────────────────────────────────────
 
     const handleExit = useCallback(() => {
         if (updatedCardsRef.current.size > 0) {
@@ -283,11 +284,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
         onExit();
     }, [set, onUpdateSet, onExit]);
 
-    // ── Flip ──────────────────────────────────────────────────────────────────
-
-    const handleFlip = useCallback(() => setIsFlipped(prev => !prev), []);
-
-    // ── Rate ──────────────────────────────────────────────────────────────────
+    const handleReveal = useCallback(() => setIsRevealed(true), []);
 
     const handleRate = useCallback((rating: SR_Rating) => {
         if (!currentItem) return;
@@ -295,7 +292,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
         const card = currentItem.card;
         const srUpdates = applySM2(card, rating, daysUntilTarget);
         const updatedCard: Card = { ...card, ...srUpdates };
-
         updatedCardsRef.current.set(card.id, updatedCard);
 
         const statKeys = ['again', 'hard', 'good', 'easy'] as const;
@@ -312,7 +308,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 next.push({ card: updatedCard, isNew: false, isRequeue: true });
                 return next;
             });
-            setIsFlipped(false);
+            setIsRevealed(false);
             return;
         }
 
@@ -320,43 +316,41 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
         if (isLast) {
             const now = Date.now();
             const dueTimes = [...updatedCardsRef.current.values()]
-                .map(c => c.srDueAt ?? 0)
-                .filter(d => d > now);
+                .map(c => c.srDueAt ?? 0).filter(d => d > now);
             setNextReviewAt(dueTimes.length > 0 ? Math.min(...dueTimes) : null);
-
             const finalCards = set.cards.map(c => updatedCardsRef.current.get(c.id) ?? c);
             onUpdateSet({ ...set, cards: finalCards, srTargetDate: sessionTargetDate ?? undefined });
             updatedCardsRef.current.clear();
             setPhase('done');
         } else {
             setCurrentIndex(prev => prev + 1);
-            setIsFlipped(false);
+            setIsRevealed(false);
         }
     }, [currentItem, currentIndex, queue.length, daysUntilTarget, set, onUpdateSet, sessionTargetDate]);
 
-    // ── Keyboard shortcuts ────────────────────────────────────────────────────
+    // ── Keyboard ──────────────────────────────────────────────────────────────
 
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
             if (phase !== 'active' || !currentItem) return;
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-            if (!isFlipped) {
+            if (!isRevealed) {
                 if (e.code === 'Space' || e.key === 'Enter' || e.key === 'f' || e.key === 'F') {
                     e.preventDefault();
-                    handleFlip();
+                    handleReveal();
                 }
             } else {
+                // Space does nothing once revealed — only ratings
                 if (e.key === '1') { e.preventDefault(); handleRate(0); }
                 else if (e.key === '2') { e.preventDefault(); handleRate(1); }
                 else if (e.key === '3') { e.preventDefault(); handleRate(2); }
                 else if (e.key === '4') { e.preventDefault(); handleRate(3); }
-                else if (e.code === 'Space') { e.preventDefault(); handleFlip(); }
             }
         };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [phase, isFlipped, currentItem, handleFlip, handleRate]);
+    }, [phase, isRevealed, currentItem, handleReveal, handleRate]);
 
     // ── Setup screen ──────────────────────────────────────────────────────────
 
@@ -377,7 +371,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 </button>
 
                 <div className="bg-panel border border-outline rounded-[24px] shadow-2xl p-10">
-                    {/* Header */}
                     <div className="flex items-center gap-3 mb-2">
                         <div className="p-3 rounded-xl bg-panel-2">
                             <Brain size={22} className="text-accent" />
@@ -395,7 +388,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
 
                     <div className="my-8 border-t border-outline" />
 
-                    {/* Test date */}
                     <div className="mb-8">
                         <p className="text-sm font-bold text-text mb-1">Do you have a test or exam date?</p>
                         <p className="text-xs text-muted mb-5 leading-relaxed">
@@ -423,10 +415,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                         </div>
 
                         {setupDateStr && setupDays !== null && (
-                            <p className={clsx(
-                                'text-xs mt-3 font-medium',
-                                isCramDate ? 'text-red' : 'text-muted'
-                            )}>
+                            <p className={clsx('text-xs mt-3 font-medium', isCramDate ? 'text-red' : 'text-muted')}>
                                 {isCramDate
                                     ? `Test in ${Math.ceil(setupDays)} day${Math.ceil(setupDays) !== 1 ? 's' : ''} — cram mode will activate`
                                     : `${Math.ceil(setupDays)} day${Math.ceil(setupDays) !== 1 ? 's' : ''} until test`}
@@ -434,7 +423,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                         )}
                     </div>
 
-                    {/* Actions */}
                     <div className="flex flex-col gap-3">
                         <button
                             onClick={() => handleStartSession(true)}
@@ -456,7 +444,7 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
         );
     }
 
-    // ── Empty state (all caught up) ───────────────────────────────────────────
+    // ── All caught up ─────────────────────────────────────────────────────────
 
     if (phase === 'active' && queue.length === 0) {
         const nextDueAt = getNextDueAt(set.cards);
@@ -471,15 +459,14 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 >
                     All caught up!
                 </h2>
-                {nextDueAt && (
+                {nextDueAt ? (
                     <div className="mb-8">
                         <p className="text-xs font-bold text-muted uppercase tracking-widest mb-2">Next review</p>
                         <p className="text-3xl font-bold text-text">{formatComeback(nextDueAt)}</p>
                     </div>
-                )}
-                {!nextDueAt && (
+                ) : (
                     <p className="text-muted mb-8 max-w-sm leading-relaxed">
-                        No cards are due for review right now. Come back later to reinforce what you've learned.
+                        No cards are due right now. Come back later to reinforce what you've learned.
                     </p>
                 )}
                 {sessionTargetDate && (
@@ -512,7 +499,6 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 >
                     Review Complete
                 </h2>
-
                 <div className="text-7xl font-bold text-accent mb-2" style={{ fontFamily: "'Red Hat Display', sans-serif" }}>
                     {accuracy}%
                 </div>
@@ -569,10 +555,10 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
     const defSizeClass = getTextSizeClass(card.content);
 
     const ratingConfig: Array<{ label: string; shortcut: string; colorClasses: string; rating: SR_Rating }> = [
-        { label: 'Again', shortcut: '1', colorClasses: 'text-red border-red/30 hover:bg-red/10 hover:border-red/60 focus:ring-red/30', rating: 0 },
-        { label: 'Hard',  shortcut: '2', colorClasses: 'text-yellow border-yellow/30 hover:bg-yellow/10 hover:border-yellow/60 focus:ring-yellow/30', rating: 1 },
-        { label: 'Good',  shortcut: '3', colorClasses: 'text-green border-green/30 hover:bg-green/10 hover:border-green/60 focus:ring-green/30', rating: 2 },
-        { label: 'Easy',  shortcut: '4', colorClasses: 'text-blue border-blue/30 hover:bg-blue/10 hover:border-blue/60 focus:ring-blue/30', rating: 3 },
+        { label: 'Again', shortcut: '1', colorClasses: 'text-red border-red/30 hover:bg-red/10 hover:border-red/60', rating: 0 },
+        { label: 'Hard',  shortcut: '2', colorClasses: 'text-yellow border-yellow/30 hover:bg-yellow/10 hover:border-yellow/60', rating: 1 },
+        { label: 'Good',  shortcut: '3', colorClasses: 'text-green border-green/30 hover:bg-green/10 hover:border-green/60', rating: 2 },
+        { label: 'Easy',  shortcut: '4', colorClasses: 'text-blue border-blue/30 hover:bg-blue/10 hover:border-blue/60', rating: 3 },
     ];
 
     return (
@@ -594,16 +580,19 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                     <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-muted font-bold uppercase tracking-widest">Spaced Review</span>
-                            {cramMode && (
-                                <span className="text-xs font-bold text-red uppercase tracking-widest">· Cram</span>
-                            )}
+                            {cramMode && <span className="text-xs font-bold text-red uppercase tracking-widest">· Cram</span>}
                             {sessionTargetDate && !cramMode && daysUntilTarget !== null && (
-                                <span className="text-xs text-muted">
-                                    · Test in {Math.ceil(daysUntilTarget)}d
-                                </span>
+                                <span className="text-xs text-muted">· Test in {Math.ceil(daysUntilTarget)}d</span>
                             )}
                         </div>
-                        <span className="text-xs font-mono text-muted">{currentIndex + 1} / {queue.length}</span>
+                        <div className="flex items-center gap-3">
+                            {againPending > 0 && (
+                                <span className="flex items-center gap-1 text-xs text-red">
+                                    <RefreshCw size={11} /> {againPending}
+                                </span>
+                            )}
+                            <span className="text-xs font-mono text-muted">{currentIndex + 1} / {queue.length}</span>
+                        </div>
                     </div>
                     <div className="h-1.5 bg-panel-2 rounded-full overflow-hidden">
                         <div
@@ -614,116 +603,99 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 </div>
             </div>
 
-            {/* ── Card (matches Learn mode structure) ─────────────────────────── */}
-            <div
-                className={clsx(
-                    'relative cursor-pointer select-none mb-6',
-                    'bg-panel border rounded-[24px] shadow-2xl p-10',
-                    'transition-all duration-200',
-                    isFlipped ? 'border-accent/40' : 'border-outline hover:border-accent/30',
-                )}
-                onClick={handleFlip}
-                role="button"
-                tabIndex={0}
-                aria-label={isFlipped ? 'Card back — click to flip' : 'Card front — click to flip'}
-                onKeyDown={e => {
-                    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleFlip(); }
-                }}
-            >
-                {/* Top controls row — inside card, mirrors Learn mode */}
-                <div className="flex justify-between items-start mb-8">
+            {/* ── Card ───────────────────────────────────────────────────────── */}
+            <div className="bg-panel border border-outline rounded-[24px] shadow-2xl p-10 mb-6">
+
+                {/* Top row: term label | status badges + triangle */}
+                <div className="flex justify-between items-center mb-8">
                     <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted">
-                        {isFlipped ? defLabel : termLabel}
+                        {termLabel}
                     </span>
                     <div className="flex items-center gap-3">
                         {currentItem!.isNew && (
-                            <div className="flex items-center gap-1 text-xs font-bold text-blue uppercase tracking-wider">
-                                <Sparkles size={12} /> New
-                            </div>
+                            <span className="flex items-center gap-1 text-xs font-bold text-blue uppercase tracking-wider">
+                                <Sparkles size={11} /> New
+                            </span>
                         )}
                         {currentItem!.isCram && !currentItem!.isNew && (
-                            <div className="flex items-center gap-1 text-xs font-bold text-red uppercase tracking-wider">
-                                <CalendarDays size={12} /> Cram
-                            </div>
+                            <span className="flex items-center gap-1 text-xs font-bold text-red uppercase tracking-wider">
+                                <CalendarDays size={11} /> Cram
+                            </span>
                         )}
-                        {!currentItem!.isNew && !currentItem!.isCram && card.srInterval !== undefined && (
-                            <div className="flex items-center gap-1 text-xs text-muted">
-                                <Clock size={12} /> {card.srInterval}d
-                            </div>
-                        )}
-                        {againPending > 0 && (
-                            <div className="flex items-center gap-1 text-xs text-red">
-                                <RefreshCw size={12} /> {againPending}
-                            </div>
-                        )}
+                        <SrTriangle card={card} />
                     </div>
                 </div>
 
-                {/* Content area — min height matches Learn mode */}
-                <div className="min-h-[200px] mb-10 flex flex-col justify-center">
-                    {!isFlipped ? (
-                        <>
-                            {termImageUrl && (
-                                <img
-                                    src={termImageUrl}
-                                    alt=""
-                                    className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
-                                />
-                            )}
-                            <div className={clsx('font-medium leading-tight text-text font-sans text-left transition-all', termSizeClass)}>
-                                {renderInline(termText, 'sr-term')}
-                            </div>
-                            {termAliases.length > 0 && (
-                                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-sm text-muted">
-                                    {termAliases.map((a, i) => (
-                                        <span key={i}>{renderInline(a, `sr-alias-${i}`)}</span>
-                                    ))}
-                                </div>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            {defImageUrl && (
-                                <img
-                                    src={defImageUrl}
-                                    alt=""
-                                    className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
-                                />
-                            )}
-                            <div className={clsx('font-medium leading-tight text-text font-sans text-left transition-all', defSizeClass)}>
-                                {renderMarkdown(card.content)}
-                            </div>
-                            {card.year && (
-                                <div className="mt-4 inline-block px-3 py-1 bg-accent/10 border border-accent/30 rounded-lg text-accent font-mono text-sm">
-                                    {card.year}
-                                </div>
-                            )}
-                            {card.customFields && card.customFields.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mt-4">
-                                    {card.customFields.map(f => (
-                                        <span key={f.name} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm text-muted font-medium">
-                                            <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-1">{f.name}:</span>
-                                            {f.value}
-                                        </span>
-                                    ))}
-                                </div>
-                            )}
-                        </>
+                {/* Term content */}
+                <div className="min-h-[160px] flex flex-col justify-center">
+                    {termImageUrl && (
+                        <img
+                            src={termImageUrl}
+                            alt=""
+                            className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
+                        />
+                    )}
+                    <div className={clsx('font-medium leading-tight text-text font-sans text-left', termSizeClass)}>
+                        {renderInline(termText, 'sr-term')}
+                    </div>
+                    {termAliases.length > 0 && (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-3 text-sm text-muted">
+                            {termAliases.map((a, i) => (
+                                <span key={i}>{renderInline(a, `sr-alias-${i}`)}</span>
+                            ))}
+                        </div>
                     )}
                 </div>
 
-                {/* Flip hint — bottom right, subtle */}
-                {!isFlipped && (
-                    <div className="flex items-center justify-end gap-1.5 text-xs text-muted/40">
-                        <kbd className="px-1.5 py-0.5 bg-panel-2 border border-outline rounded text-xs">Space</kbd>
-                        to flip
+                {/* Revealed: divider + definition */}
+                {isRevealed && (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 duration-200">
+                        <div className="border-t border-outline/60 my-8" />
+                        <span className="text-[11px] font-bold uppercase tracking-[0.24em] text-muted block mb-6">
+                            {defLabel}
+                        </span>
+                        {defImageUrl && (
+                            <img
+                                src={defImageUrl}
+                                alt=""
+                                className="rounded-xl max-h-[200px] w-auto object-contain border border-outline shadow-sm bg-bg/50 mb-6"
+                            />
+                        )}
+                        <div className={clsx('font-medium leading-tight text-text font-sans text-left', defSizeClass)}>
+                            {renderMarkdown(card.content)}
+                        </div>
+                        {card.year && (
+                            <div className="mt-4 inline-block px-3 py-1 bg-accent/10 border border-accent/30 rounded-lg text-accent font-mono text-sm">
+                                {card.year}
+                            </div>
+                        )}
+                        {card.customFields && card.customFields.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-4">
+                                {card.customFields.map(f => (
+                                    <span key={f.name} className="px-3 py-1 bg-panel-2 border border-outline rounded-lg text-sm text-muted font-medium">
+                                        <span className="text-xs font-bold uppercase tracking-wider opacity-70 mr-1">{f.name}:</span>
+                                        {f.value}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Space hint when not yet revealed */}
+                {!isRevealed && (
+                    <div className="flex justify-end mt-8">
+                        <div className="flex items-center gap-1.5 text-xs text-muted/35">
+                            <kbd className="px-1.5 py-0.5 bg-panel-2 border border-outline/60 rounded text-xs">Space</kbd>
+                            to reveal
+                        </div>
                     </div>
                 )}
             </div>
 
-            {/* ── Rating buttons / Show Answer ───────────────────────────────── */}
-            {isFlipped ? (
-                <div>
+            {/* ── Below card ─────────────────────────────────────────────────── */}
+            {isRevealed ? (
+                <div className="animate-in fade-in duration-150">
                     <p className="text-xs text-muted uppercase tracking-widest font-bold mb-4 pl-1">
                         How well did you know this?
                     </p>
@@ -742,8 +714,8 @@ export const SpacedRepetitionMode: React.FC<SpacedRepetitionModeProps> = ({
                 </div>
             ) : (
                 <button
-                    onClick={handleFlip}
-                    className="w-full py-4 bg-panel-2 border border-outline rounded-[24px] font-bold text-text hover:border-accent transition-colors shadow-sm text-lg"
+                    onClick={handleReveal}
+                    className="w-full py-5 bg-panel-2 border border-outline rounded-[24px] font-bold text-text hover:border-accent transition-colors shadow-sm text-lg"
                 >
                     Show Answer
                 </button>
