@@ -118,6 +118,7 @@ export interface FlashcardFile {
     sourceSetIds?: string[];
     isLocalOnly?: boolean;
     modifiedAt?: number; // V3: ms timestamp of last save
+    srTargetDate?: number; // Unix ms timestamp of user's test/exam date
 }
 
 export interface SessionFile {
@@ -306,7 +307,11 @@ const normalizeCard = (rawCard: any): Card | null => {
         mastery: normalizeCardMastery(card.mastery),
         star: normalizeCardStar(card.star),
         originalSetId: typeof card.originalSetId === 'string' ? card.originalSetId : undefined,
-        originalSetName: typeof card.originalSetName === 'string' ? card.originalSetName : undefined
+        originalSetName: typeof card.originalSetName === 'string' ? card.originalSetName : undefined,
+        srInterval: typeof card.srInterval === 'number' ? card.srInterval : undefined,
+        srEaseFactor: typeof card.srEaseFactor === 'number' ? card.srEaseFactor : undefined,
+        srDueAt: typeof card.srDueAt === 'number' ? card.srDueAt : undefined,
+        srReps: typeof card.srReps === 'number' ? card.srReps : undefined,
     };
 };
 
@@ -484,6 +489,7 @@ const setToFile = (set: CardSet, modifiedAt?: number): FlashcardFile => {
         isMultistudy: normalizedSet.isMultistudy,
         sourceSetIds: normalizedSet.sourceSetIds,
         isLocalOnly: normalizedSet.isLocalOnly,
+        srTargetDate: normalizedSet.srTargetDate,
         modifiedAt: modifiedAt ?? Date.now()
     };
 };
@@ -514,6 +520,7 @@ const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
         isMultistudy: cleanFile.isMultistudy,
         sourceSetIds: cleanFile.sourceSetIds,
         isLocalOnly: cleanFile.isLocalOnly,
+        srTargetDate: cleanFile.srTargetDate,
         folderId
     };
 };
