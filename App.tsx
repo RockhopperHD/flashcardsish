@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder, Tag } from './types';
-import { fmtTime, generateId, sanitizeSet, syncMultistudySet, resetSetStudyProgress } from './utils';
+import { fmtTime, generateId, sanitizeSet, syncMultistudySet, resetCardStudyProgress, resetSetStudyProgress } from './utils';
 import { StartMenu, type UiAuditRequest } from './components/StartMenu';
 import { Game } from './components/Game';
 import { SetDetail } from './components/SetDetail';
@@ -10,6 +10,7 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
+import { SRSMode } from './components/SRSMode';
 import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
@@ -17,6 +18,7 @@ import { saveLibrary, saveDirtySets, loadLibrary, saveFolders, loadFolders, load
 import { normalizeCardSet, readFlashcardSet, readStructure } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { normalizeCardMastery } from './cardNormalization';
+import { normalizeSrsSessionStats } from './srs';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
@@ -33,7 +35,7 @@ const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
 const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
 const LIBRARY_LOCAL_FALLBACK_KEY = 'flashcard-library-v3';
 const LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY = 'flashcard-library-v3-updated-at';
-const ALPHABET_SAMPLE_NAME = 'The Alphabet';
+const ALPHABET_SAMPLE_NAME = 'Fruits';
 type AppToast = {
    id: number;
    type: 'success' | 'error';
@@ -43,9 +45,12 @@ type AppToast = {
 const normalizeLoadedSet = (set: CardSet): CardSet => {
    const sanitized = sanitizeSet(normalizeCardSet(set));
    // Local-only sets should always live in the Local section at root.
-   const normalized = sanitized.isLocalOnly && sanitized.folderId
+   const normalizedBase = sanitized.isLocalOnly && sanitized.folderId
       ? { ...sanitized, folderId: undefined }
       : sanitized;
+   const normalized = normalizedBase.srsSessionStats
+      ? { ...normalizedBase, srsSessionStats: normalizeSrsSessionStats(normalizedBase.srsSessionStats) }
+      : normalizedBase;
    const hasSourceSetIds = Array.isArray(normalized.sourceSetIds) && normalized.sourceSetIds.length > 0;
 
    if (!normalized.isMultistudy || hasSourceSetIds) return normalized;
@@ -495,7 +500,7 @@ const SettingsModal: React.FC<{
       learnModeRightKey2: "Secondary key for Option B / False.",
       autoAdvanceOnAnswer: "If enabled, selecting an A / B or True / False option will automatically advance to the next field or the Submit button. If disabled, you must press Tab or Enter to continue.",
       reduceStreakMotion: "Control whether or not the streak star spins or not.",
-      alphabetSampleSet: "Create a sample library set with A/A through Z/Z.",
+      alphabetSampleSet: "Create a sample library set of 15 fruits and their colors.",
       tabSelectsEverythingInBuilder: "When enabled, pressing tab in the Visual Editor will skip you to the next button on the screen instead of to the next text field."
    };
 
@@ -901,7 +906,7 @@ const SettingsModal: React.FC<{
                            <TooltipWrapper id="alphabetSampleSet" tooltip={tooltips.alphabetSampleSet} settings={settings}>
                               <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                                  <div className="flex items-center justify-between gap-4">
-                                    <div className="font-medium text-text">Add The Alphabet</div>
+                                    <div className="font-medium text-text">Add Fruits</div>
                                     <button
                                        onClick={onCreateAlphabetSet}
                                        className="shrink-0 px-3 py-2 rounded-lg bg-accent text-bg text-sm font-bold hover:opacity-90 transition-opacity"
@@ -2359,6 +2364,12 @@ const App: React.FC = () => {
       setGameState(GameState.FLASHCARDS);
    };
 
+   const handleStartSRSFromDetail = () => {
+      if (!detailSet) return;
+      setActiveSetId(detailSet.id);
+      setGameState(GameState.SRS);
+   };
+
    const handleStartFromLibrary = (libSet: CardSet) => {
       // Sanitize and normalize before entering session flow.
       const sanitized = normalizeLoadedSet(libSet);
@@ -2404,7 +2415,14 @@ const App: React.FC = () => {
       setTimerStart(Date.now());
       setTimerNow(Date.now());
       setIsTimerPaused(false);
-      setGameState(GameState.PLAYING);
+      // Check session type and route accordingly
+      if (session.srsSessionStats) {
+         setGameState(GameState.SRS);
+      } else if (session.flashcardsSessionStats) {
+         setGameState(GameState.FLASHCARDS);
+      } else {
+         setGameState(GameState.PLAYING);
+      }
    };
 
    const handleSaveToLibrary = (set: CardSet) => {
@@ -2441,7 +2459,8 @@ const App: React.FC = () => {
             elapsedTime: 0,
             topStreak: 0,
             learnSessionStats: undefined,
-            cards: set.cards.map(c => ({ ...c, mastery: 0 }))
+            srsSessionStats: undefined,
+            cards: set.cards.map(resetCardStudyProgress)
          };
          setLibrarySets(prev => [newSet, ...prev]);
       }
@@ -2517,6 +2536,29 @@ const App: React.FC = () => {
          }
          return nextLibrary;
       });
+   };
+
+   const handleForkActiveSession = (newSession: CardSet) => {
+      const now = Date.now();
+      const nextSession = {
+         ...newSession,
+         isSessionActive: true,
+         lastPlayed: now,
+         elapsedTime: 0
+      };
+
+      setLibrarySets(prev => {
+         const exists = prev.some(s => s.id === nextSession.id);
+         if (exists) {
+            return prev.map(s => s.id === nextSession.id ? nextSession : s);
+         }
+         return [nextSession, ...prev];
+      });
+
+      setActiveSetId(nextSession.id);
+      setTimerStart(now);
+      setTimerNow(now);
+      setIsTimerPaused(false);
    };
 
 
@@ -2666,14 +2708,30 @@ const App: React.FC = () => {
          set => set.name.trim().toLocaleLowerCase() === normalizedSampleName
       );
 
-      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+      const fruits = [
+         { name: 'apple', desc: 'A red fruit' },
+         { name: 'banana', desc: 'A yellow fruit' },
+         { name: 'orange', desc: 'An orange citrus fruit' },
+         { name: 'grape', desc: 'A small purple or green fruit' },
+         { name: 'strawberry', desc: 'A red berry with seeds on the outside' },
+         { name: 'blueberry', desc: 'A small blue berry' },
+         { name: 'watermelon', desc: 'A large green fruit with red flesh' },
+         { name: 'pineapple', desc: 'A spiky tropical fruit' },
+         { name: 'mango', desc: 'A sweet tropical fruit with a large pit' },
+         { name: 'peach', desc: 'A fuzzy fruit with a pit' },
+         { name: 'pear', desc: 'A light green or yellow fruit' },
+         { name: 'cherry', desc: 'A small red stone fruit' },
+         { name: 'kiwi', desc: 'A small brown fuzzy fruit with green flesh' },
+         { name: 'lemon', desc: 'A sour yellow citrus fruit' },
+         { name: 'lime', desc: 'A sour green citrus fruit' }
+      ];
       const alphabetSet: CardSet = {
          id: existingAlphabetSet?.id || generateId(),
          name: ALPHABET_SAMPLE_NAME,
-         cards: letters.map(letter => ({
+         cards: fruits.map(fruit => ({
             id: generateId(),
-            term: [letter],
-            content: letter,
+            term: [fruit.name],
+            content: fruit.desc,
             year: '',
             customFields: [],
             mastery: 0,
@@ -3162,6 +3220,7 @@ const App: React.FC = () => {
                   onBack={handleBackFromDetail}
                   onStartLearn={handleStartLearnFromDetail}
                   onStartFlashcards={handleStartFlashcardsFromDetail}
+                  onStartSRS={handleStartSRSFromDetail}
                   onUpdateSet={handleUpdateLibrarySet}
                   tags={tags}
                   onEdit={() => {
@@ -3186,6 +3245,7 @@ const App: React.FC = () => {
                <Game
                   set={activeSession}
                   onUpdateSet={handleUpdateActiveSession}
+                  onForkSession={handleForkActiveSession}
                   onFinish={handleFinish}
                   settings={settings}
                   onExit={handleBackFromLearnToDetail}
@@ -3204,6 +3264,20 @@ const App: React.FC = () => {
                      setActiveSetId(null);
                   }}
                   onUpdateSet={handleUpdateLibrarySet}
+               />
+            )}
+
+            {gameState === GameState.SRS && activeSession && (
+               <SRSMode
+                  set={activeSession}
+                  settings={settings}
+                  onExit={() => {
+                     setDetailSetId(activeSession.id);
+                     setGameState(GameState.SET_DETAIL);
+                     setActiveSetId(null);
+                  }}
+                  onUpdateSet={handleUpdateLibrarySet}
+                  onUseLearnInstead={() => handleStartFromLibrary(activeSession)}
                />
             )}
 

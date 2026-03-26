@@ -79,6 +79,8 @@ import BreathingLoader from "./BreathingLoader";
 import { TagPill } from "./TagPill";
 import { CardTagPill } from "./CardTagPill";
 import { sanitizeStrings } from "../storageV2";
+import { getSrsCounts, isSrsCardDue } from "../srs";
+import { SrsTriangle } from "./SrsTriangle";
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -5029,7 +5031,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         <div
                           key={session.id}
                           className={clsx(
-                            "relative flex-shrink-0 w-64 h-48 bg-panel-2 border border-outline rounded-2xl p-5 transition-all hover:border-accent group flex flex-col",
+                            "relative flex-shrink-0 w-64 bg-panel-2 border border-outline rounded-2xl p-5 transition-all hover:border-accent group flex flex-col",
+                            session.srsSessionStats ? "min-h-[13.75rem]" : "h-48",
                             session.isMultistudy && "overflow-hidden",
                           )}
                         >
@@ -5051,7 +5054,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             {/* Header */}
                             <div className="mb-2">
                               <div className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">
-                                {session.isMultistudy ? "Multistudy" : "Learn"}
+                                {session.isMultistudy ? "Multistudy" : session.srsSessionStats ? "SRS" : session.flashcardsSessionStats ? "Flashcards" : "Learn"}
                               </div>
                               <div className="font-bold text-text truncate">
                                 {session.name}
@@ -5059,7 +5062,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             </div>
 
                             {/* Progress or Set List - fixed height with flex-1 */}
-                            <div className="flex-1 overflow-hidden">
+                            <div className={clsx(
+                              "flex-1",
+                              !session.srsSessionStats && "overflow-hidden"
+                            )}>
                               {session.isMultistudy ? (
                                 // Multistudy: show bullet list of source sets with scroll
                                 <ul className="text-xs text-muted space-y-1 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-outline scrollbar-track-transparent pr-1">
@@ -5085,6 +5091,73 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                       </li>
                                     ))}
                                 </ul>
+                              ) : session.flashcardsSessionStats ? (
+                                // Flashcards: show mode and progress
+                                <div className="flex flex-col gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-muted uppercase tracking-wider">
+                                      {session.flashcardsSessionStats.subMode === 'stack' ? 'Stack Mode' : session.flashcardsSessionStats.subMode === 'sort' ? `Sort Mode • Round ${session.flashcardsSessionStats.sortState?.sortRound || 1}` : 'Select Mode'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-panel-3 rounded-full h-2 overflow-hidden border border-outline">
+                                      <div
+                                        className="h-full bg-accent transition-all"
+                                        style={{
+                                          width: `${((session.flashcardsSessionStats.currentIndex + 1) / (session.flashcardsSessionStats.deckOrder?.length || 1)) * 100}%`
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs font-mono text-muted">
+                                      {session.flashcardsSessionStats.currentIndex + 1}/{session.flashcardsSessionStats.deckOrder?.length || 0}
+                                    </span>
+                                  </div>
+                                  {session.flashcardsSessionStats.sortState && (
+                                    <div className="flex gap-2 text-xs">
+                                      <span className="text-green">{session.flashcardsSessionStats.sortState.gotItPileIds?.length || 0} Got it</span>
+                                      <span className="text-muted">•</span>
+                                      <span className="text-red">{session.flashcardsSessionStats.sortState.reviewPileIds?.length || 0} Review</span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : session.srsSessionStats ? (
+                                (() => {
+                                  const srsCounts = getSrsCounts(session.cards);
+                                  const dueNow = session.cards.filter(card => isSrsCardDue(card)).length;
+
+                                  return (
+                                    <div className="flex flex-col gap-2">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-muted uppercase tracking-wider">
+                                          Spaced Repetition
+                                        </span>
+                                      </div>
+                                      <div className="flex gap-3 text-xs">
+                                        <span className="text-red">{dueNow} due</span>
+                                        <span className="text-muted">•</span>
+                                        <span className="text-accent">{session.srsSessionStats.cardsReviewed} reviewed</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {[
+                                          { level: 1, count: srsCounts.red },
+                                          { level: 2, count: srsCounts.yellow },
+                                          { level: 3, count: srsCounts.green },
+                                          { level: 4, count: srsCounts.blue }
+                                        ].map(item => (
+                                          <div key={item.level} className="flex items-center gap-1 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
+                                            <SrsTriangle level={item.level} className="w-2.5 h-2.5" />
+                                            <span className="text-[11px] font-mono text-text">{item.count}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {session.srsSessionStats.testDate && (
+                                        <div className="text-xs text-muted">
+                                          Test: {new Date(session.srsSessionStats.testDate).toLocaleDateString()}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()
                               ) : (
                                 // Learn: show progress squares
                                 <div className="flex gap-1.5 flex-wrap">
@@ -5123,7 +5196,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             </div>
 
                             {/* Actions - always at bottom */}
-                            <div className="flex gap-2 mt-auto pt-3">
+                            <div className="flex gap-2 mt-auto pt-3 shrink-0">
                               <button
                                 onClick={() => onResumeSession(session)}
                                 className="flex-1 px-3 py-2 bg-accent text-bg text-xs font-bold rounded-lg hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-1.5"

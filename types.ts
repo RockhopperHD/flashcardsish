@@ -20,6 +20,12 @@ export interface Card {
   star: boolean;
   originalSetId?: string;
   originalSetName?: string;
+  // SRS-specific fields
+  srsMastery?: number; // 0: Unseen, 1: Red, 2: Yellow, 3: Green, 4: Blue
+  easinessFactor?: number; // Legacy field kept for backward compatibility
+  interval?: number; // Legacy field kept for backward compatibility
+  repetitions?: number; // Legacy field kept for backward compatibility
+  nextReviewDate?: number; // Timestamp of next review
 }
 
 export interface Tag {
@@ -48,6 +54,8 @@ export interface CardSet {
   topStreak: number;
   isSessionActive?: boolean;
   learnSessionStats?: LearnSessionStats;
+  flashcardsSessionStats?: FlashcardsSessionStats;
+  srsSessionStats?: SRSSessionStats;
   isMultistudy?: boolean;
   sourceSetIds?: string[]; // IDs of sets that this multistudy session draws from
   folderId?: string; // If belongs to a folder
@@ -67,6 +75,32 @@ export interface LearnSessionStats {
   correctAnswers: number;
   wrongAnswers: number;
   cardStats: Record<string, LearnSessionCardStat>;
+}
+
+export interface FlashcardsSessionStats {
+  subMode: 'stack' | 'sort' | null;
+  currentIndex: number;
+  isFlipped: boolean;
+  shuffled: boolean;
+  deckOrder: string[]; // Card IDs in current deck order
+  // Sort mode specific
+  sortState?: {
+    reviewPileIds: string[];
+    gotItPileIds: string[];
+    sortRound: number;
+    sortCompleted: boolean;
+    isRoundFinished: boolean;
+  };
+  // Stack mode specific
+  stackCompleted?: boolean;
+}
+
+export interface SRSSessionStats {
+  currentCardId: string | null; // Current card being reviewed
+  testDate?: number; // Target test date timestamp (optional)
+  cardsReviewed: number; // Total cards reviewed in this session
+  totalReviews: number; // Lifetime total reviews
+  startedAt: number; // Session start timestamp
 }
 
 export interface Folder {
@@ -141,6 +175,7 @@ export enum GameState {
   SET_DETAIL = 'SET_DETAIL',
   PLAYING = 'PLAYING',
   FLASHCARDS = 'FLASHCARDS',
+  SRS = 'SRS',
   WIN = 'WIN',
   DOCUMENTATION = 'DOCUMENTATION'
 }

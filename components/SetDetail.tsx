@@ -6,6 +6,9 @@ import { createSharedLink } from '../src/sharing';
 import clsx from 'clsx';
 import { TagPill } from './TagPill';
 import { CardPreview } from './CardPreview';
+import { getSrsCounts, isSrsCardDue } from '../srs';
+import { normalizeCardMastery } from '../cardNormalization';
+import { SrsTriangle } from './SrsTriangle';
 
 interface SetDetailProps {
     set: CardSet;
@@ -13,6 +16,7 @@ interface SetDetailProps {
     onBack: () => void;
     onStartLearn: () => void;
     onStartFlashcards: () => void;
+    onStartSRS: () => void;
     onUpdateSet: (set: CardSet) => void;
     onEdit: () => void;
     onDuplicate: () => void;
@@ -62,11 +66,14 @@ const TermRow: React.FC<{
     index: number;
     onToggleStar: () => void;
     showMastery?: boolean;
+    masteryMode?: 'learn' | 'srs';
+    showSrsIndicator?: boolean;
+    showMasteryDots?: boolean;
     termSideFields?: (string | CustomFieldDefinition)[];
     defSideFields?: (string | CustomFieldDefinition)[];
     termLabel?: string;
     definitionLabel?: string;
-}> = ({ card, index, onToggleStar, showMastery = false, termSideFields, defSideFields, termLabel, definitionLabel }) => {
+}> = ({ card, index, onToggleStar, showMastery = false, masteryMode = 'learn', showSrsIndicator = false, showMasteryDots = false, termSideFields, defSideFields, termLabel, definitionLabel }) => {
     return (
         <CardPreview
             card={card}
@@ -74,6 +81,10 @@ const TermRow: React.FC<{
             showIndex={true}
             showStarToggle={true}
             showMastery={showMastery}
+            masteryMode={masteryMode}
+            showSrsIndicator={showSrsIndicator}
+            showMasteryDots={showMasteryDots}
+            indicatorVariant="set-preview"
             onToggleStar={onToggleStar}
             termSideFields={termSideFields}
             defSideFields={defSideFields}
@@ -91,6 +102,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     onBack,
     onStartLearn,
     onStartFlashcards,
+    onStartSRS,
     onUpdateSet,
     onEdit,
     onDuplicate,
@@ -136,6 +148,10 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     const masteredCount = set.cards.filter(c => c.mastery >= 2).length;
     const starredCount = set.cards.filter(c => c.star).length;
     const progress = set.cards.length > 0 ? Math.round((masteredCount / set.cards.length) * 100) : 0;
+    const isSrsSet = Boolean(set.srsSessionStats);
+    const hasActiveLearnSession = Boolean(set.isSessionActive && !set.srsSessionStats && !set.flashcardsSessionStats);
+    const srsCounts = React.useMemo(() => getSrsCounts(set.cards), [set.cards]);
+    const srsDueCount = React.useMemo(() => set.cards.filter(card => isSrsCardDue(card)).length, [set.cards]);
 
     const getCardKey = (card: Card): string => {
         if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
@@ -148,6 +164,14 @@ export const SetDetail: React.FC<SetDetailProps> = ({
             getCardKey(c) === targetKey ? { ...c, star: !c.star } : c
         );
         onUpdateSet({ ...set, cards: newCards });
+    };
+
+    const getPreviewCard = (card: Card): Card => {
+        const mastery = normalizeCardMastery(card.mastery);
+        return {
+            ...card,
+            mastery: hasActiveLearnSession ? mastery : mastery >= 2 ? 2 : 0
+        };
     };
 
     const handleExport = () => {
@@ -223,6 +247,9 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                 )}
                 <div className="flex items-center gap-6 text-muted">
                     <span className="font-mono">{set.cards.length} cards</span>
+                    {isSrsSet && (
+                        <span className="text-red font-mono">{srsDueCount} due now</span>
+                    )}
                     {masteredCount > 0 && (
                         <span className="text-green font-mono">{masteredCount} mastered</span>
                     )}
@@ -236,6 +263,22 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                         <span className="text-accent font-bold">{progress}% complete</span>
                     )}
                 </div>
+                {isSrsSet && (
+                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                        {[
+                            { level: 0, count: srsCounts.unseen },
+                            { level: 1, count: srsCounts.red },
+                            { level: 2, count: srsCounts.yellow },
+                            { level: 3, count: srsCounts.green },
+                            { level: 4, count: srsCounts.blue }
+                        ].map(item => (
+                            <div key={item.level} className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-outline bg-panel-2 text-sm">
+                                <SrsTriangle level={item.level} className="w-3 h-3" />
+                                <span className="font-mono text-text">{item.count}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Action Toolbar */}
@@ -321,7 +364,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
             {/* Modes Grid */}
             <div className="mb-12">
                 <h2 className="text-xs font-bold text-muted uppercase tracking-widest mb-4 pl-1">Study Modes</h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                     {/* Learn - Active */}
                     <ModeButton
                         label="Learn"
@@ -337,6 +380,14 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                         isActive={false}
                         onClick={onStartFlashcards}
                     />
+
+                    {/* SRS - Active */}
+                    <ModeButton
+                        label="SRS"
+                        icon={<Play size={24} />}
+                        isActive={false}
+                        onClick={onStartSRS}
+                    />
                 </div>
             </div>
 
@@ -351,9 +402,13 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                             {set.cards.map((card, index) => (
                                 <TermRow
                                     key={card.id || index}
-                                    card={card}
+                                    card={getPreviewCard(card)}
                                     index={index}
                                     onToggleStar={() => toggleStar(card)}
+                                    showMastery={isSrsSet}
+                                    masteryMode={isSrsSet ? 'srs' : 'learn'}
+                                    showSrsIndicator={isSrsSet}
+                                    showMasteryDots={true}
                                     termSideFields={set.termSideFields}
                                     defSideFields={set.defSideFields}
                                     termLabel={set.termLabel}
@@ -384,9 +439,13 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                                             {groupCards.map((card, index) => (
                                                 <TermRow
                                                     key={card.id || `${groupKey}-${index}`}
-                                                    card={card}
+                                                    card={getPreviewCard(card)}
                                                     index={set.cards.indexOf(card)}
                                                     onToggleStar={() => toggleStar(card)}
+                                                    showMastery={isSrsSet}
+                                                    masteryMode={isSrsSet ? 'srs' : 'learn'}
+                                                    showSrsIndicator={isSrsSet}
+                                                    showMasteryDots={true}
                                                     termSideFields={set.termSideFields}
                                                     defSideFields={set.defSideFields}
                                                     termLabel={set.termLabel}

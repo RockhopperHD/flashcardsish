@@ -227,6 +227,16 @@ export const createEmptyLearnSessionStats = (): LearnSessionStats => ({
   cardStats: {}
 });
 
+export const resetCardStudyProgress = (card: Card): Card => ({
+  ...card,
+  mastery: 0,
+  srsMastery: 0,
+  easinessFactor: undefined,
+  interval: undefined,
+  repetitions: undefined,
+  nextReviewDate: undefined
+});
+
 export const normalizeLearnSessionStats = (stats?: LearnSessionStats | null): LearnSessionStats => {
   if (!stats || typeof stats !== 'object') return createEmptyLearnSessionStats();
 
@@ -255,7 +265,8 @@ export const resetSetStudyProgress = (set: CardSet): CardSet => ({
   elapsedTime: 0,
   topStreak: 0,
   learnSessionStats: createEmptyLearnSessionStats(),
-  cards: set.cards.map(card => ({ ...card, mastery: 0 }))
+  srsSessionStats: undefined,
+  cards: set.cards.map(resetCardStudyProgress)
 });
 
 // Levenshtein Distance for Fuzzy Matching

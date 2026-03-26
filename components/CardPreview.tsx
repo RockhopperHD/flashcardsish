@@ -3,6 +3,9 @@ import clsx from 'clsx';
 import { Star } from 'lucide-react';
 import { Card, CustomFieldDefinition } from '../types';
 import { renderMarkdown, renderInline, sanitizeImageUrl } from '../utils';
+import { normalizeCardMastery } from '../cardNormalization';
+import { getSrsMasteryLabel, normalizeSrsMastery } from '../srs';
+import { SrsTriangle } from './SrsTriangle';
 
 interface CardPreviewProps {
   card: Partial<Card>;
@@ -11,6 +14,10 @@ interface CardPreviewProps {
   showStarToggle?: boolean;
   onToggleStar?: () => void;
   showMastery?: boolean;
+  masteryMode?: 'learn' | 'srs';
+  showSrsIndicator?: boolean;
+  showMasteryDots?: boolean;
+  indicatorVariant?: 'default' | 'set-preview';
   className?: string;
   termSideFields?: (string | CustomFieldDefinition)[];
   defSideFields?: (string | CustomFieldDefinition)[];
@@ -25,6 +32,10 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
   showStarToggle = false,
   onToggleStar,
   showMastery = false,
+  masteryMode = 'learn',
+  showSrsIndicator,
+  showMasteryDots,
+  indicatorVariant = 'default',
   className,
   termSideFields = [],
   defSideFields = [],
@@ -59,6 +70,12 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
   // If we have explicit configs, orphans go where? Currently ignoring or adding to right?
   // Let's add orphans to the right side by default if no config, or if they just aren't mapped.
   const effectiveRightFields = [...rightFields, ...orphanFields];
+
+  const srsMastery = normalizeSrsMastery(card.srsMastery);
+  const normalizedMastery = normalizeCardMastery(card.mastery);
+  const shouldShowSrsIndicator = showSrsIndicator ?? (showMastery && masteryMode === 'srs');
+  const shouldShowMasteryDots = showMasteryDots ?? (showMastery && masteryMode === 'learn' && typeof card.mastery === 'number');
+  const isSetPreviewVariant = indicatorVariant === 'set-preview';
 
   return (
     <div
@@ -145,33 +162,83 @@ export const CardPreview: React.FC<CardPreviewProps> = ({
 
       </div>
 
-      {showMastery && typeof card.mastery === 'number' && (
+      {(shouldShowSrsIndicator || shouldShowMasteryDots) && (
         <div className="pt-0.5 shrink-0">
-          {card.mastery >= 2 ? (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-green/10 border border-green/20 rounded-lg">
-              <div className="flex flex-col gap-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
-              </div>
-              <span className="text-[10px] font-bold uppercase text-green">Done</span>
-            </div>
-          ) : card.mastery === 1 ? (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-2 border border-outline rounded-lg">
-              <div className="flex flex-col gap-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-accent"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
-              </div>
-              <span className="text-[10px] font-bold uppercase text-text">In Progress</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
-              <div className="flex flex-col gap-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
-                <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
-              </div>
-              <span className="text-[10px] font-bold uppercase text-muted">New</span>
-            </div>
-          )}
+          <div className="flex flex-col items-center gap-2">
+            {shouldShowSrsIndicator && (
+              isSetPreviewVariant ? (
+                <div
+                  className="flex items-center justify-center w-8 h-8 bg-panel-3 border border-outline rounded-lg"
+                  title={getSrsMasteryLabel(srsMastery)}
+                >
+                  <SrsTriangle level={srsMastery} className="w-4.5 h-4.5" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
+                  <SrsTriangle level={srsMastery} className="w-3 h-3" />
+                  <span className={clsx(
+                    "text-[10px] font-bold uppercase",
+                    srsMastery === 1 && "text-red",
+                    srsMastery === 2 && "text-yellow",
+                    srsMastery === 3 && "text-green",
+                    srsMastery === 4 && "text-blue",
+                    srsMastery === 0 && "text-muted"
+                  )}>
+                    {getSrsMasteryLabel(srsMastery)}
+                  </span>
+                </div>
+              )
+            )}
+
+            {shouldShowMasteryDots && (
+              isSetPreviewVariant ? (
+                <div
+                  className={clsx(
+                    "flex flex-col items-center justify-center gap-1 w-8 h-8 border rounded-lg",
+                    normalizedMastery >= 2
+                      ? "bg-green/10 border-green/20"
+                      : normalizedMastery === 1
+                        ? "bg-panel-2 border-outline"
+                        : "bg-panel-3 border-outline"
+                  )}
+                  title={`${normalizedMastery}/2 mastery`}
+                >
+                  <div className={clsx(
+                    "w-2 h-2 rounded-full",
+                    normalizedMastery >= 1 ? "bg-accent" : "bg-outline"
+                  )} />
+                  <div className={clsx(
+                    "w-2 h-2 rounded-full",
+                    normalizedMastery >= 2 ? "bg-green" : "bg-outline"
+                  )} />
+                </div>
+              ) : normalizedMastery >= 2 ? (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-green/10 border border-green/20 rounded-lg">
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-green"></div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase text-green">Done</span>
+                </div>
+              ) : normalizedMastery === 1 ? (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-2 border border-outline rounded-lg">
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase text-text">In Progress</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-panel-3 border border-outline rounded-lg">
+                  <div className="flex flex-col gap-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-outline"></div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase text-muted">New</span>
+                </div>
+              )
+            )}
+          </div>
         </div>
       )}
 
