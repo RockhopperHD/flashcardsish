@@ -672,7 +672,7 @@ export const ExamMode: React.FC<ExamModeProps> = ({ set, settings, onExit }) => 
                 <div className="flex items-start gap-3">
                   <AlertTriangle size={18} className="mt-0.5 shrink-0 text-yellow" />
                   <p className="text-sm leading-relaxed text-text">
-                    Exam mode is still rough around the edges. You may run into uneven question quality or grading while it is being refined.
+                    Exam mode is still rough around the edges. It could suddenly break and the UI might not look as clean as the rest of the app.
                   </p>
                 </div>
               </div>
