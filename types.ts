@@ -176,6 +176,7 @@ export enum GameState {
   PLAYING = 'PLAYING',
   FLASHCARDS = 'FLASHCARDS',
   SRS = 'SRS',
+  EXAM = 'EXAM',
   WIN = 'WIN',
   DOCUMENTATION = 'DOCUMENTATION'
 }
