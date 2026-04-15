@@ -1286,6 +1286,7 @@ const App: React.FC = () => {
    const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
 
    const [user, setUser] = useState<GoogleDriveUser | null>(null);
+   const [isAuthLoading, setIsAuthLoading] = useState(true);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
    const latestLibrarySetsRef = useRef<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
@@ -1302,7 +1303,7 @@ const App: React.FC = () => {
    const activeSession = effectiveLibrarySets.find(s => s.id === activeSetId) || null;
    const winSession = completedSession ?? activeSession;
    const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
-   const shouldHighlightSignIn = !user && gameState === GameState.MENU && isHomeScreenActive;
+   const shouldHighlightSignIn = !user && !isAuthLoading && gameState === GameState.MENU && isHomeScreenActive;
 
    const [settings, setSettings] = useState<Settings>({
       forgiveSpellingErrors: true,
@@ -1588,7 +1589,11 @@ const App: React.FC = () => {
       syncInProgressRef.current = true;
       setIsCloudLoading(true);
       try {
-         const data = await loadAllUserData();
+         const dataRace = await Promise.race([
+            loadAllUserData(),
+            new Promise<null>(resolve => window.setTimeout(() => resolve(null), 60_000)),
+         ]);
+         const data = dataRace;
          if (!data) {
             return;
          }
@@ -1952,6 +1957,8 @@ const App: React.FC = () => {
             setUser(currentUser);
          } catch (error) {
             console.error('Failed to initialize Google Drive:', error);
+         } finally {
+            setIsAuthLoading(false);
          }
       };
 
@@ -3147,6 +3154,7 @@ const App: React.FC = () => {
                   homeNavigationNonce={menuHomeClickNonce}
                   hasCompletedOnboarding={hasCompletedOnboarding}
                   onStartOnboardingTour={handleStartOnboarding}
+                  isAuthLoading={isAuthLoading}
                   signedInUserName={user?.name || user?.email?.split('@')[0] || null}
                />
             )}

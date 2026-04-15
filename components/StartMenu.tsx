@@ -110,6 +110,7 @@ interface StartMenuProps {
   homeNavigationNonce?: number;
   hasCompletedOnboarding?: boolean;
   onStartOnboardingTour?: () => void;
+  isAuthLoading?: boolean;
   signedInUserName?: string | null;
 }
 
@@ -2567,6 +2568,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   homeNavigationNonce,
   hasCompletedOnboarding = false,
   onStartOnboardingTour,
+  isAuthLoading = false,
   signedInUserName,
 }) => {
   const topAnchorRef = useRef<HTMLDivElement>(null);
@@ -4962,7 +4964,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
             )}
 
-            {showOnboardingPromptBanner && !hasCompletedOnboarding && (
+            {showOnboardingPromptBanner && !hasCompletedOnboarding && !isAuthLoading && (
               <div className="mb-6 bg-panel border border-green/30 rounded-2xl p-5 shadow-lg animate-in slide-in-from-top-2 fade-in duration-500">
                 <div className="flex items-start gap-4">
                   <div className="p-2.5 rounded-xl bg-green/10 border border-green/20 mt-0.5">
