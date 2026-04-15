@@ -10,7 +10,7 @@ declare global {
 }
 
 const FALLBACK_GOOGLE_CLIENT_ID = '108421532744-dcb911h9go7p3abunl0qe3jkd32v61c3.apps.googleusercontent.com';
-const FALLBACK_GOOGLE_API_KEY = 'AIzaSyC2JucOW6H74fe1cgt6zz-s5JnD7ku_0dw';
+const FALLBACK_GOOGLE_API_KEY = 'AIzaSyCw87RLNiLF5MAo2JIpbmkX7nGfz7vhJuA';
 const runtimeConfig = (globalThis as any).__FLASHCARDSISH_CONFIG__ ?? {};
 const CLIENT_ID = String(
     runtimeConfig.googleClientId ??
