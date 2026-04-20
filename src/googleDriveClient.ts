@@ -32,6 +32,9 @@ const USER_JOINED_AT_MAP_KEY = 'flashcardsish-user-joined-at-map';
 const LAST_ACTIVE_KEY = 'flashcardsish-google-last-active';
 const REMEMBERED_SESSION_MAX_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
 const ACTIVITY_WRITE_THROTTLE_MS = 5 * 60 * 1000;
+const GIS_INIT_TIMEOUT_MS = 10_000;
+const SILENT_TOKEN_TIMEOUT_MS = 10_000;
+const INTERACTIVE_TOKEN_TIMEOUT_MS = 120_000;
 
 export interface GoogleDriveUser {
     id: string;
@@ -72,6 +75,9 @@ class GoogleDriveClient {
     private rememberedEmailHint: string | null = null;
     private activityTrackingInitialized = false;
     private lastActivityWriteAt = 0;
+    private initPromise: Promise<void> | null = null;
+    private tokenRequestPromise: Promise<boolean> | null = null;
+    private tokenRequestPrompt: '' | 'select_account' | null = null;
 
     private isValidDateString(value: unknown): value is string {
         return typeof value === 'string' && !Number.isNaN(Date.parse(value));
@@ -151,7 +157,16 @@ class GoogleDriveClient {
 
     async init(): Promise<void> {
         if (this.gapiInitialized && this.gisInitialized) return;
+        if (this.initPromise) return this.initPromise;
 
+        this.initPromise = this.performInit().finally(() => {
+            this.initPromise = null;
+        });
+
+        return this.initPromise;
+    }
+
+    private async performInit(): Promise<void> {
         // console.log('[GoogleDrive] Starting initialization...');
         this.validateGoogleConfig();
 
@@ -356,16 +371,40 @@ class GoogleDriveClient {
             return false;
         }
 
-        return new Promise((resolve) => {
+        if (this.tokenRequestPromise) {
+            const activePrompt = this.tokenRequestPrompt;
+            const activeResult = await this.tokenRequestPromise;
+            if (this.currentUser || activePrompt === prompt || prompt === '') {
+                return activeResult;
+            }
+            if (this.tokenRequestPromise) {
+                return this.tokenRequestPromise;
+            }
+        }
+
+        const requestPromise = new Promise<boolean>((resolve) => {
             const originalCallback = this.tokenClient.callback;
-            this.tokenClient.callback = async (response: any) => {
+            const timeoutMs = prompt === '' ? SILENT_TOKEN_TIMEOUT_MS : INTERACTIVE_TOKEN_TIMEOUT_MS;
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+            let settled = false;
+
+            const finish = (success: boolean) => {
+                if (settled) return;
+                settled = true;
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
                 this.tokenClient.callback = originalCallback;
+                resolve(success);
+            };
+
+            this.tokenClient.callback = async (response: any) => {
                 try {
                     const success = await this.processTokenResponse(response);
-                    resolve(success);
+                    finish(success);
                 } catch (error) {
                     console.error('[GoogleDrive] Token handling failed:', error);
-                    resolve(false);
+                    finish(false);
                 }
             };
 
@@ -374,13 +413,28 @@ class GoogleDriveClient {
                 if (prompt === '' && this.rememberedEmailHint) {
                     request.login_hint = this.rememberedEmailHint;
                 }
+                timeoutId = setTimeout(() => {
+                    console.warn(`[GoogleDrive] ${prompt === '' ? 'Silent' : 'Interactive'} token request timed out`);
+                    finish(false);
+                }, timeoutMs);
                 this.tokenClient.requestAccessToken(request);
             } catch (error) {
-                this.tokenClient.callback = originalCallback;
                 console.error('[GoogleDrive] Failed to request access token:', error);
-                resolve(false);
+                finish(false);
             }
         });
+
+        this.tokenRequestPrompt = prompt;
+        this.tokenRequestPromise = requestPromise;
+
+        try {
+            return await requestPromise;
+        } finally {
+            if (this.tokenRequestPromise === requestPromise) {
+                this.tokenRequestPromise = null;
+                this.tokenRequestPrompt = null;
+            }
+        }
     }
 
     private async trySilentSignIn(): Promise<boolean> {
@@ -439,30 +493,47 @@ class GoogleDriveClient {
             return;
         }
 
-        return new Promise((resolve) => {
-            if (typeof window.google === 'undefined') {
-                console.warn('[GoogleDrive] GIS not loaded yet, will retry...');
-                // Retry after a short delay
-                setTimeout(() => this.initGis().then(resolve), 100);
-                return;
-            }
+        const startedAt = Date.now();
 
-            if (!CLIENT_ID) {
-                throw new Error('Google OAuth client ID is missing. Set VITE_GOOGLE_CLIENT_ID.');
-            }
+        return new Promise((resolve, reject) => {
+            const tryInitialize = () => {
+                if (this.gisInitialized) {
+                    resolve();
+                    return;
+                }
 
-            this.tokenClient = window.google.accounts.oauth2.initTokenClient({
-                client_id: CLIENT_ID,
-                scope: SCOPES,
-                callback: (response: any) => {
-                    // Keep default callback for fallback callers; explicit flows wrap this callback.
-                    void this.processTokenResponse(response);
-                },
-            });
+                if (typeof window.google === 'undefined') {
+                    if (Date.now() - startedAt >= GIS_INIT_TIMEOUT_MS) {
+                        reject(new Error('GIS not loaded. Check Google Identity Services script tag or network access.'));
+                        return;
+                    }
+                    setTimeout(tryInitialize, 100);
+                    return;
+                }
 
-            this.gisInitialized = true;
-            // console.log('[GoogleDrive] GIS initialized');
-            resolve();
+                try {
+                    if (!CLIENT_ID) {
+                        throw new Error('Google OAuth client ID is missing. Set VITE_GOOGLE_CLIENT_ID.');
+                    }
+
+                    this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+                        client_id: CLIENT_ID,
+                        scope: SCOPES,
+                        callback: (response: any) => {
+                            // Keep default callback for fallback callers; explicit flows wrap this callback.
+                            void this.processTokenResponse(response);
+                        },
+                    });
+
+                    this.gisInitialized = true;
+                    // console.log('[GoogleDrive] GIS initialized');
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
+            };
+
+            tryInitialize();
         });
     }
 

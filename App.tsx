@@ -1601,6 +1601,9 @@ const App: React.FC = () => {
          ]);
          const data = dataRace;
          if (!data) {
+            setCloudSyncStatus('error');
+            if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+            cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
             return;
          }
 
@@ -1958,7 +1961,6 @@ const App: React.FC = () => {
    useEffect(() => {
       const initializeAuth = async () => {
          try {
-            await googleDrive.init();
             const currentUser = await googleDrive.getSession();
             setUser(currentUser);
          } catch (error) {
@@ -2060,11 +2062,11 @@ const App: React.FC = () => {
                loadedStatsData,
                loadedTagsData
             ] = await Promise.all([
-               loadLibrary(),
-               loadFolders(),
-               loadSettings(),
-               loadStats(),
-               loadTags()
+               loadLibrary({ localOnly: true }),
+               loadFolders({ localOnly: true }),
+               loadSettings({ localOnly: true }),
+               loadStats({ localOnly: true }),
+               loadTags({ localOnly: true })
             ]);
 
             const setsToUse = Array.isArray(loadedSets) ? loadedSets : [];
