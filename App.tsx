@@ -3058,15 +3058,25 @@ const App: React.FC = () => {
 
                   {/* Cloud Sync Status Indicator */}
                   {user && (isCloudLoading || cloudSyncStatus === 'saving') && (
-                     <div
-                        className={clsx(
-                           "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
-                           "text-amber-400"
-                        )}
-                        title="Flashcardsish is currently syncing your data with Google Drive."
+                     <CursorTooltip
+                        content={
+                           !hasSyncedOnceRef.current
+                              ? "Syncing your Google Drive data. You can keep editing safely: changes stay local first and upload after sync finishes."
+                              : "Syncing your latest changes to Google Drive."
+                        }
+                        isEnabled={!settings.hideTooltips}
+                        tooltipClassName="w-80 max-w-[90vw]"
                      >
-                        <RefreshCw size={14} className="animate-spin" />
-                     </div>
+                        <div
+                           className={clsx(
+                              "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
+                              "text-amber-400"
+                           )}
+                           aria-label="Google Drive sync in progress"
+                        >
+                           <RefreshCw size={14} className="animate-spin" />
+                        </div>
+                     </CursorTooltip>
                   )}
 
                   {user && !(isCloudLoading || cloudSyncStatus === 'saving') && (
