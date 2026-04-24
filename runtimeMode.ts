@@ -7,8 +7,7 @@ const detectOfflineOnlyMode = (): boolean => {
   const envFlag = parseBooleanish(import.meta.env.VITE_OFFLINE_ONLY);
   if (envFlag) return true;
 
-  const missingGoogleConfig = !import.meta.env.VITE_GOOGLE_CLIENT_ID || !import.meta.env.VITE_GOOGLE_API_KEY;
-  if (missingGoogleConfig) {
+  if (String(import.meta.env.MODE ?? '').toLowerCase() === 'offline') {
     return true;
   }
 

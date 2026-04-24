@@ -76,6 +76,7 @@ class GoogleDriveClient {
     private activityTrackingInitialized = false;
     private lastActivityWriteAt = 0;
     private initPromise: Promise<void> | null = null;
+    private driveInitPromise: Promise<void> | null = null;
     private tokenRequestPromise: Promise<boolean> | null = null;
     private tokenRequestPrompt: '' | 'select_account' | null = null;
 
@@ -146,10 +147,13 @@ class GoogleDriveClient {
         return joinedAt;
     }
 
-    private validateGoogleConfig(): void {
+    private validateAuthConfig(): void {
         if (!CLIENT_ID) {
             throw new Error('Google OAuth client ID is missing. Set VITE_GOOGLE_CLIENT_ID.');
         }
+    }
+
+    private validateDriveConfig(): void {
         if (!API_KEY) {
             throw new Error('Google API key is missing. Set VITE_GOOGLE_API_KEY.');
         }
@@ -168,14 +172,16 @@ class GoogleDriveClient {
 
     private async performInit(): Promise<void> {
         // console.log('[GoogleDrive] Starting initialization...');
-        this.validateGoogleConfig();
+        this.validateAuthConfig();
 
         // 1. Try to restore session from localStorage first
         this.restoreSession();
 
-        await this.initGapi();
         await this.initGis();
         this.initActivityTracking();
+        void this.initGapi().catch((error) => {
+            console.warn('[GoogleDrive] Drive client unavailable during auth init:', error);
+        });
 
         // 2. If we restored a token, verify it and set up GAPI
         if (this.accessToken) {
@@ -442,6 +448,28 @@ class GoogleDriveClient {
         return this.requestAccessTokenWithPrompt('');
     }
 
+    private async ensureDriveClientReady(): Promise<void> {
+        await this.init();
+
+        if (this.gapiInitialized) {
+            this.setAuthToken();
+            return;
+        }
+
+        if (this.driveInitPromise) {
+            await this.driveInitPromise;
+            this.setAuthToken();
+            return;
+        }
+
+        this.driveInitPromise = this.initGapi().finally(() => {
+            this.driveInitPromise = null;
+        });
+
+        await this.driveInitPromise;
+        this.setAuthToken();
+    }
+
     private getFileCacheKey(folderId: string, filename: string): string {
         return `${folderId}::${filename}`;
     }
@@ -460,6 +488,8 @@ class GoogleDriveClient {
             return;
         }
 
+        this.validateDriveConfig();
+
         return new Promise((resolve, reject) => {
             if (typeof window.gapi === 'undefined') {
                 const error = new Error('GAPI not loaded. Check script tag.');
@@ -470,14 +500,12 @@ class GoogleDriveClient {
 
             window.gapi.load('client', async () => {
                 try {
-                    if (!API_KEY) {
-                        throw new Error('Google API key is missing. Set VITE_GOOGLE_API_KEY.');
-                    }
                     await window.gapi.client.init({
                         apiKey: API_KEY,
                         discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
                     });
                     this.gapiInitialized = true;
+                    this.setAuthToken();
                     // console.log('[GoogleDrive] GAPI initialized');
                     resolve();
                 } catch (error) {
@@ -538,7 +566,7 @@ class GoogleDriveClient {
     }
 
     private setAuthToken(): void {
-        if (this.accessToken) {
+        if (this.accessToken && this.gapiInitialized) {
             window.gapi.client.setToken({ access_token: this.accessToken });
             // console.log('[GoogleDrive] Auth token set in GAPI client');
         }
@@ -654,7 +682,7 @@ class GoogleDriveClient {
      * Find or create the "Flashcardsish" folder in Google Drive
      */
     async getOrCreateAppFolder(folderId?: string): Promise<string> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated. Please sign in first.');
@@ -704,7 +732,7 @@ class GoogleDriveClient {
      * Read the flashcardsish_data.json file from Google Drive
      */
     async readDataFile(folderId: string): Promise<any | null> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -738,7 +766,7 @@ class GoogleDriveClient {
      * Write data to flashcardsish_data.json in Google Drive
      */
     async writeDataFile(folderId: string, data: any): Promise<void> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -777,7 +805,7 @@ class GoogleDriveClient {
      * Upload an image file to Google Drive and return its file ID
      */
     async uploadImage(folderId: string, blob: Blob, filename: string): Promise<string> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -876,7 +904,7 @@ class GoogleDriveClient {
      * Get or create a subfolder within a parent folder
      */
     async getOrCreateSubfolder(parentFolderId: string, folderName: string): Promise<string> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -914,7 +942,7 @@ class GoogleDriveClient {
      * Returns null if file doesn't exist
      */
     async readFile(folderId: string, filename: string): Promise<string | null> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -947,7 +975,7 @@ class GoogleDriveClient {
      * Write content to a file in a folder (creates or updates)
      */
     async writeFile(folderId: string, filename: string, content: string, options?: WriteFileOptions): Promise<string> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -1003,7 +1031,7 @@ class GoogleDriveClient {
      * Delete a file from a folder by filename
      */
     async deleteFile(folderId: string, filename: string): Promise<void> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -1028,7 +1056,7 @@ class GoogleDriveClient {
      * List files in a folder, optionally filtering by extension
      */
     async listFilesInFolder(folderId: string, extension?: string): Promise<Array<{ id: string; name: string }>> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -1056,7 +1084,7 @@ class GoogleDriveClient {
      * Rename a file
      */
     async renameFile(folderId: string, oldFilename: string, newFilename: string): Promise<void> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
@@ -1086,7 +1114,7 @@ class GoogleDriveClient {
      * Delete all contents of a folder (but not the folder itself)
      */
     async deleteFolderContents(folderId: string): Promise<void> {
-        await this.init();
+        await this.ensureDriveClientReady();
 
         if (!this.accessToken) {
             throw new Error('Not authenticated');
