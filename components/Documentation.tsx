@@ -1103,15 +1103,36 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                         <ExternalLink size={16} className="text-muted" />
                     </a>
 
-                    <h3 className="text-xl font-bold mt-8 mb-4">Run Locally</h3>
-                    <div className="border border-outline rounded-lg p-4 font-mono text-sm space-y-2">
-                        <div>git clone https://github.com/RockhopperHD/flashcardsish.git</div>
-                        <div>npm install</div>
-                        <div>npm run dev</div>
+                    <h3 className="text-xl font-bold mt-8 mb-4">Local Options</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                        <div className="border border-outline rounded-lg p-4 space-y-3">
+                            <h4 className="font-bold">Offline-Only Mode</h4>
+                            <ol className="text-sm text-text space-y-2 list-decimal pl-5">
+                                <li>Clone or download the repository.</li>
+                                <li>Open the `flashcardsish` project folder in your terminal.</li>
+                                <li>Run `npm install` once.</li>
+                                <li>Run `npm run dev:offline` and open the local URL Vite gives you.</li>
+                            </ol>
+                            <p className="text-sm text-muted">
+                                Best for running the full Flashcardsish experience locally without Google setup. Your sets and progress stay on this machine until you export them back out.
+                            </p>
+                        </div>
+                        <div className="border border-outline rounded-lg p-4 space-y-3">
+                            <h4 className="font-bold">Payload Handoff</h4>
+                            <ol className="text-sm text-text space-y-2 list-decimal pl-5">
+                                <li>In the offline build, click <span className="text-yellow font-medium">Create Payload</span>.</li>
+                                <li>Open the hosted app and go to the home screen.</li>
+                                <li>Click the yellow <span className="text-yellow font-medium">Payload</span> button next to <span className="font-medium text-text">Feedback</span>.</li>
+                                <li>Upload the `.flashcardsishpayload` file to merge your offline work into the hosted library.</li>
+                            </ol>
+                            <p className="text-sm text-muted">
+                                Best when you want to move an offline-only machine snapshot back into the hosted version without manually rebuilding anything or clearing your current library.
+                            </p>
+                        </div>
                     </div>
 
                     <p className="text-muted">
-                        To enable cloud sync locally, configure Google OAuth credentials as described in the README. If you just want to explore or study locally, you can still use the app without setting up Google sign-in.
+                        Offline-only mode keeps the main app feel intact while separating local storage from the hosted app. Payload files let you bring those offline changes back through the home screen without replacing unrelated hosted sets.
                     </p>
 
                     <div className="grid md:grid-cols-2 gap-4">

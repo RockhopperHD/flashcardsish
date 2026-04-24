@@ -28,13 +28,28 @@ You can absolutely download and clone this for your own use, including publishin
 
 If you wish to contribute, please contact me ([owenw2023@gmail.com](mailto:owenw2023@gmail.com)) or make a request here on GitHub.
 
-## **Getting Started with Local Hosting**
+## **Offline-Only Local Mode**
 
-Do you prefer to run Flashcardsish offline? Great idea\! The only dependency is [Node.js](http://Node.js) (and the GitHub CLI if you don’t want to download it from the website)
+If you want the full Flashcardsish experience on your own machine, use the dedicated offline-only mode:
 
 1. Download or `gh repo clone RockhopperHD/flashcardsish`  
-2. `npm install`  
-3. `npm run dev`
+2. `cd flashcardsish`
+3. `npm install`  
+4. `npm run dev:offline`  
+5. Open the local URL shown by Vite in your browser.
+
+Offline-only mode keeps the normal Flashcardsish interface and study flow, but saves sets, folders, settings, tags, and progress locally under a separate offline storage namespace. When you want to move that progress back into the hosted app, use `Settings -> Global Settings -> Export Data`.
+
+This is the recommended local path for most people. It does not require Google credentials and avoids the old local boot issues caused by cloud setup expectations.
+
+Offline-only mode includes payload handoff for moving your local snapshot back into the hosted app:
+
+1. In the offline build, click `Create Payload`.
+2. Open the hosted app and go to the home screen.
+3. Click the yellow `Payload` button next to `Feedback`.
+4. Upload the `.flashcardsishpayload` file to merge your offline work into the hosted library.
+
+Payload import is merge-first. Existing hosted sets stay in place, payload-only sets are added, and matching sets are merged without intentionally wiping unrelated content.
 
 # **Credits**
 

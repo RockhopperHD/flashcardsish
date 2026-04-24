@@ -86,6 +86,7 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                             Paste a list of terms and definitions from another flashcards app, document, or notes file.
                         </p>
                     </button>
+
                 </div>
 
                 <div className="mt-8 text-text text-base font-bold text-center">
@@ -94,7 +95,7 @@ export const AddSetModal: React.FC<AddSetModalProps> = ({
                         onClick={onImportFile}
                         className="text-accent hover:text-accent/80 hover:underline transition-colors font-bold text-lg"
                     >
-                        import a set
+                        import into the builder
                     </button>
                 </div>
             </div>

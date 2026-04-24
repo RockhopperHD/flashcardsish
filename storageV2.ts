@@ -17,6 +17,7 @@ import { get, set, del, keys } from 'idb-keyval';
 import { CardSet, Card, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { normalizeCardMastery, normalizeCardStar } from './cardNormalization';
+import { OFFLINE_ONLY_MODE, STORAGE_NAMESPACE_SUFFIX } from './runtimeMode';
 
 // ============================================================================
 // CONSTANTS
@@ -60,11 +61,11 @@ export const DEFAULT_SETTINGS: Settings = {
 const CURRENT_VERSION = 3;
 
 // Local storage keys for caching
-const CONFIG_CACHE_KEY = 'flashcardsish-config-v2';
-const STRUCTURE_CACHE_KEY = 'flashcardsish-structure-v2';
-const SET_CACHE_PREFIX = 'flashcardsish-set-';
-const DRIVE_FOLDER_ID_KEY = 'flashcardsish-drive-folder-id';
-const CLOUD_BACKUP_LAST_AT_KEY = 'flashcardsish-cloud-backup-last-at';
+const CONFIG_CACHE_KEY = `flashcardsish-config-v2${STORAGE_NAMESPACE_SUFFIX}`;
+const STRUCTURE_CACHE_KEY = `flashcardsish-structure-v2${STORAGE_NAMESPACE_SUFFIX}`;
+const SET_CACHE_PREFIX = `flashcardsish-set-${STORAGE_NAMESPACE_SUFFIX}`;
+const DRIVE_FOLDER_ID_KEY = `flashcardsish-drive-folder-id${STORAGE_NAMESPACE_SUFFIX}`;
+const CLOUD_BACKUP_LAST_AT_KEY = `flashcardsish-cloud-backup-last-at${STORAGE_NAMESPACE_SUFFIX}`;
 const CLOUD_BACKUP_INTERVAL_MS = 10 * 60 * 1000;
 const CLOUD_BACKUP_MAX_FILES = 25;
 
@@ -149,7 +150,16 @@ interface WriteOptions {
 // ============================================================================
 
 const getUser = async (): Promise<GoogleDriveUser | null> => {
-    return await googleDrive.getSession();
+    if (OFFLINE_ONLY_MODE) {
+        return null;
+    }
+
+    try {
+        return await googleDrive.getSession();
+    } catch (error) {
+        console.warn('[StorageV2] Google session unavailable; continuing with local caches only:', error);
+        return null;
+    }
 };
 
 const getDriveFolderId = (): string | null => {

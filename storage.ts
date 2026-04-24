@@ -2,6 +2,7 @@ import { get, set, del } from 'idb-keyval';
 import { Card, CardSet, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import * as storageV2 from './storageV2';
+import { OFFLINE_ONLY_MODE, STORAGE_NAMESPACE_SUFFIX } from './runtimeMode';
 
 /**
  * STORAGE BRIDGE LAYER
@@ -20,16 +21,16 @@ import * as storageV2 from './storageV2';
  * - sessions/[id].json (in-progress session data)
  */
 
-const LIBRARY_KEY = 'flashcard-library-v3';
-const LIBRARY_LOCAL_UPDATED_AT_KEY = 'flashcard-library-v3-updated-at';
-const LIBRARY_IDB_UPDATED_AT_KEY = 'flashcard-library-v3-idb-updated-at';
-const FOLDERS_KEY = 'flashcard-folders-v1';
-const SETTINGS_KEY = 'flashcard-settings-v2';
-const BADGES_KEY = 'flashcard-badges-v1';
-const STATS_KEY = 'flashcard-stats-v1';
-const TAGS_KEY = 'flashcard-tags-v1';
-const DRIVE_FOLDER_ID_KEY = 'flashcardsish-drive-folder-id';
-const MIGRATION_DONE_KEY = 'flashcardsish-v2-migrated';
+const LIBRARY_KEY = `flashcard-library-v3${STORAGE_NAMESPACE_SUFFIX}`;
+const LIBRARY_LOCAL_UPDATED_AT_KEY = `flashcard-library-v3-updated-at${STORAGE_NAMESPACE_SUFFIX}`;
+const LIBRARY_IDB_UPDATED_AT_KEY = `flashcard-library-v3-idb-updated-at${STORAGE_NAMESPACE_SUFFIX}`;
+const FOLDERS_KEY = `flashcard-folders-v1${STORAGE_NAMESPACE_SUFFIX}`;
+const SETTINGS_KEY = `flashcard-settings-v2${STORAGE_NAMESPACE_SUFFIX}`;
+const BADGES_KEY = `flashcard-badges-v1${STORAGE_NAMESPACE_SUFFIX}`;
+const STATS_KEY = `flashcard-stats-v1${STORAGE_NAMESPACE_SUFFIX}`;
+const TAGS_KEY = `flashcard-tags-v1${STORAGE_NAMESPACE_SUFFIX}`;
+const DRIVE_FOLDER_ID_KEY = `flashcardsish-drive-folder-id${STORAGE_NAMESPACE_SUFFIX}`;
+const MIGRATION_DONE_KEY = `flashcardsish-v2-migrated${STORAGE_NAMESPACE_SUFFIX}`;
 
 // Re-export V2 types and functions that are needed externally
 export type { CorruptionReport } from './storageV2';
@@ -59,7 +60,16 @@ export interface CloudConflictDetail {
 // ============================================================================
 
 const getUser = async (): Promise<GoogleDriveUser | null> => {
-    return await googleDrive.getSession();
+    if (OFFLINE_ONLY_MODE) {
+        return null;
+    }
+
+    try {
+        return await googleDrive.getSession();
+    } catch (error) {
+        console.warn('[Storage] Google session unavailable; continuing in local-only mode:', error);
+        return null;
+    }
 };
 
 const parseTimestamp = (value: unknown): number => {
@@ -906,6 +916,8 @@ interface AllUserData {
  * Loads ALL sets (not just preloaded), so syncCloudData can do a proper merge.
  */
 export const loadAllUserData = async (): Promise<AllUserData | null> => {
+    if (OFFLINE_ONLY_MODE) return null;
+
     const user = await getUser();
     if (!user) return null;
 
@@ -1025,6 +1037,10 @@ export const deleteAllUserData = async (): Promise<{ success: boolean; error?: s
 // ============================================================================
 
 export const initializeDriveFolder = async (): Promise<string> => {
+    if (OFFLINE_ONLY_MODE) {
+        throw new Error('Offline-only mode does not use Google Drive.');
+    }
+
     const user = await getUser();
     if (!user) throw new Error('Not signed in');
 

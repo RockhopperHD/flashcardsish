@@ -59,6 +59,7 @@ import { CursorTooltip } from "./CursorTooltip";
 import {
   parseInput,
   generateId,
+  sanitizeSet,
   syncMultistudySet,
   downloadFile,
   renderMarkdown,
@@ -78,7 +79,8 @@ import { RawTextImport } from "./RawTextImport";
 import BreathingLoader from "./BreathingLoader";
 import { TagPill } from "./TagPill";
 import { CardTagPill } from "./CardTagPill";
-import { sanitizeStrings } from "../storageV2";
+import { normalizeCardSet, sanitizeStrings } from "../storageV2";
+import { STORAGE_NAMESPACE_SUFFIX } from "../runtimeMode";
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -111,6 +113,7 @@ interface StartMenuProps {
   hasCompletedOnboarding?: boolean;
   onStartOnboardingTour?: () => void;
   signedInUserName?: string | null;
+  offlineMode?: boolean;
 }
 
 interface BuilderRow {
@@ -145,9 +148,9 @@ export type UiAuditRequest =
   | { type: "create-folder" }
   | { type: "move-to-local" };
 
-const BUILDER_STORAGE_KEY = "flashcard-builder-rows";
-const AUTOSAVE_DRAFT_KEY = "flashcardsish-autosave-draft";
-const ONBOARDING_PROMPT_DISMISSED_KEY = "flashcardsish-onboarding-prompt-dismissed-v1";
+const BUILDER_STORAGE_KEY = `flashcard-builder-rows${STORAGE_NAMESPACE_SUFFIX}`;
+const AUTOSAVE_DRAFT_KEY = `flashcardsish-autosave-draft${STORAGE_NAMESPACE_SUFFIX}`;
+const ONBOARDING_PROMPT_DISMISSED_KEY = `flashcardsish-onboarding-prompt-dismissed-v1${STORAGE_NAMESPACE_SUFFIX}`;
 const UI_AUDIT_ID = "__ui-audit__";
 
 interface AutosaveDraft {
@@ -2568,6 +2571,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   hasCompletedOnboarding = false,
   onStartOnboardingTour,
   signedInUserName,
+  offlineMode = false,
 }) => {
   const topAnchorRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
@@ -4658,6 +4662,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   const handleMoveToLocal = (setId: string, toLocal: boolean) => {
+    if (offlineMode) return;
     const set = librarySets.find(s => s.id === setId);
     if (!set) return;
 
@@ -4823,6 +4828,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         ref={fileInputRef}
         type="file"
         className="hidden"
+        accept=".flashcards,.json,.txt,text/plain,application/json"
         onChange={handleFileUpload}
       />
 
@@ -5529,20 +5535,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                     </button>
                                   )}
 
-                                  <button
-                                    onClick={() => handleMoveToLocal(set.id, !set.isLocalOnly)}
-                                    className={clsx(
-                                      "p-1.5 rounded hover:bg-panel-2 transition-all",
-                                      set.isLocalOnly ? "text-blue hover:text-blue" : "text-muted hover:text-text"
-                                    )}
-                                    title={set.isLocalOnly ? "Move to Cloud Storage" : "Move to Local Storage"}
-                                  >
-                                    {set.isLocalOnly ? (
-                                      <Upload size={16} />
-                                    ) : (
-                                      <ArrowLeftRight size={16} />
-                                    )}
-                                  </button>
+                                  {!offlineMode && (
+                                    <button
+                                      onClick={() => handleMoveToLocal(set.id, !set.isLocalOnly)}
+                                      className={clsx(
+                                        "p-1.5 rounded hover:bg-panel-2 transition-all",
+                                        set.isLocalOnly ? "text-blue hover:text-blue" : "text-muted hover:text-text"
+                                      )}
+                                      title={set.isLocalOnly ? "Move to Cloud Storage" : "Move to Local Storage"}
+                                    >
+                                      {set.isLocalOnly ? (
+                                        <Upload size={16} />
+                                      ) : (
+                                        <ArrowLeftRight size={16} />
+                                      )}
+                                    </button>
+                                  )}
 
                                   <button
                                     onClick={() =>
@@ -5616,7 +5624,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     )}
 
                   {/* Local Sets Section */}
-                  {displayedLocalSets.length > 0 && !currentFolderId && (
+                  {displayedLocalSets.length > 0 && !currentFolderId && !offlineMode && (
                     <div className="mt-10">
                       <h4 className="text-xs font-bold text-muted uppercase tracking-widest pl-2 mb-4 flex items-center gap-2">
                         <Download size={14} />
@@ -5722,13 +5730,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                         <Pencil size={16} />
                                       </button>
 
-                                      <button
-                                        onClick={() => handleMoveToLocal(set.id, false)}
-                                        className="p-1.5 text-blue hover:text-blue rounded hover:bg-panel-2 transition-all"
-                                        title="Move to Cloud Storage"
-                                      >
-                                        <Upload size={16} />
-                                      </button>
+                                      {!offlineMode && (
+                                        <button
+                                          onClick={() => handleMoveToLocal(set.id, false)}
+                                          className="p-1.5 text-blue hover:text-blue rounded hover:bg-panel-2 transition-all"
+                                          title="Move to Cloud Storage"
+                                        >
+                                          <Upload size={16} />
+                                        </button>
+                                      )}
 
                                       <button
                                         onClick={() =>

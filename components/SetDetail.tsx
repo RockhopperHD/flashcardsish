@@ -18,6 +18,7 @@ interface SetDetailProps {
     onDuplicate: () => void;
     onDelete: () => void;
     tags: Tag[]; // Global tag definitions
+    canShare?: boolean;
 }
 
 // Mode Button Component
@@ -95,7 +96,8 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     onEdit,
     onDuplicate,
     onDelete,
-    tags
+    tags,
+    canShare = true
 }) => {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -266,15 +268,17 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                     <Copy size={16} />
                     <span className="text-sm font-medium hidden sm:inline">Duplicate</span>
                 </button>
-                <button
-                    onClick={handleShare}
-                    className="flex items-center gap-2 px-3 py-2 text-muted hover:text-text hover:bg-panel-3 rounded-lg transition-all"
-                    title="Share Set"
-                    disabled={shareStatus === 'loading'}
-                >
-                    {shareStatus === 'loading' ? <Loader2 size={16} className="animate-spin" /> : shareStatus === 'done' ? <Check size={16} className="text-green" /> : <Share2 size={16} />}
-                    <span className="text-sm font-medium hidden sm:inline">Share</span>
-                </button>
+                {canShare && (
+                    <button
+                        onClick={handleShare}
+                        className="flex items-center gap-2 px-3 py-2 text-muted hover:text-text hover:bg-panel-3 rounded-lg transition-all"
+                        title="Share Set"
+                        disabled={shareStatus === 'loading'}
+                    >
+                        {shareStatus === 'loading' ? <Loader2 size={16} className="animate-spin" /> : shareStatus === 'done' ? <Check size={16} className="text-green" /> : <Share2 size={16} />}
+                        <span className="text-sm font-medium hidden sm:inline">Share</span>
+                    </button>
+                )}
                 <div className="flex-1" />
                 <button
                     onClick={handleDeleteClick}
@@ -294,7 +298,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
             </div>
 
             {/* Share URL Banner */}
-            {shareStatus === 'done' && shareUrl && (
+            {canShare && shareStatus === 'done' && shareUrl && (
                 <div className="mb-6 flex items-center gap-3 p-3 bg-accent/10 border border-accent/30 rounded-xl">
                     <Share2 size={16} className="text-accent shrink-0" />
                     <span className="text-sm text-muted flex-1 truncate font-mono">{shareUrl}</span>
@@ -312,7 +316,7 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                     </button>
                 </div>
             )}
-            {shareStatus === 'error' && (
+            {canShare && shareStatus === 'error' && (
                 <div className="mb-6 p-3 bg-red/10 border border-red/30 rounded-xl text-sm text-red">
                     {shareError ?? 'Failed to create share link. Please try again.'}
                 </div>

@@ -26,13 +26,14 @@ import { OnboardingTour } from './components/OnboardingTour';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SharedSetView } from './components/SharedSetView';
 import { SharedSetSnapshot } from './src/sharing';
+import { OFFLINE_ONLY_MODE, STORAGE_NAMESPACE_SUFFIX } from './runtimeMode';
 // UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
 // import { UiAuditPanel } from './components/UiAuditPanel';
 
 const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
-const ONBOARDING_TOUR_COMPLETED_KEY = 'flashcardsish-onboarding-tour-completed-v1';
-const LIBRARY_LOCAL_FALLBACK_KEY = 'flashcard-library-v3';
-const LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY = 'flashcard-library-v3-updated-at';
+const ONBOARDING_TOUR_COMPLETED_KEY = `flashcardsish-onboarding-tour-completed-v1${STORAGE_NAMESPACE_SUFFIX}`;
+const LIBRARY_LOCAL_FALLBACK_KEY = `flashcard-library-v3${STORAGE_NAMESPACE_SUFFIX}`;
+const LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY = `flashcard-library-v3-updated-at${STORAGE_NAMESPACE_SUFFIX}`;
 const ALPHABET_SAMPLE_NAME = 'The Alphabet';
 type AppToast = {
    id: number;
@@ -72,6 +73,17 @@ interface FlashcardsishExportFile {
    tags?: Tag[];
 }
 
+interface FlashcardsishPayloadFile {
+   createdAt: string;
+   version: 'flashcardsish-payload-v1';
+   source: 'offline-mode';
+   librarySets?: CardSet[];
+   folders?: Folder[];
+   settings?: Partial<Settings>;
+   stats?: { lifetimeCorrect?: number };
+   tags?: Tag[];
+}
+
 const parseExportData = (raw: string): FlashcardsishExportFile => {
    const parsed = JSON.parse(raw);
    if (!parsed || typeof parsed !== 'object') {
@@ -83,6 +95,184 @@ const parseExportData = (raw: string): FlashcardsishExportFile => {
    }
 
    return parsed as FlashcardsishExportFile;
+};
+
+const parsePayloadData = (raw: string): FlashcardsishPayloadFile => {
+   const parsed = JSON.parse(raw);
+   if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Payload file is not valid JSON data.');
+   }
+
+   if (parsed.version !== 'flashcardsish-payload-v1') {
+      throw new Error('Unsupported payload version. Expected flashcardsish-payload-v1.');
+   }
+
+   return parsed as FlashcardsishPayloadFile;
+};
+
+const mergeFoldersForPayload = (existingFolders: Folder[], payloadFolders: Folder[]): Folder[] => {
+   const mergedById = new Map<string, Folder>();
+
+   existingFolders.forEach(folder => {
+      mergedById.set(folder.id, { ...folder, setIds: [...folder.setIds] });
+   });
+
+   payloadFolders.forEach(folder => {
+      const existing = mergedById.get(folder.id);
+      if (!existing) {
+         mergedById.set(folder.id, { ...folder, setIds: [...folder.setIds] });
+         return;
+      }
+
+      mergedById.set(folder.id, {
+         ...existing,
+         ...folder,
+         setIds: Array.from(new Set([...(existing.setIds || []), ...(folder.setIds || [])]))
+      });
+   });
+
+   return Array.from(mergedById.values());
+};
+
+const mergeTagsForPayload = (existingTags: Tag[], payloadTags: Tag[]): Tag[] => {
+   const mergedById = new Map<string, Tag>();
+   existingTags.forEach(tag => mergedById.set(tag.id, tag));
+   payloadTags.forEach(tag => mergedById.set(tag.id, { ...(mergedById.get(tag.id) || {} as Tag), ...tag }));
+   return Array.from(mergedById.values());
+};
+
+const OfflineModeInfoModal: React.FC<{
+   isOpen: boolean;
+   onClose: () => void;
+}> = ({ isOpen, onClose }) => {
+   if (!isOpen) return null;
+
+   return (
+      <div
+         className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in p-4"
+         onMouseDown={onClose}
+      >
+         <div
+            className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-2xl shadow-2xl animate-in zoom-in-95 flex flex-col relative"
+            onMouseDown={(e) => e.stopPropagation()}
+         >
+            <div className="relative w-full mb-5">
+               <h2
+                  className="text-3xl text-text text-center"
+                  style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 500 }}
+               >
+                  Offline Mode
+               </h2>
+               <button
+                  onClick={onClose}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
+                  aria-label="Close offline mode information"
+               >
+                  <X size={22} />
+               </button>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-yellow/30 bg-yellow/10 overflow-hidden">
+               <div
+                  className="px-5 py-3 text-center text-bg"
+                  style={{
+                     backgroundColor: '#d0a45e',
+                     backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.08) 5px, rgba(0,0,0,0.08) 10px)'
+                  }}
+               >
+                  <span
+                     className="text-lg sm:text-xl"
+                     style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 500 }}
+                  >
+                     Offline mode is active
+                  </span>
+               </div>
+            </div>
+
+            <div className="space-y-4 text-sm text-text">
+               <p className="leading-relaxed">
+                  Your sets, folders, settings, tags, and study progress are being saved on this machine only. Cloud sync,
+                  sign-in, and hosted sharing are disabled in this mode so your local session stays self-contained.
+               </p>
+               <p className="leading-relaxed">
+                  When you are ready to move this work back into the hosted app, use <span className="text-yellow font-medium">Create Payload</span>.
+                  Then open the live Flashcardsish app and import that payload from the yellow button beside <span className="text-text font-medium">Feedback</span> on the home screen.
+               </p>
+            </div>
+
+            <div className="flex justify-end mt-7">
+               <button
+                  onClick={onClose}
+                  className="px-5 py-2.5 bg-panel-2 border border-outline text-text rounded-xl text-sm hover:border-accent hover:text-accent transition-all"
+               >
+                  Close
+               </button>
+            </div>
+         </div>
+      </div>
+   );
+};
+
+const PayloadImportModal: React.FC<{
+   isOpen: boolean;
+   onClose: () => void;
+   onChooseFile: () => void;
+   user: GoogleDriveUser | null;
+}> = ({ isOpen, onClose, onChooseFile, user }) => {
+   if (!isOpen) return null;
+
+   return (
+         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in p-4" onMouseDown={onClose}>
+          <div
+             className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-xl shadow-2xl animate-in zoom-in-95 flex flex-col relative"
+             onMouseDown={(e) => e.stopPropagation()}
+          >
+             <div className="relative w-full mb-5">
+                <h2
+                   className="text-3xl text-text text-center"
+                   style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 500 }}
+                >
+                   Import Offline Payload
+                </h2>
+                <button
+                   onClick={onClose}
+                   className="absolute right-0 top-1/2 -translate-y-1/2 text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
+                   aria-label="Close payload modal"
+                >
+                   <X size={22} />
+                </button>
+             </div>
+
+             <div className="space-y-4 text-sm text-text">
+                {!user ? (
+                   <div className="rounded-2xl border border-yellow/30 bg-yellow/10 p-4 text-yellow leading-relaxed">
+                      Sign in first. Payload import only works on the hosted app, and it merges offline work into your existing Flashcardsish library instead of wiping everything.
+                   </div>
+                ) : (
+                   <div className="rounded-2xl border border-outline bg-panel-2 p-4 text-text leading-relaxed">
+                      Uploading a payload merges offline changes into your current library. Existing hosted sets stay in place, payload-only sets are added, and matching sets are merged without dropping cards.
+                   </div>
+                )}
+             </div>
+
+             <div className="flex items-center justify-end gap-3 mt-7">
+                <button
+                   onClick={onClose}
+                   className="px-5 py-2.5 bg-panel-2 border border-outline text-text rounded-xl text-sm hover:border-accent hover:text-accent transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                   onClick={onChooseFile}
+                   disabled={!user}
+                   className="px-5 py-2.5 bg-yellow text-bg rounded-xl text-sm font-medium hover:bg-yellow/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                   Choose Payload File
+                </button>
+            </div>
+         </div>
+      </div>
+   );
 };
 
 const formatConflictTimestamp = (value?: string): string => {
@@ -374,7 +564,8 @@ const SettingsModal: React.FC<{
    tags: Tag[];
    onUpdateTags: (tags: Tag[]) => void;
    onOpenPrivacy?: () => void;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, onCreateAlphabetSet, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy }) => {
+   offlineMode?: boolean;
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, onCreateAlphabetSet, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy, offlineMode = false }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
@@ -1205,7 +1396,62 @@ const SettingsModal: React.FC<{
 
                   {activeTab === 'you' && (
                      <div className="space-y-6">
-                        {user ? (
+                        {offlineMode ? (
+                           <>
+                              <div className="p-4 bg-blue/5 rounded-xl border border-blue/20 hover:border-blue/40 transition-all">
+                                 <span className="font-medium text-blue block mb-3 flex items-center gap-2">
+                                    <Download size={18} /> Offline-Only Mode
+                                 </span>
+                                 <div className="space-y-3 text-sm text-text">
+                                    <p>
+                                       Flashcardsish is currently running without cloud sync. Your sets, folders, settings, tags,
+                                       and progress stay on this machine under a separate offline storage namespace.
+                                    </p>
+                                    <p className="text-muted">
+                                       Use Export Data to move your progress back into the hosted app later, and Restore Backup if
+                                       you want to reopen an offline snapshot on another machine.
+                                    </p>
+                                 </div>
+                              </div>
+
+                              <div className="p-4 bg-yellow/5 rounded-xl border border-yellow/20 hover:border-yellow/40 transition-all">
+                                 <span className="font-medium text-yellow block mb-3 flex items-center gap-2">
+                                    <RotateCcw size={18} /> Reset Settings
+                                 </span>
+                                 {!showResetConfirm ? (
+                                    <button
+                                       onClick={() => setShowResetConfirm(true)}
+                                       className="w-full flex items-center justify-center gap-2 py-2 text-yellow border border-yellow/30 rounded-lg font-bold hover:bg-yellow/20 transition-colors text-sm"
+                                    >
+                                       Reset All Settings to Default
+                                    </button>
+                                 ) : (
+                                    <div className="space-y-3">
+                                       <p className="text-sm text-text">
+                                          This will reset all your settings to their default values. Your flashcard sets will not be affected.
+                                       </p>
+                                       <div className="flex gap-2">
+                                          <button
+                                             onClick={() => setShowResetConfirm(false)}
+                                             className="flex-1 py-2 text-muted border border-outline rounded-lg font-bold hover:bg-panel-2 transition-colors text-sm"
+                                          >
+                                             Cancel
+                                          </button>
+                                          <button
+                                             onClick={() => {
+                                                onResetSettings();
+                                                setShowResetConfirm(false);
+                                             }}
+                                             className="flex-1 py-2 bg-yellow text-bg rounded-lg font-bold hover:bg-yellow/90 transition-colors text-sm"
+                                          >
+                                             Yes, Reset Settings
+                                          </button>
+                                       </div>
+                                    </div>
+                                 )}
+                              </div>
+                           </>
+                        ) : user ? (
                            <>
                               <ProfileCard
                                  user={user}
@@ -1280,7 +1526,7 @@ const SettingsModal: React.FC<{
 
 const App: React.FC = () => {
    const [incomingShareId, setIncomingShareId] = useState<string | null>(
-      () => new URLSearchParams(window.location.search).get('share')
+      () => OFFLINE_ONLY_MODE ? null : new URLSearchParams(window.location.search).get('share')
    );
    const [gameState, setGameState] = useState<GameState>(GameState.MENU);
    const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
@@ -1302,7 +1548,7 @@ const App: React.FC = () => {
    const activeSession = effectiveLibrarySets.find(s => s.id === activeSetId) || null;
    const winSession = completedSession ?? activeSession;
    const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
-   const shouldHighlightSignIn = !user && gameState === GameState.MENU && isHomeScreenActive;
+   const shouldHighlightSignIn = !OFFLINE_ONLY_MODE && !user && gameState === GameState.MENU && isHomeScreenActive;
 
    const [settings, setSettings] = useState<Settings>({
       forgiveSpellingErrors: true,
@@ -1335,7 +1581,10 @@ const App: React.FC = () => {
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
    const [isKeybindsModalOpen, setIsKeybindsModalOpen] = useState(false);
+   const [isOfflineInfoOpen, setIsOfflineInfoOpen] = useState(false);
+   const [isPayloadImportOpen, setIsPayloadImportOpen] = useState(false);
    const [appToast, setAppToast] = useState<AppToast | null>(null);
+   const payloadImportInputRef = useRef<HTMLInputElement>(null);
 
    const [uiAuditRequest, setUiAuditRequest] = useState<UiAuditRequest | null>(null);
    const [uiAuditToastReports, setUiAuditToastReports] = useState<CorruptionReport[]>([]);
@@ -1753,6 +2002,7 @@ const App: React.FC = () => {
    };
 
    const handleLogin = async (keepSignedIn: boolean = true) => {
+      if (OFFLINE_ONLY_MODE) return;
       try {
          await googleDrive.signIn(keepSignedIn);
       } catch (error) {
@@ -1762,6 +2012,7 @@ const App: React.FC = () => {
    };
 
    const handleManualCloudSync = async () => {
+      if (OFFLINE_ONLY_MODE) return;
       if (!user) return;
       if (syncInProgressRef.current || cloudSaveInFlightRef.current || conflictResolutionAction !== 'idle') {
          return;
@@ -1781,6 +2032,7 @@ const App: React.FC = () => {
    };
 
    const handleLogout = async () => {
+      if (OFFLINE_ONLY_MODE) return;
       await googleDrive.signOut();
       setUser(null);
       setCloudConflicts([]);
@@ -1789,6 +2041,21 @@ const App: React.FC = () => {
    };
 
    // --- IMAGE UPLOAD HELPERS ---
+
+   const fileToDataUrl = (file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
+         const reader = new FileReader();
+         reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+               resolve(reader.result);
+               return;
+            }
+            reject(new Error('Could not read image file.'));
+         };
+         reader.onerror = () => reject(new Error('Could not read image file.'));
+         reader.readAsDataURL(file);
+      });
+   };
 
    // Compress and resize image before upload
    const compressImage = (file: File): Promise<Blob> => {
@@ -1847,6 +2114,10 @@ const App: React.FC = () => {
 
    // Upload image to Google Drive and return file ID
    const handleImageUpload = async (file: File): Promise<string> => {
+      if (OFFLINE_ONLY_MODE || !user) {
+         return await fileToDataUrl(file);
+      }
+
       if (!user) {
          throw new Error('You must be logged in to upload images');
       }
@@ -1874,8 +2145,10 @@ const App: React.FC = () => {
       const result = await deleteAllUserData();
       if (result.success) {
          // Sign out and reload
-         await googleDrive.signOut();
-         setUser(null);
+         if (!OFFLINE_ONLY_MODE) {
+            await googleDrive.signOut();
+            setUser(null);
+         }
          window.location.reload();
       } else {
          alert('Failed to delete data: ' + (result.error || 'Unknown error'));
@@ -1921,6 +2194,139 @@ const App: React.FC = () => {
       }
    };
 
+   const handleCreatePayload = () => {
+      const payloadData: FlashcardsishPayloadFile = {
+         createdAt: new Date().toISOString(),
+         version: 'flashcardsish-payload-v1',
+         source: 'offline-mode',
+         librarySets: librarySets,
+         folders: folders,
+         tags: tags,
+         settings: settings,
+         stats: { lifetimeCorrect }
+      };
+
+      const blob = new Blob([JSON.stringify(payloadData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `flashcardsish-payload-${new Date().toISOString().split('T')[0]}.flashcardsishpayload`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setAppToast({
+         id: Date.now(),
+         type: 'success',
+         message: 'Offline payload created. Import it on the hosted app from the yellow Payload button next to Feedback on the home screen.'
+      });
+   };
+
+   const handleImportPayload = async (file: File): Promise<void> => {
+      if (OFFLINE_ONLY_MODE) {
+         throw new Error('Payload imports are only available in the hosted app.');
+      }
+
+      if (!user) {
+         throw new Error('Sign in before importing an offline payload.');
+      }
+
+      const shouldReplace = window.confirm(
+         'Merge this offline payload into your hosted Flashcardsish library? Existing hosted sets will stay in place, and matching sets will be merged.'
+      );
+      if (!shouldReplace) return;
+
+      await waitForBackgroundSyncIdle();
+
+      const content = await file.text();
+      const parsed = parsePayloadData(content);
+      const payloadSets = Array.isArray(parsed.librarySets)
+         ? parsed.librarySets.map(set => ({ ...normalizeLoadedSet(set), isLocalOnly: false }))
+         : [];
+      const payloadSetIds = new Set(payloadSets.map(set => set.id));
+      const payloadFolders = Array.isArray(parsed.folders) ? parsed.folders : [];
+      const payloadTags = Array.isArray(parsed.tags) ? parsed.tags : [];
+      const mergedSettings = parsed.settings ? { ...settings, ...parsed.settings } : { ...settings };
+      const mergedStats = typeof parsed.stats?.lifetimeCorrect === 'number'
+         ? Math.max(lifetimeCorrect, parsed.stats.lifetimeCorrect)
+         : lifetimeCorrect;
+
+      const mergedSetMap = new Map<string, CardSet>();
+      librarySets.forEach(existingSet => {
+         mergedSetMap.set(existingSet.id, existingSet);
+      });
+      payloadSets.forEach(payloadSet => {
+         const existingSet = mergedSetMap.get(payloadSet.id);
+         if (!existingSet) {
+            mergedSetMap.set(payloadSet.id, payloadSet);
+            return;
+         }
+
+         mergedSetMap.set(payloadSet.id, {
+            ...mergeSetWithoutLosingCards(existingSet, payloadSet),
+            isLocalOnly: false
+         });
+      });
+
+      const mergedSets = Array.from(mergedSetMap.values()).map(set =>
+         payloadSetIds.has(set.id)
+            ? { ...set, isLocalOnly: false }
+            : set
+      );
+      const mergedFolders = mergeFoldersForPayload(folders, payloadFolders);
+      const mergedTags = mergeTagsForPayload(tags, payloadTags);
+      const payloadChangedSetIds = payloadSets.map(set => set.id);
+
+      const importedStats = typeof parsed.stats?.lifetimeCorrect === 'number'
+         ? parsed.stats.lifetimeCorrect
+         : 0;
+
+      setLibrarySets(mergedSets);
+      latestLibrarySetsRef.current = mergedSets;
+      setFolders(mergedFolders);
+      setTags(mergedTags);
+      setSettings(mergedSettings);
+      setLifetimeCorrect(mergedStats);
+      setCloudConflicts([]);
+      setIsConflictDetailsOpen(false);
+      setGameState(GameState.MENU);
+      setDetailSetId(null);
+      setActiveSetId(null);
+      setIsPayloadImportOpen(false);
+
+      const freshSnapshot = new Map<string, string>();
+      for (const importedSet of mergedSets) {
+         freshSnapshot.set(importedSet.id, JSON.stringify(importedSet));
+      }
+      prevLibrarySnapshotRef.current = freshSnapshot;
+      hasCompletedInitialLoad.current = true;
+      dirtySetIdsRef.current.clear();
+      for (const setId of payloadChangedSetIds) {
+         markSetDirty(setId);
+      }
+      structureChangedRef.current = payloadFolders.length > 0;
+
+      await Promise.all([
+         saveFolders(mergedFolders, { skipCloud: true }),
+         saveTags(mergedTags, { skipCloud: false }),
+         saveSettings(mergedSettings, { skipCloud: false }),
+         saveStats({ lifetimeCorrect: mergedStats }, { skipCloud: false })
+      ]);
+
+      queueLibrarySave(mergedSets, mergedFolders, {
+         ignoreConflicts: false,
+         skipCloud: false,
+         changedSetIds: payloadChangedSetIds
+      });
+
+      setAppToast({
+         id: Date.now(),
+         type: 'success',
+         message: `Offline payload merged. ${payloadSets.length} payload set${payloadSets.length === 1 ? '' : 's'} queued for sync without clearing your existing library.`
+      });
+   };
+
    const handleExportData = () => {
       const exportData = {
          exportedAt: new Date().toISOString(),
@@ -1936,7 +2342,8 @@ const App: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `flashcardsish-export-${new Date().toISOString().split('T')[0]}.json`;
+      const prefix = OFFLINE_ONLY_MODE ? 'flashcardsish-offline-export' : 'flashcardsish-export';
+      a.download = `${prefix}-${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1945,6 +2352,11 @@ const App: React.FC = () => {
 
    // Listen for Auth Changes and Initialize Google Drive
    useEffect(() => {
+      if (OFFLINE_ONLY_MODE) {
+         setUser(null);
+         return;
+      }
+
       const initializeAuth = async () => {
          try {
             await googleDrive.init();
@@ -1970,6 +2382,7 @@ const App: React.FC = () => {
    }, []);
 
    useEffect(() => {
+      if (OFFLINE_ONLY_MODE) return;
       if (!user || !isLibraryLoaded || hasSyncedOnceRef.current) return;
       void syncCloudData();
    }, [user, isLibraryLoaded]);
@@ -2767,10 +3180,12 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             initialTab={settingsInitialTab}
             tags={tags}
+            offlineMode={OFFLINE_ONLY_MODE}
             onUpdateTags={(newTags) => {
                setTags(newTags);
                saveTags(newTags, {
                   skipCloud: Boolean(
+                     OFFLINE_ONLY_MODE ||
                      syncInProgressRef.current ||
                      isCloudLoading ||
                      (user && !hasSyncedOnceRef.current)
@@ -2815,6 +3230,41 @@ const App: React.FC = () => {
             onClose={() => setIsKeybindsModalOpen(false)}
             settings={settings}
             onUpdate={updateSettings}
+         />
+
+         <OfflineModeInfoModal
+            isOpen={isOfflineInfoOpen}
+            onClose={() => setIsOfflineInfoOpen(false)}
+         />
+
+         <PayloadImportModal
+            isOpen={isPayloadImportOpen}
+            onClose={() => setIsPayloadImportOpen(false)}
+            onChooseFile={() => payloadImportInputRef.current?.click()}
+            user={user}
+         />
+
+         <input
+            ref={payloadImportInputRef}
+            type="file"
+            className="hidden"
+            accept=".flashcardsishpayload,application/json,.json"
+            onChange={(event) => {
+               const file = event.target.files?.[0];
+               if (!file) return;
+               void handleImportPayload(file).catch((error) => {
+                  const message = error instanceof Error ? error.message : 'Could not import payload.';
+                  setAppToast({
+                     id: Date.now(),
+                     type: 'error',
+                     message
+                  });
+               }).finally(() => {
+                  if (payloadImportInputRef.current) {
+                     payloadImportInputRef.current.value = '';
+                  }
+               });
+            }}
          />
 
          {/* Corruption Notification */}
@@ -2946,41 +3396,44 @@ const App: React.FC = () => {
                      </button>
                   )}
 
-                  {/* Profile Indicator */}
-                  <button
-                     onClick={() => {
-                        setSettingsInitialTab('you');
-                        setIsSettingsOpen(true);
-                     }}
-                     className={clsx(
-                        "flex items-center gap-2 px-3 py-2 rounded-xl bg-panel-2 border transition-all relative overflow-visible",
-                        shouldHighlightSignIn ? "border-outline signin-cta" : "border-outline hover:border-accent"
-                     )}
-                     title={user ? `Logged in as ${user.email}` : "Account"}
-                  >
-                     {shouldHighlightSignIn && (
-                        <svg
-                           className="signin-cta-outline"
-                           viewBox="0 0 100 40"
-                           preserveAspectRatio="none"
-                           aria-hidden="true"
-                        >
-                           <rect x="2" y="2" width="96" height="36" rx="10" ry="10" />
-                        </svg>
-                     )}
-                     {user ? (
-                        <img
-                           src={user.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
-                           alt="Profile"
-                           className="w-7 h-7 rounded-full"
-                        />
-                     ) : (
-                        <div className="w-7 h-7 rounded-full bg-outline/20 flex items-center justify-center">
-                           <Cloud size={16} className="text-muted" />
-                        </div>
-                     )}
-                     <span className="text-sm text-muted hidden sm:block max-w-[90px] truncate">{user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}</span>
-                  </button>
+                   {!OFFLINE_ONLY_MODE && (
+                      <button
+                         onClick={() => {
+                            setSettingsInitialTab('you');
+                            setIsSettingsOpen(true);
+                         }}
+                         className={clsx(
+                            "flex items-center gap-2 px-3 py-2 rounded-xl bg-panel-2 border transition-all relative overflow-visible",
+                            shouldHighlightSignIn ? "border-outline signin-cta" : "border-outline hover:border-accent"
+                         )}
+                         title={user ? `Logged in as ${user.email}` : "Account"}
+                      >
+                         {shouldHighlightSignIn && (
+                            <svg
+                               className="signin-cta-outline"
+                               viewBox="0 0 100 40"
+                               preserveAspectRatio="none"
+                               aria-hidden="true"
+                            >
+                               <rect x="2" y="2" width="96" height="36" rx="10" ry="10" />
+                            </svg>
+                         )}
+                         {user ? (
+                            <img
+                               src={user.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.email || 'U')}&background=random&size=32`}
+                               alt="Profile"
+                               className="w-7 h-7 rounded-full"
+                            />
+                         ) : (
+                            <div className="w-7 h-7 rounded-full bg-outline/20 flex items-center justify-center">
+                               <Cloud size={16} className="text-muted" />
+                            </div>
+                         )}
+                         <span className="text-sm text-muted hidden sm:block max-w-[90px] truncate">
+                            {user?.name?.split(' ')[0] || user?.email?.split('@')[0] || "Sign In"}
+                         </span>
+                      </button>
+                   )}
 
                   {/* Cloud Sync Status Indicator */}
                   {user && (isCloudLoading || cloudSyncStatus === 'saving') && (
@@ -3030,6 +3483,25 @@ const App: React.FC = () => {
                </div>
             </div>
          </header>
+
+         {OFFLINE_ONLY_MODE && (
+            <button
+               type="button"
+               onClick={() => setIsOfflineInfoOpen(true)}
+               className="block w-full border-b border-yellow/40 text-bg transition-colors hover:brightness-[0.98]"
+               style={{
+                  backgroundColor: '#d0a45e',
+                  backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(0,0,0,0.08) 5px, rgba(0,0,0,0.08) 10px)'
+               }}
+            >
+               <span
+                  className="block text-base sm:text-lg py-2.5"
+                  style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 500 }}
+               >
+                  OFFLINE MODE ACTIVE
+               </span>
+            </button>
+         )}
 
          {user && cloudConflicts.length > 0 && (
             <div className="px-6 pt-4">
@@ -3127,12 +3599,13 @@ const App: React.FC = () => {
                   lifetimeCorrect={lifetimeCorrect}
                   initialEditSetId={editRequestSetId}
                   onClearEditRequest={() => setEditRequestSetId(null)}
-                  onUploadImage={handleImageUpload}
+                  onUploadImage={OFFLINE_ONLY_MODE || !user ? undefined : handleImageUpload}
                   tags={tags}
                   onUpdateTags={(newTags) => {
                      setTags(newTags);
                      saveTags(newTags, {
                         skipCloud: Boolean(
+                           OFFLINE_ONLY_MODE ||
                            syncInProgressRef.current ||
                            isCloudLoading ||
                            (user && !hasSyncedOnceRef.current)
@@ -3152,6 +3625,7 @@ const App: React.FC = () => {
                   hasCompletedOnboarding={hasCompletedOnboarding}
                   onStartOnboardingTour={handleStartOnboarding}
                   signedInUserName={user?.name || user?.email?.split('@')[0] || null}
+                  offlineMode={OFFLINE_ONLY_MODE}
                />
             )}
 
@@ -3164,6 +3638,7 @@ const App: React.FC = () => {
                   onStartFlashcards={handleStartFlashcardsFromDetail}
                   onUpdateSet={handleUpdateLibrarySet}
                   tags={tags}
+                  canShare={!OFFLINE_ONLY_MODE}
                   onEdit={() => {
                      // Set the edit request and go back to menu
                      setEditRequestSetId(detailSet.id);
@@ -3255,17 +3730,43 @@ const App: React.FC = () => {
             )}
          </main>
 
-         <button
-            type="button"
-            data-tally-open="A7dV60"
-            data-tally-auto-close="1000"
-            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border border-outline bg-panel px-4 py-3 text-sm font-bold text-text shadow-2xl transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
-            aria-label="Open feedback form"
-            title="Send feedback"
-         >
-            <MessageSquare size={16} />
-            <span>Feedback</span>
-         </button>
+         {OFFLINE_ONLY_MODE ? (
+            <button
+               type="button"
+               onClick={handleCreatePayload}
+               className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border border-yellow/40 bg-yellow px-4 py-3 text-sm font-medium text-bg shadow-2xl transition-all hover:-translate-y-0.5 hover:bg-yellow/90 focus:outline-none focus:ring-2 focus:ring-yellow/60"
+               aria-label="Create offline payload"
+               title="Create offline payload"
+            >
+               <Download size={16} />
+               <span>Create Payload</span>
+            </button>
+         ) : isHomeScreenActive && gameState === GameState.MENU ? (
+            <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
+               <button
+                  type="button"
+                  onClick={() => setIsPayloadImportOpen(true)}
+                  className="flex items-center gap-2 rounded-full border border-yellow/40 bg-yellow px-4 py-3 text-sm font-medium text-bg shadow-2xl transition-all hover:-translate-y-0.5 hover:bg-yellow/90 focus:outline-none focus:ring-2 focus:ring-yellow/60"
+                  aria-label="Import offline payload"
+                  title="Import offline payload"
+               >
+                  <Upload size={16} />
+                  <span>Payload</span>
+               </button>
+
+               <button
+                  type="button"
+                  data-tally-open="A7dV60"
+                  data-tally-auto-close="1000"
+                  className="flex items-center gap-2 rounded-full border border-outline bg-panel px-4 py-3 text-sm font-bold text-text shadow-2xl transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+                  aria-label="Open feedback form"
+                  title="Send feedback"
+               >
+                  <MessageSquare size={16} />
+                  <span>Feedback</span>
+               </button>
+            </div>
+         ) : null}
 
          <footer className="py-6 text-center text-muted text-sm border-t border-outline bg-panel-2/50">
             <div className="flex items-center justify-center gap-1.5 mb-3">
