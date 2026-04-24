@@ -95,6 +95,10 @@ const writeLibraryToLocalFallback = (sets: CardSet[], timestamp: number): void =
     }
 };
 
+interface LoadOptions {
+    localOnly?: boolean;
+}
+
 // ============================================================================
 // MIGRATION CHECK
 // ============================================================================
@@ -471,14 +475,16 @@ const buildConflictDetail = (
  * Load library sets
  * In V2, loads from structure + individual .flashcards files
  */
-export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
+export const loadLibrary = async (options?: LoadOptions): Promise<CardSet[] | undefined> => {
     let user = null;
 
     // Try to get user, but don't let Google Drive errors break local loading
-    try {
-        user = await getUser();
-    } catch (error) {
-        console.warn('[Storage] Could not check Google Drive user (this is OK for offline use):', error);
+    if (!options?.localOnly) {
+        try {
+            user = await getUser();
+        } catch (error) {
+            console.warn('[Storage] Could not check Google Drive user (this is OK for offline use):', error);
+        }
     }
 
     // 1. Get Local Cache (we ALWAYS want this as base/fallback)
@@ -548,7 +554,7 @@ export const loadLibrary = async (): Promise<CardSet[] | undefined> => {
         return localSets.length > 0 ? localSets : undefined;
     }
 
-    if (!user) {
+    if (options?.localOnly || !user) {
         return undefined;
     }
 
@@ -691,9 +697,7 @@ export const saveFolders = async (folders: Folder[], options?: { skipCloud?: boo
     await storageV2.updateFolders(normalizedFolders);
 };
 
-export const loadFolders = async (): Promise<Folder[]> => {
-    const user = await getUser();
-
+export const loadFolders = async (options?: LoadOptions): Promise<Folder[]> => {
     // Try local first
     const local = localStorage.getItem(FOLDERS_KEY);
     if (local) {
@@ -702,6 +706,9 @@ export const loadFolders = async (): Promise<Folder[]> => {
         } catch (e) { }
     }
 
+    if (options?.localOnly) return [];
+
+    const user = await getUser();
     if (!user) return [];
 
     // Load from V2
@@ -735,9 +742,7 @@ export const saveSettings = async (settings: Settings, options?: { skipCloud?: b
     await storageV2.updateSettings(settings);
 };
 
-export const loadSettings = async (): Promise<Settings> => {
-    const user = await getUser();
-
+export const loadSettings = async (options?: LoadOptions): Promise<Settings> => {
     // Try local first
     const local = localStorage.getItem(SETTINGS_KEY);
     if (local) {
@@ -748,6 +753,9 @@ export const loadSettings = async (): Promise<Settings> => {
         } catch (e) { }
     }
 
+    if (options?.localOnly) return { ...storageV2.DEFAULT_SETTINGS };
+
+    const user = await getUser();
     if (!user) return { ...storageV2.DEFAULT_SETTINGS };
 
     // Load from V2
@@ -779,9 +787,7 @@ export const saveBadges = async (badges: any[]) => {
     await storageV2.updateBadges(badges);
 };
 
-export const loadBadges = async (): Promise<any[]> => {
-    const user = await getUser();
-
+export const loadBadges = async (options?: LoadOptions): Promise<any[]> => {
     // Try local first
     const local = localStorage.getItem(BADGES_KEY);
     if (local) {
@@ -790,6 +796,9 @@ export const loadBadges = async (): Promise<any[]> => {
         } catch (e) { }
     }
 
+    if (options?.localOnly) return [];
+
+    const user = await getUser();
     if (!user) return [];
 
     // Load from V2
@@ -823,9 +832,7 @@ export const saveTags = async (tags: Tag[], options?: { skipCloud?: boolean }) =
     await storageV2.updateTags(tags);
 };
 
-export const loadTags = async (): Promise<Tag[]> => {
-    const user = await getUser();
-
+export const loadTags = async (options?: LoadOptions): Promise<Tag[]> => {
     // Try local first
     const local = localStorage.getItem(TAGS_KEY);
     if (local) {
@@ -835,6 +842,9 @@ export const loadTags = async (): Promise<Tag[]> => {
         } catch (e) { }
     }
 
+    if (options?.localOnly) return [];
+
+    const user = await getUser();
     if (!user) return [];
 
     // Load from V2
@@ -869,9 +879,7 @@ export const saveStats = async (stats: { lifetimeCorrect: number }, options?: { 
     await storageV2.updateStats(stats);
 };
 
-export const loadStats = async (): Promise<{ lifetimeCorrect: number }> => {
-    const user = await getUser();
-
+export const loadStats = async (options?: LoadOptions): Promise<{ lifetimeCorrect: number }> => {
     // Try local first
     const local = localStorage.getItem(STATS_KEY);
     if (local) {
@@ -880,6 +888,9 @@ export const loadStats = async (): Promise<{ lifetimeCorrect: number }> => {
         } catch (e) { }
     }
 
+    if (options?.localOnly) return { lifetimeCorrect: 0 };
+
+    const user = await getUser();
     if (!user) return { lifetimeCorrect: 0 };
 
     // Load from V2

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, CardSet, Settings } from '../types';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Card, CardSet, Settings, FlashcardsSessionStats } from '../types';
 import { renderMarkdown, renderInline, sanitizeImageUrl } from '../utils';
 import {
     ArrowLeft,
@@ -15,6 +15,7 @@ import {
 import clsx from 'clsx';
 import { Confetti } from './Confetti';
 import { CardTagPill } from './CardTagPill';
+import { StudyModeOptionCard } from './StudyModeOptionCard';
 
 // Encouraging messages for round completion
 const ROUND_MESSAGES = [
@@ -56,15 +57,23 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         return card.id;
     }, [set.isMultistudy]);
 
+    // Helper to find card by ID
+    const findCardById = useCallback((cardId: string): Card | undefined => {
+        return set.cards.find(c => getCardKey(c) === cardId);
+    }, [set.cards, getCardKey]);
+
+    // Initialize from saved session if available
+    const savedSession = set.flashcardsSessionStats;
+
     // Sub-mode selection
-    const [subMode, setSubMode] = useState<FlashcardsSubMode | null>(null);
+    const [subMode, setSubMode] = useState<FlashcardsSubMode | null>(savedSession?.subMode || null);
 
     // Card state
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [isFlipped, setIsFlipped] = useState(false);
-    const [shuffled, setShuffled] = useState(false);
+    const [currentIndex, setCurrentIndex] = useState(savedSession?.currentIndex || 0);
+    const [isFlipped, setIsFlipped] = useState(savedSession?.isFlipped || false);
+    const [shuffled, setShuffled] = useState(savedSession?.shuffled || false);
     const [showConfetti, setShowConfetti] = useState(false);
-    const [stackCompleted, setStackCompleted] = useState(false);
+    const [stackCompleted, setStackCompleted] = useState(savedSession?.stackCompleted || false);
     const [slideDir, setSlideDir] = useState<'next' | 'prev' | null>(null);
 
     // Cards to study (respecting starred only setting)
@@ -80,21 +89,45 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         [baseCards, getCardKey]
     );
 
-    // Working deck (can be shuffled)
-    const [deck, setDeck] = useState<Card[]>(baseCards);
-
-    // Sort mode state
-    const [sortState, setSortState] = useState<SortState>({
-        reviewPile: [],
-        gotItPile: [],
-        history: []
+    // Working deck (can be shuffled) - restore from saved session
+    const [deck, setDeck] = useState<Card[]>(() => {
+        if (savedSession?.deckOrder) {
+            const restoredDeck = savedSession.deckOrder.map(findCardById).filter(Boolean) as Card[];
+            if (restoredDeck.length > 0) return restoredDeck;
+        }
+        return baseCards;
     });
-    const [sortRound, setSortRound] = useState(1);
-    const [sortCompleted, setSortCompleted] = useState(false);
-    const [isRoundFinished, setIsRoundFinished] = useState(false);
+
+    // Track if we've restored from session (to avoid resetting on first render)
+    const hasRestoredRef = useRef(!!savedSession);
+
+    // Sort mode state - restore from saved session
+    const [sortState, setSortState] = useState<SortState>(() => {
+        if (savedSession?.sortState) {
+            return {
+                reviewPile: savedSession.sortState.reviewPileIds.map(findCardById).filter(Boolean) as Card[],
+                gotItPile: savedSession.sortState.gotItPileIds.map(findCardById).filter(Boolean) as Card[],
+                history: []
+            };
+        }
+        return {
+            reviewPile: [],
+            gotItPile: [],
+            history: []
+        };
+    });
+    const [sortRound, setSortRound] = useState(savedSession?.sortState?.sortRound || 1);
+    const [sortCompleted, setSortCompleted] = useState(savedSession?.sortState?.sortCompleted || false);
+    const [isRoundFinished, setIsRoundFinished] = useState(savedSession?.sortState?.isRoundFinished || false);
 
     // Reset deck when base cards change or shuffle setting changes
     useEffect(() => {
+        // Skip reset if we just restored from session
+        if (hasRestoredRef.current) {
+            hasRestoredRef.current = false;
+            return;
+        }
+
         let newDeck = [...baseCards];
 
         if (settings.shuffleCards) {
@@ -135,6 +168,58 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         const randomIndex = Math.floor(Math.random() * ROUND_MESSAGES.length);
         return ROUND_MESSAGES[randomIndex];
     }, [isRoundFinished]);
+
+    // Persist session state
+    const persistSession = useCallback(() => {
+        const sessionStats: FlashcardsSessionStats = {
+            subMode,
+            currentIndex,
+            isFlipped,
+            shuffled,
+            deckOrder: deck.map(getCardKey),
+            sortState: subMode === 'sort' ? {
+                reviewPileIds: sortState.reviewPile.map(getCardKey),
+                gotItPileIds: sortState.gotItPile.map(getCardKey),
+                sortRound,
+                sortCompleted,
+                isRoundFinished
+            } : undefined,
+            stackCompleted: subMode === 'stack' ? stackCompleted : undefined
+        };
+
+        onUpdateSet({
+            ...set,
+            flashcardsSessionStats: sessionStats,
+            isSessionActive: true
+        });
+    }, [subMode, currentIndex, isFlipped, shuffled, deck, sortState, sortRound, sortCompleted, isRoundFinished, stackCompleted, set, onUpdateSet, getCardKey]);
+
+    // Auto-save session periodically
+    useEffect(() => {
+        if (subMode) {
+            persistSession();
+        }
+    }, [currentIndex, subMode, sortState.reviewPile.length, sortState.gotItPile.length, isRoundFinished, stackCompleted]);
+
+    // Handle exit - save progress before exiting (or clear if completed)
+    const handleExit = useCallback(() => {
+        // If completed, clear the session; otherwise save progress
+        const isCompleted = (subMode === 'stack' && stackCompleted) || (subMode === 'sort' && sortCompleted);
+
+        if (isCompleted) {
+            // Clear session when fully completed
+            onUpdateSet({
+                ...set,
+                flashcardsSessionStats: undefined,
+                isSessionActive: false
+            });
+        } else {
+            // Save progress
+            persistSession();
+        }
+
+        onExit();
+    }, [subMode, stackCompleted, sortCompleted, persistSession, onExit, set, onUpdateSet]);
 
     // Shuffle the deck
     const handleShuffle = useCallback(() => {
@@ -389,7 +474,9 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         setIsFlipped(false);
         setStackCompleted(false);
         setShowConfetti(false);
-    }, []);
+        // Persist the reset state
+        setTimeout(() => persistSession(), 0);
+    }, [persistSession]);
 
     // Reset sort mode
     const resetSort = useCallback(() => {
@@ -405,7 +492,9 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         setSortCompleted(false);
         setShowConfetti(false);
         setIsRoundFinished(false);
-    }, [baseCards]);
+        // Persist the reset state
+        setTimeout(() => persistSession(), 0);
+    }, [baseCards, persistSession]);
 
     // Sub-mode selection screen
     if (!subMode) {
@@ -413,7 +502,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
             <div className="w-full max-w-4xl mx-auto pb-20 pt-0 animate-in fade-in">
                 {/* Back Button */}
                 <button
-                    onClick={onExit}
+                    onClick={handleExit}
                     className="mb-8 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                 >
                     <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">
@@ -429,49 +518,45 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
                     {/* Stack Mode */}
-                    <button
+                    <StudyModeOptionCard
+                        title="Stack"
+                        description="Flip through your cards one by one. Use arrow keys or buttons to navigate through the deck."
                         onClick={() => setSubMode('stack')}
-                        className="group relative bg-panel border-2 border-outline hover:border-accent rounded-2xl p-8 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10"
-                    >
-                        <div className="absolute top-4 right-4 p-2 rounded-lg bg-panel-2 text-muted group-hover:text-accent transition-colors">
-                            <Layers size={24} />
-                        </div>
-                        <div className="text-left">
-                            <h3 className="text-2xl font-bold text-text mb-2">Stack</h3>
-                            <p className="text-muted text-sm leading-relaxed">
-                                Flip through your cards one by one. Use arrow keys or buttons to navigate through the deck.
-                            </p>
-                        </div>
-                        <div className="mt-6 flex gap-2">
-                            <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">← →</span>
-                            <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">SPACE</span>
-                        </div>
-                    </button>
+                        topRight={
+                            <div className="p-2 rounded-lg bg-panel-2 text-muted group-hover:text-accent transition-colors">
+                                <Layers size={24} />
+                            </div>
+                        }
+                        footer={
+                            <>
+                                <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">← →</span>
+                                <span className="px-2 py-1 bg-panel-2 rounded text-xs font-mono text-muted">SPACE</span>
+                            </>
+                        }
+                    />
 
                     {/* Sort Mode */}
-                    <button
+                    <StudyModeOptionCard
+                        title="Sort"
+                        description={'Sort cards into "Review" or "Got it" piles. Keep going until you\'ve mastered them all.'}
                         onClick={() => setSubMode('sort')}
-                        className="group relative bg-panel border-2 border-outline hover:border-accent rounded-2xl p-8 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10"
-                    >
-                        <div className="absolute top-4 right-4 flex gap-1">
-                            <div className="p-2 rounded-lg bg-red/10 text-red">
-                                <XCircle size={20} />
+                        topRight={
+                            <div className="flex gap-1">
+                                <div className="p-2 rounded-lg bg-red/10 text-red">
+                                    <XCircle size={20} />
+                                </div>
+                                <div className="p-2 rounded-lg bg-green/10 text-green">
+                                    <CheckCircle2 size={20} />
+                                </div>
                             </div>
-                            <div className="p-2 rounded-lg bg-green/10 text-green">
-                                <CheckCircle2 size={20} />
-                            </div>
-                        </div>
-                        <div className="text-left">
-                            <h3 className="text-2xl font-bold text-text mb-2">Sort</h3>
-                            <p className="text-muted text-sm leading-relaxed">
-                                Sort cards into "Review" or "Got it" piles. Keep going until you've mastered them all.
-                            </p>
-                        </div>
-                        <div className="mt-6 flex gap-2">
-                            <span className="px-2 py-1 bg-red/10 rounded text-xs font-mono text-red">← Review</span>
-                            <span className="px-2 py-1 bg-green/10 rounded text-xs font-mono text-green">Got it →</span>
-                        </div>
-                    </button>
+                        }
+                        footer={
+                            <>
+                                <span className="px-2 py-1 bg-red/10 rounded text-xs font-mono text-red">← Review</span>
+                                <span className="px-2 py-1 bg-green/10 rounded text-xs font-mono text-green">Got it →</span>
+                            </>
+                        }
+                    />
                 </div>
 
                 {/* Card count info */}
@@ -491,7 +576,7 @@ export const FlashcardsMode: React.FC<FlashcardsModeProps> = ({
         return (
             <div className="w-full max-w-4xl mx-auto pb-20 pt-0 text-center animate-in fade-in">
                 <button
-                    onClick={onExit}
+                    onClick={handleExit}
                     className="mb-8 flex items-center gap-3 text-muted hover:text-text transition-colors font-bold uppercase text-xs tracking-wider group"
                 >
                     <div className="p-2 rounded-full border border-outline group-hover:bg-panel group-hover:border-accent transition-colors">

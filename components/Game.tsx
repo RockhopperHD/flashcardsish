@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Card, CardSet, FeedbackState, Settings, CustomFieldDefinition, LearnSessionStats } from '../types';
-import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat, normalizeLearnSessionStats, resetSetStudyProgress } from '../utils';
+import { checkAnswer, checkDefinitionAnswer, renderMarkdown, renderInline, downloadFile, findMixup, sanitizeImageUrl, applyMarkdownFormat, normalizeLearnSessionStats, resetSetStudyProgress, generateId } from '../utils';
 import { ArrowLeft, ChevronLeft, Pencil, X, Download, Info, Minus, ExternalLink, Zap, Layers, Star, CloudLightning, Wind, Lock, Loader2, RotateCcw } from 'lucide-react';
 import clsx from 'clsx';
 import { FloatingToolbar } from './FloatingToolbar';
@@ -9,10 +9,12 @@ import { CardTagPill } from './CardTagPill';
 import { StreakCornerBadge } from './StreakCornerBadge';
 import { CursorTooltip } from './CursorTooltip';
 import { normalizeCardMastery } from '../cardNormalization';
+import { StudyModeOptionCard } from './StudyModeOptionCard';
 
 interface GameProps {
    set: CardSet;
    onUpdateSet: (updatedSet: CardSet) => void;
+   onForkSession: (newSession: CardSet) => void;
    onFinish: () => void;
    settings: Settings;
    onExit: () => void;
@@ -363,10 +365,11 @@ const ABInput = ({
    );
 };
 
-export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings, onExit, onCorrect, onStartGame }) => {
+export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onForkSession, onFinish, settings, onExit, onCorrect, onStartGame }) => {
    // Learn Sub-Mode Selection
    const [subMode, setSubMode] = useState<LearnSubMode | null>(null);
    const [pendingStartMode, setPendingStartMode] = useState<LearnSubMode | null>(null);
+   const [confirmNewSessionMode, setConfirmNewSessionMode] = useState<LearnSubMode | null>(null);
    const [continueSession, setContinueSession] = useState(true);
 
    // Game State
@@ -481,6 +484,7 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
    useEffect(() => {
       setContinueSession(true);
+      setConfirmNewSessionMode(null);
       const normalizedStats = normalizeLearnSessionStats(set.learnSessionStats);
       setSessionStats(normalizedStats);
       sessionStatsRef.current = normalizedStats;
@@ -621,6 +625,32 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
       setSubMode(mode);
       onStartGame();
    }, [commitSessionStats, continueSession, hasOngoingSession, onStartGame, persistSet, set]);
+
+   const requestStartLearnSubMode = useCallback((mode: LearnSubMode) => {
+      if (!continueSession && hasOngoingSession) {
+         setConfirmNewSessionMode(mode);
+         return;
+      }
+
+      startLearnSubMode(mode);
+   }, [continueSession, hasOngoingSession, startLearnSubMode]);
+
+   const confirmStartNewSession = useCallback(() => {
+      if (!confirmNewSessionMode) return;
+      const modeToStart = confirmNewSessionMode;
+      const newSession: CardSet = {
+         ...resetSetStudyProgress(set),
+         id: generateId(),
+         sourceId: set.sourceId ?? set.id,
+         isSessionActive: true,
+         lastPlayed: Date.now(),
+         elapsedTime: 0,
+         topStreak: 0
+      };
+      setConfirmNewSessionMode(null);
+      setPendingStartMode(modeToStart);
+      onForkSession(newSession);
+   }, [confirmNewSessionMode, onForkSession, set]);
 
    const resetSessionProgress = useCallback(() => {
       const resetSet = {
@@ -1818,73 +1848,52 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
                {/* Zen Mode */}
-               <button
-                  onClick={() => startLearnSubMode('zen')}
-                  className="group relative bg-panel border-2 border-outline hover:border-accent rounded-2xl p-8 transition-all hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10 text-left"
-               >
-                  <div className="absolute top-4 right-4 p-2 rounded-lg bg-panel-2 text-muted group-hover:text-accent transition-colors">
-                     <Zap size={24} />
-                  </div>
-                  <div>
-                     <h3 className="text-2xl font-bold text-text mb-2">Zen</h3>
-                     <p className="text-muted text-sm leading-relaxed">
-                        Run through your cards quickly to refresh your memory. Presents cards in one heap with no interruptions or breaks. Best for short decks and quick prep.
-                     </p>
-                  </div>
-                  <div className="mt-6 flex gap-2">
-                     <kbd className="px-2 py-1 bg-panel-2 border-b-2 border-outline/50 rounded text-xs font-bold text-muted font-sans">ENTER</kbd>
-                     <kbd className="px-2 py-1 bg-panel-2 border-b-2 border-outline/50 rounded text-xs font-bold text-muted font-sans">O</kbd>
-                  </div>
-               </button>
+               <StudyModeOptionCard
+                  title="Zen"
+                  description="Run through your cards quickly to refresh your memory. Presents cards in one heap with no interruptions or breaks. Best for short decks and quick prep."
+                  onClick={() => requestStartLearnSubMode('zen')}
+                  topRight={
+                     <div className="p-2 rounded-lg bg-panel-2 text-muted group-hover:text-accent transition-colors">
+                        <Zap size={24} />
+                     </div>
+                  }
+                  footer={
+                     <>
+                        <kbd className="px-2 py-1 bg-panel-2 border-b-2 border-outline/50 rounded text-xs font-bold text-muted font-sans">ENTER</kbd>
+                        <kbd className="px-2 py-1 bg-panel-2 border-b-2 border-outline/50 rounded text-xs font-bold text-muted font-sans">O</kbd>
+                     </>
+                  }
+               />
 
                {/* Batch Mode */}
-               <button
-                  onClick={() => { if (!isBatchDisabled) { startLearnSubMode('batch'); } }}
+               <StudyModeOptionCard
+                  title="Batch"
+                  description="Run through your cards slower to build mastery. Chops your deck up into smaller pieces to focus on. Better for longer decks and deeper memorization."
+                  onClick={() => { if (!isBatchDisabled) { requestStartLearnSubMode('batch'); } }}
                   disabled={isBatchDisabled}
-                  className={clsx(
-                     "group relative bg-panel border-2 rounded-2xl p-8 transition-all text-left",
-                     isBatchDisabled
-                        ? "border-outline/50 opacity-60 cursor-not-allowed"
-                        : "border-outline hover:border-accent hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/10"
-                  )}
-               >
-                  {isBatchDisabled && (
-                     <div className="absolute top-4 left-4 p-1.5 rounded-lg bg-panel-2 text-muted">
+                  topLeft={isBatchDisabled ? (
+                     <div className="p-1.5 rounded-lg bg-panel-2 text-muted">
                         <Lock size={14} />
                      </div>
-                  )}
-                  <div className={clsx(
-                     "absolute top-4 right-4 p-2 rounded-lg bg-panel-2 transition-colors",
-                     isBatchDisabled ? "text-muted/50" : "text-muted group-hover:text-accent"
-                  )}>
-                     <Layers size={24} />
-                  </div>
-                  <div>
-                     <h3 className={clsx(
-                        "text-2xl font-bold mb-2",
-                        isBatchDisabled ? "text-text/50" : "text-text"
-                     )}>Batch</h3>
-                     <p className={clsx(
-                        "text-sm leading-relaxed",
-                        isBatchDisabled ? "text-muted/50" : "text-muted"
+                  ) : undefined}
+                  topRight={
+                     <div className={clsx(
+                        "p-2 rounded-lg bg-panel-2 transition-colors",
+                        isBatchDisabled ? "text-muted/50" : "text-muted group-hover:text-accent"
                      )}>
-                        Run through your cards slower to build mastery. Chops your deck up into smaller pieces to focus on. Better for longer decks and deeper memorization.
-                     </p>
-                  </div>
-                  <div className="mt-6 flex gap-2">
-                     {isBatchDisabled ? (
-                        <span className="px-2 py-1 bg-red/10 rounded text-xs font-bold text-red/70">
-                           Requires 10+ cards
-                        </span>
-                     ) : (
-                        <>
-                           <span className="px-2 py-1 bg-accent/10 rounded text-xs font-bold text-accent">
-                              Auto Batch Size: {effectiveBatchSize}
-                           </span>
-                        </>
-                     )}
-                  </div>
-               </button>
+                        <Layers size={24} />
+                     </div>
+                  }
+                  footer={isBatchDisabled ? (
+                     <span className="px-2 py-1 bg-red/10 rounded text-xs font-bold text-red/70">
+                        Requires 10+ cards
+                     </span>
+                  ) : (
+                     <span className="px-2 py-1 bg-accent/10 rounded text-xs font-bold text-accent">
+                        Auto Batch Size: {effectiveBatchSize}
+                     </span>
+                  )}
+               />
             </div>
 
             {/* Card count info */}
@@ -1928,6 +1937,41 @@ export const Game: React.FC<GameProps> = ({ set, onUpdateSet, onFinish, settings
                      </div>
                   </div>
                </label>
+            )}
+
+            {confirmNewSessionMode && (
+               <div
+                  className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in"
+                  onMouseDown={() => setConfirmNewSessionMode(null)}
+               >
+                  <div
+                     className="bg-panel border border-outline rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95"
+                     onMouseDown={(e) => e.stopPropagation()}
+                  >
+                     <div className="mb-4">
+                        <h3 className="text-xl font-bold text-text mb-2">Start New Session?</h3>
+                        <p className="text-text leading-relaxed">
+                           Are you sure you want to start a new session and not continue your old one?
+                        </p>
+                     </div>
+                     <div className="flex flex-col gap-3">
+                        <button
+                           type="button"
+                           onClick={confirmStartNewSession}
+                           className="w-full py-3 bg-panel-2 border border-outline text-red rounded-xl font-bold hover:bg-red/10 transition-colors"
+                        >
+                           Start New Session
+                        </button>
+                        <button
+                           type="button"
+                           onClick={() => setConfirmNewSessionMode(null)}
+                           className="w-full py-3 text-muted hover:text-text font-medium rounded-xl hover:bg-panel-2 transition-colors duration-150"
+                        >
+                           Cancel
+                        </button>
+                     </div>
+                  </div>
+               </div>
             )}
          </div>
       );

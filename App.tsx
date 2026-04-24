@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { CardSet, GameState, Settings, Folder, Tag } from './types';
-import { fmtTime, generateId, sanitizeSet, syncMultistudySet, resetSetStudyProgress } from './utils';
+import { fmtTime, generateId, sanitizeSet, syncMultistudySet, resetCardStudyProgress, resetSetStudyProgress } from './utils';
 import { StartMenu, type UiAuditRequest } from './components/StartMenu';
 import { Game } from './components/Game';
 import { SetDetail } from './components/SetDetail';
@@ -10,6 +10,8 @@ import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
+import { SRSMode } from './components/SRSMode';
+import { ExamMode } from './components/ExamMode';
 import { KeybindsModal } from './components/KeybindsModal';
 import { Clock, ArrowLeft, Settings as SettingsIcon, X, BookOpen, Heart, RotateCcw, FolderOpen, LayoutGrid, Trash2, LogIn, LogOut, Cloud, Download, Upload, FileText, Lock, Sparkles, Loader2, Globe, Tag as TagIcon, RefreshCw, CheckCircle2, XCircle, Keyboard, Star, ChevronDown, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
@@ -17,6 +19,7 @@ import { saveLibrary, saveDirtySets, loadLibrary, saveFolders, loadFolders, load
 import { normalizeCardSet, readFlashcardSet, readStructure } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { normalizeCardMastery } from './cardNormalization';
+import { normalizeSrsSessionStats } from './srs';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
@@ -34,7 +37,7 @@ const LEGACY_MULTISTUDY_SUFFIX = ' (Legacy Snapshot)';
 const ONBOARDING_TOUR_COMPLETED_KEY = `flashcardsish-onboarding-tour-completed-v1${STORAGE_NAMESPACE_SUFFIX}`;
 const LIBRARY_LOCAL_FALLBACK_KEY = `flashcard-library-v3${STORAGE_NAMESPACE_SUFFIX}`;
 const LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY = `flashcard-library-v3-updated-at${STORAGE_NAMESPACE_SUFFIX}`;
-const ALPHABET_SAMPLE_NAME = 'The Alphabet';
+const ALPHABET_SAMPLE_NAME = 'Fruits';
 type AppToast = {
    id: number;
    type: 'success' | 'error';
@@ -44,9 +47,12 @@ type AppToast = {
 const normalizeLoadedSet = (set: CardSet): CardSet => {
    const sanitized = sanitizeSet(normalizeCardSet(set));
    // Local-only sets should always live in the Local section at root.
-   const normalized = sanitized.isLocalOnly && sanitized.folderId
+   const normalizedBase = sanitized.isLocalOnly && sanitized.folderId
       ? { ...sanitized, folderId: undefined }
       : sanitized;
+   const normalized = normalizedBase.srsSessionStats
+      ? { ...normalizedBase, srsSessionStats: normalizeSrsSessionStats(normalizedBase.srsSessionStats) }
+      : normalizedBase;
    const hasSourceSetIds = Array.isArray(normalized.sourceSetIds) && normalized.sourceSetIds.length > 0;
 
    if (!normalized.isMultistudy || hasSourceSetIds) return normalized;
@@ -686,7 +692,7 @@ const SettingsModal: React.FC<{
       learnModeRightKey2: "Secondary key for Option B / False.",
       autoAdvanceOnAnswer: "If enabled, selecting an A / B or True / False option will automatically advance to the next field or the Submit button. If disabled, you must press Tab or Enter to continue.",
       reduceStreakMotion: "Control whether or not the streak star spins or not.",
-      alphabetSampleSet: "Create a sample library set with A/A through Z/Z.",
+      alphabetSampleSet: "Create a sample library set of 15 fruits and their colors.",
       tabSelectsEverythingInBuilder: "When enabled, pressing tab in the Visual Editor will skip you to the next button on the screen instead of to the next text field."
    };
 
@@ -1092,7 +1098,7 @@ const SettingsModal: React.FC<{
                            <TooltipWrapper id="alphabetSampleSet" tooltip={tooltips.alphabetSampleSet} settings={settings}>
                               <div className="p-3 bg-panel-2 rounded-xl border border-transparent hover:border-accent transition-all">
                                  <div className="flex items-center justify-between gap-4">
-                                    <div className="font-medium text-text">Add The Alphabet</div>
+                                    <div className="font-medium text-text">Add Fruits</div>
                                     <button
                                        onClick={onCreateAlphabetSet}
                                        className="shrink-0 px-3 py-2 rounded-lg bg-accent text-bg text-sm font-bold hover:opacity-90 transition-opacity"
@@ -1532,6 +1538,7 @@ const App: React.FC = () => {
    const [previousGameState, setPreviousGameState] = useState<GameState>(GameState.MENU);
 
    const [user, setUser] = useState<GoogleDriveUser | null>(null);
+   const [isAuthLoading, setIsAuthLoading] = useState(true);
    const [librarySets, setLibrarySets] = useState<CardSet[]>([]);
    const latestLibrarySetsRef = useRef<CardSet[]>([]);
    const [isLibraryLoaded, setIsLibraryLoaded] = useState(false);
@@ -1548,7 +1555,7 @@ const App: React.FC = () => {
    const activeSession = effectiveLibrarySets.find(s => s.id === activeSetId) || null;
    const winSession = completedSession ?? activeSession;
    const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
-   const shouldHighlightSignIn = !OFFLINE_ONLY_MODE && !user && gameState === GameState.MENU && isHomeScreenActive;
+   const shouldHighlightSignIn = !OFFLINE_ONLY_MODE && !user && !isAuthLoading && gameState === GameState.MENU && isHomeScreenActive;
 
    const [settings, setSettings] = useState<Settings>({
       forgiveSpellingErrors: true,
@@ -1837,8 +1844,15 @@ const App: React.FC = () => {
       syncInProgressRef.current = true;
       setIsCloudLoading(true);
       try {
-         const data = await loadAllUserData();
+         const dataRace = await Promise.race([
+            loadAllUserData(),
+            new Promise<null>(resolve => window.setTimeout(() => resolve(null), 60_000)),
+         ]);
+         const data = dataRace;
          if (!data) {
+            setCloudSyncStatus('error');
+            if (cloudSyncTimeoutRef.current) clearTimeout(cloudSyncTimeoutRef.current);
+            cloudSyncTimeoutRef.current = setTimeout(() => setCloudSyncStatus('idle'), 5000);
             return;
          }
 
@@ -2359,11 +2373,12 @@ const App: React.FC = () => {
 
       const initializeAuth = async () => {
          try {
-            await googleDrive.init();
             const currentUser = await googleDrive.getSession();
             setUser(currentUser);
          } catch (error) {
             console.error('Failed to initialize Google Drive:', error);
+         } finally {
+            setIsAuthLoading(false);
          }
       };
 
@@ -2460,11 +2475,11 @@ const App: React.FC = () => {
                loadedStatsData,
                loadedTagsData
             ] = await Promise.all([
-               loadLibrary(),
-               loadFolders(),
-               loadSettings(),
-               loadStats(),
-               loadTags()
+               loadLibrary({ localOnly: true }),
+               loadFolders({ localOnly: true }),
+               loadSettings({ localOnly: true }),
+               loadStats({ localOnly: true }),
+               loadTags({ localOnly: true })
             ]);
 
             const setsToUse = Array.isArray(loadedSets) ? loadedSets : [];
@@ -2772,6 +2787,18 @@ const App: React.FC = () => {
       setGameState(GameState.FLASHCARDS);
    };
 
+   const handleStartSRSFromDetail = () => {
+      if (!detailSet) return;
+      setActiveSetId(detailSet.id);
+      setGameState(GameState.SRS);
+   };
+
+   const handleStartExamFromDetail = () => {
+      if (!detailSet) return;
+      setActiveSetId(detailSet.id);
+      setGameState(GameState.EXAM);
+   };
+
    const handleStartFromLibrary = (libSet: CardSet) => {
       // Sanitize and normalize before entering session flow.
       const sanitized = normalizeLoadedSet(libSet);
@@ -2817,7 +2844,14 @@ const App: React.FC = () => {
       setTimerStart(Date.now());
       setTimerNow(Date.now());
       setIsTimerPaused(false);
-      setGameState(GameState.PLAYING);
+      // Check session type and route accordingly
+      if (session.srsSessionStats) {
+         setGameState(GameState.SRS);
+      } else if (session.flashcardsSessionStats) {
+         setGameState(GameState.FLASHCARDS);
+      } else {
+         setGameState(GameState.PLAYING);
+      }
    };
 
    const handleSaveToLibrary = (set: CardSet) => {
@@ -2854,7 +2888,8 @@ const App: React.FC = () => {
             elapsedTime: 0,
             topStreak: 0,
             learnSessionStats: undefined,
-            cards: set.cards.map(c => ({ ...c, mastery: 0 }))
+            srsSessionStats: undefined,
+            cards: set.cards.map(resetCardStudyProgress)
          };
          setLibrarySets(prev => [newSet, ...prev]);
       }
@@ -2930,6 +2965,29 @@ const App: React.FC = () => {
          }
          return nextLibrary;
       });
+   };
+
+   const handleForkActiveSession = (newSession: CardSet) => {
+      const now = Date.now();
+      const nextSession = {
+         ...newSession,
+         isSessionActive: true,
+         lastPlayed: now,
+         elapsedTime: 0
+      };
+
+      setLibrarySets(prev => {
+         const exists = prev.some(s => s.id === nextSession.id);
+         if (exists) {
+            return prev.map(s => s.id === nextSession.id ? nextSession : s);
+         }
+         return [nextSession, ...prev];
+      });
+
+      setActiveSetId(nextSession.id);
+      setTimerStart(now);
+      setTimerNow(now);
+      setIsTimerPaused(false);
    };
 
 
@@ -3079,14 +3137,30 @@ const App: React.FC = () => {
          set => set.name.trim().toLocaleLowerCase() === normalizedSampleName
       );
 
-      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+      const fruits = [
+         { name: 'apple', desc: 'A red fruit' },
+         { name: 'banana', desc: 'A yellow fruit' },
+         { name: 'orange', desc: 'An orange citrus fruit' },
+         { name: 'grape', desc: 'A small purple or green fruit' },
+         { name: 'strawberry', desc: 'A red berry with seeds on the outside' },
+         { name: 'blueberry', desc: 'A small blue berry' },
+         { name: 'watermelon', desc: 'A large green fruit with red flesh' },
+         { name: 'pineapple', desc: 'A spiky tropical fruit' },
+         { name: 'mango', desc: 'A sweet tropical fruit with a large pit' },
+         { name: 'peach', desc: 'A fuzzy fruit with a pit' },
+         { name: 'pear', desc: 'A light green or yellow fruit' },
+         { name: 'cherry', desc: 'A small red stone fruit' },
+         { name: 'kiwi', desc: 'A small brown fuzzy fruit with green flesh' },
+         { name: 'lemon', desc: 'A sour yellow citrus fruit' },
+         { name: 'lime', desc: 'A sour green citrus fruit' }
+      ];
       const alphabetSet: CardSet = {
          id: existingAlphabetSet?.id || generateId(),
          name: ALPHABET_SAMPLE_NAME,
-         cards: letters.map(letter => ({
+         cards: fruits.map(fruit => ({
             id: generateId(),
-            term: [letter],
-            content: letter,
+            term: [fruit.name],
+            content: fruit.desc,
             year: '',
             customFields: [],
             mastery: 0,
@@ -3437,15 +3511,25 @@ const App: React.FC = () => {
 
                   {/* Cloud Sync Status Indicator */}
                   {user && (isCloudLoading || cloudSyncStatus === 'saving') && (
-                     <div
-                        className={clsx(
-                           "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
-                           "text-amber-400"
-                        )}
-                        title="Flashcardsish is currently syncing your data with Google Drive."
+                     <CursorTooltip
+                        content={
+                           !hasSyncedOnceRef.current
+                              ? "Syncing your Google Drive data. You can keep editing safely: changes stay local first and upload after sync finishes."
+                              : "Syncing your latest changes to Google Drive."
+                        }
+                        isEnabled={!settings.hideTooltips}
+                        tooltipClassName="w-80 max-w-[90vw]"
                      >
-                        <RefreshCw size={14} className="animate-spin" />
-                     </div>
+                        <div
+                           className={clsx(
+                              "flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-all",
+                              "text-amber-400"
+                           )}
+                           aria-label="Google Drive sync in progress"
+                        >
+                           <RefreshCw size={14} className="animate-spin" />
+                        </div>
+                     </CursorTooltip>
                   )}
 
                   {user && !(isCloudLoading || cloudSyncStatus === 'saving') && (
@@ -3624,6 +3708,7 @@ const App: React.FC = () => {
                   homeNavigationNonce={menuHomeClickNonce}
                   hasCompletedOnboarding={hasCompletedOnboarding}
                   onStartOnboardingTour={handleStartOnboarding}
+                  isAuthLoading={isAuthLoading}
                   signedInUserName={user?.name || user?.email?.split('@')[0] || null}
                   offlineMode={OFFLINE_ONLY_MODE}
                />
@@ -3636,6 +3721,8 @@ const App: React.FC = () => {
                   onBack={handleBackFromDetail}
                   onStartLearn={handleStartLearnFromDetail}
                   onStartFlashcards={handleStartFlashcardsFromDetail}
+                  onStartSRS={handleStartSRSFromDetail}
+                  onStartExam={handleStartExamFromDetail}
                   onUpdateSet={handleUpdateLibrarySet}
                   tags={tags}
                   canShare={!OFFLINE_ONLY_MODE}
@@ -3661,6 +3748,7 @@ const App: React.FC = () => {
                <Game
                   set={activeSession}
                   onUpdateSet={handleUpdateActiveSession}
+                  onForkSession={handleForkActiveSession}
                   onFinish={handleFinish}
                   settings={settings}
                   onExit={handleBackFromLearnToDetail}
@@ -3679,6 +3767,32 @@ const App: React.FC = () => {
                      setActiveSetId(null);
                   }}
                   onUpdateSet={handleUpdateLibrarySet}
+               />
+            )}
+
+            {gameState === GameState.SRS && activeSession && (
+               <SRSMode
+                  set={activeSession}
+                  settings={settings}
+                  onExit={() => {
+                     setDetailSetId(activeSession.id);
+                     setGameState(GameState.SET_DETAIL);
+                     setActiveSetId(null);
+                  }}
+                  onUpdateSet={handleUpdateLibrarySet}
+                  onUseLearnInstead={() => handleStartFromLibrary(activeSession)}
+               />
+            )}
+
+            {gameState === GameState.EXAM && activeSession && (
+               <ExamMode
+                  set={activeSession}
+                  settings={settings}
+                  onExit={() => {
+                     setDetailSetId(activeSession.id);
+                     setGameState(GameState.SET_DETAIL);
+                     setActiveSetId(null);
+                  }}
                />
             )}
 

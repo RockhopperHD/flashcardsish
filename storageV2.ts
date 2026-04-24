@@ -18,6 +18,7 @@ import { CardSet, Card, Folder, Settings, SetMetadata, Tag } from './types';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
 import { normalizeCardMastery, normalizeCardStar } from './cardNormalization';
 import { OFFLINE_ONLY_MODE, STORAGE_NAMESPACE_SUFFIX } from './runtimeMode';
+import { normalizeSrsMastery, normalizeSrsSessionStats } from './srs';
 
 // ============================================================================
 // CONSTANTS
@@ -115,6 +116,7 @@ export interface FlashcardFile {
     topStreak: number;
     isSessionActive?: boolean;
     learnSessionStats?: CardSet['learnSessionStats'];
+    srsSessionStats?: CardSet['srsSessionStats'];
     isMultistudy?: boolean;
     sourceSetIds?: string[];
     isLocalOnly?: boolean;
@@ -315,6 +317,11 @@ const normalizeCard = (rawCard: any): Card | null => {
         tags: normalizedTags && normalizedTags.length > 0 ? normalizedTags : undefined,
         mastery: normalizeCardMastery(card.mastery),
         star: normalizeCardStar(card.star),
+        srsMastery: normalizeSrsMastery(card.srsMastery),
+        easinessFactor: Number.isFinite(Number(card.easinessFactor)) ? Math.max(1.3, Number(card.easinessFactor)) : undefined,
+        interval: Number.isFinite(Number(card.interval)) ? Math.max(0, Number(card.interval)) : undefined,
+        repetitions: Number.isFinite(Number(card.repetitions)) ? Math.max(0, Math.trunc(Number(card.repetitions))) : undefined,
+        nextReviewDate: Number.isFinite(Number(card.nextReviewDate)) ? Math.max(0, Number(card.nextReviewDate)) : undefined,
         originalSetId: typeof card.originalSetId === 'string' ? card.originalSetId : undefined,
         originalSetName: typeof card.originalSetName === 'string' ? card.originalSetName : undefined
     };
@@ -491,6 +498,7 @@ const setToFile = (set: CardSet, modifiedAt?: number): FlashcardFile => {
         topStreak: normalizedSet.topStreak,
         isSessionActive: normalizedSet.isSessionActive,
         learnSessionStats: normalizedSet.learnSessionStats,
+        srsSessionStats: normalizedSet.srsSessionStats ? normalizeSrsSessionStats(normalizedSet.srsSessionStats) : undefined,
         isMultistudy: normalizedSet.isMultistudy,
         sourceSetIds: normalizedSet.sourceSetIds,
         isLocalOnly: normalizedSet.isLocalOnly,
@@ -521,6 +529,7 @@ const fileToSet = (file: FlashcardFile, folderId?: string): CardSet => {
         topStreak: cleanFile.topStreak,
         isSessionActive: cleanFile.isSessionActive,
         learnSessionStats: cleanFile.learnSessionStats,
+        srsSessionStats: cleanFile.srsSessionStats ? normalizeSrsSessionStats(cleanFile.srsSessionStats) : undefined,
         isMultistudy: cleanFile.isMultistudy,
         sourceSetIds: cleanFile.sourceSetIds,
         isLocalOnly: cleanFile.isLocalOnly,
