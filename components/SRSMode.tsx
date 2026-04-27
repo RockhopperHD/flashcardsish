@@ -241,6 +241,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
   const [showTestDatePrompt, setShowTestDatePrompt] = useState(() => !set.srsSessionStats);
   const [customDateInput, setCustomDateInput] = useState<CustomDateInput>(() => formatCustomDateInput(set.srsSessionStats?.testDate));
   const [isFlipped, setIsFlipped] = useState(false);
+  const [cards, setCards] = useState<Card[]>(() => set.cards);
   const [currentStreak, setCurrentStreak] = useState(0);
   const [topStreak, setTopStreak] = useState(set.topStreak || 0);
   const [isManageSessionOpen, setIsManageSessionOpen] = useState(false);
@@ -254,6 +255,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
   useEffect(() => {
     const nextStats = set.srsSessionStats ? normalizeSrsSessionStats(set.srsSessionStats) : createEmptySrsSessionStats();
     setSessionStats(nextStats);
+    setCards(set.cards);
     setShowTestDatePrompt(!set.srsSessionStats);
     setIsCustomDateEntryOpen(false);
     setIsMonthDropdownOpen(false);
@@ -267,12 +269,16 @@ export const SRSMode: React.FC<SRSModeProps> = ({
     setClockNow(Date.now());
   }, [set.id]);
 
+  useEffect(() => {
+    setCards(set.cards);
+  }, [set.cards]);
+
   const studyCards = useMemo(() => {
     if (settings.starredOnly) {
-      return set.cards.filter(card => card.star);
+      return cards.filter(card => card.star);
     }
-    return set.cards;
-  }, [set.cards, settings.starredOnly]);
+    return cards;
+  }, [cards, settings.starredOnly]);
 
   const dueCards = useMemo(
     () => studyCards.filter(card => isSrsCardDue(card, clockNow)).sort(dueCardSorter),
@@ -333,7 +339,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
   );
 
   const persistSessionState = useCallback((
-    nextCards: Card[] = set.cards,
+    nextCards: Card[] = cards,
     nextSessionStats: SRSSessionStats | null = sessionStats,
     overrides?: Partial<CardSet>
   ) => {
@@ -344,7 +350,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
       isSessionActive: nextSessionStats ? true : false,
       ...overrides
     });
-  }, [onUpdateSet, sessionStats, set]);
+  }, [cards, onUpdateSet, sessionStats, set]);
 
   const syncSessionTargetDate = useCallback((testDate?: number) => {
     const currentCardId = currentCard ? getCardKey(currentCard) : (reviewQueue[0] ? getCardKey(reviewQueue[0]) : null);
@@ -354,8 +360,8 @@ export const SRSMode: React.FC<SRSModeProps> = ({
       currentCardId
     };
     setSessionStats(nextStats);
-    persistSessionState(set.cards, nextStats);
-  }, [currentCard, getCardKey, persistSessionState, reviewQueue, sessionStats, set.cards]);
+    persistSessionState(cards, nextStats);
+  }, [cards, currentCard, getCardKey, persistSessionState, reviewQueue, sessionStats]);
 
   const handleTestDateSelection = useCallback((testDate?: number) => {
     setShowTestDatePrompt(false);
@@ -392,10 +398,10 @@ export const SRSMode: React.FC<SRSModeProps> = ({
       const currentCardId = currentCard ? getCardKey(currentCard) : null;
       const nextStats: SRSSessionStats = { ...sessionStats, currentCardId };
       setSessionStats(nextStats);
-      persistSessionState(set.cards, nextStats);
+      persistSessionState(cards, nextStats);
     }
     onExit();
-  }, [currentCard, getCardKey, onExit, persistSessionState, sessionStats, set.cards, set.srsSessionStats, showTestDatePrompt]);
+  }, [cards, currentCard, getCardKey, onExit, persistSessionState, sessionStats, set.srsSessionStats, showTestDatePrompt]);
 
   const handleFlip = useCallback(() => {
     if (!currentCard) return;
@@ -406,12 +412,13 @@ export const SRSMode: React.FC<SRSModeProps> = ({
     if (!currentCard) return;
 
     const currentCardId = getCardKey(currentCard);
-    const nextCards = set.cards.map(card =>
+    const nextCards = cards.map(card =>
       getCardKey(card) === currentCardId ? { ...card, star: !card.star } : card
     );
 
+    setCards(nextCards);
     persistSessionState(nextCards);
-  }, [currentCard, getCardKey, persistSessionState, set.cards]);
+  }, [cards, currentCard, getCardKey, persistSessionState]);
 
   const handleRating = useCallback((rating: SRSRating) => {
     if (!currentCard) return;
@@ -419,7 +426,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
     const now = Date.now();
     const currentCardId = getCardKey(currentCard);
     const { updatedCard } = scheduleSrsReview(currentCard, rating, sessionStats.testDate, now);
-    const nextCards = set.cards.map(card => getCardKey(card) === currentCardId ? updatedCard : card);
+    const nextCards = cards.map(card => getCardKey(card) === currentCardId ? updatedCard : card);
     const nextStudyCards = settings.starredOnly ? nextCards.filter(card => card.star) : nextCards;
     const nextReviewQueue = nextStudyCards.filter(card => isSrsCardDue(card, now)).sort(dueCardSorter);
     const nextCurrentCardId = nextReviewQueue[0] ? getCardKey(nextReviewQueue[0]) : null;
@@ -436,6 +443,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
       totalReviews: sessionStats.totalReviews + 1
     };
 
+    setCards(nextCards);
     setSessionStats(nextSessionStats);
     setCurrentStreak(nextStreak);
     setIsFlipped(false);
@@ -444,10 +452,10 @@ export const SRSMode: React.FC<SRSModeProps> = ({
     persistSessionState(nextCards, nextSessionStats, {
       topStreak: nextTopStreak
     });
-  }, [currentCard, currentStreak, dueCardSorter, getCardKey, persistSessionState, sessionStats, set, settings.starredOnly, topStreak]);
+  }, [cards, currentCard, currentStreak, dueCardSorter, getCardKey, persistSessionState, sessionStats, settings.starredOnly, topStreak]);
 
   const handleReset = useCallback(() => {
-    const resetCards = set.cards.map(card => ({
+    const resetCards = cards.map(card => ({
       ...card,
       srsMastery: 0,
       easinessFactor: undefined,
@@ -457,6 +465,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
     }));
 
     const nextSessionStats = createEmptySrsSessionStats();
+    setCards(resetCards);
     setSessionStats(nextSessionStats);
     setShowTestDatePrompt(true);
     setIsCustomDateEntryOpen(false);
@@ -476,7 +485,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
       srsSessionStats: undefined,
       isSessionActive: false
     });
-  }, [onUpdateSet, set]);
+  }, [cards, onUpdateSet, set]);
 
   const shortcutKeys = useMemo(
     () => getSrsShortcutKeys(settings.multipleChoiceKeybindStyle),
@@ -509,7 +518,7 @@ export const SRSMode: React.FC<SRSModeProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleFlip, handleRating, isFlipped, isManageSessionOpen, isResetConfirmOpen, shortcutKeys, showTestDatePrompt, showWarningModal]);
 
-  const counts = useMemo(() => getSrsCounts(set.cards), [set.cards]);
+  const counts = useMemo(() => getSrsCounts(cards), [cards]);
   const nextDueDate = useMemo(() => getNextDueDate(studyCards), [studyCards]);
   const countdownText = nextDueDate ? formatSrsCountdown(Math.max(0, nextDueDate - clockNow)) : null;
   const termLabel = set.termLabel || 'Term';
