@@ -137,6 +137,107 @@ const LEADING_TAG_REGEX = /^(\s*\([^)]+\)\s*)+/;
 const getBuilderDuplicateKey = (term: string): string =>
   term.replace(LEADING_TAG_REGEX, "").trim().toLowerCase();
 
+const reconcileLearnSessionStats = (
+  stats: CardSet["learnSessionStats"],
+  cards: Card[],
+): CardSet["learnSessionStats"] => {
+  if (!stats) return undefined;
+
+  const remainingCardIds = new Set(cards.map((card) => card.id));
+  const labelsById = new Map(
+    cards.map((card) => [card.id, card.term[0] || card.content || "Untitled Card"]),
+  );
+
+  return {
+    ...stats,
+    cardStats: Object.entries(stats.cardStats || {}).reduce<
+      NonNullable<CardSet["learnSessionStats"]>["cardStats"]
+    >((acc, [cardId, cardStat]) => {
+      if (!remainingCardIds.has(cardId)) return acc;
+      acc[cardId] = {
+        ...cardStat,
+        label: labelsById.get(cardId) || cardStat.label,
+      };
+      return acc;
+    }, {}),
+  };
+};
+
+const reconcileFlashcardsSessionStats = (
+  stats: CardSet["flashcardsSessionStats"],
+  cards: Card[],
+): CardSet["flashcardsSessionStats"] => {
+  if (!stats) return undefined;
+
+  const remainingCardIds = new Set(cards.map((card) => card.id));
+  const filteredDeckOrder = stats.deckOrder.filter((cardId) => remainingCardIds.has(cardId));
+  const fallbackDeckLength = filteredDeckOrder.length > 0 ? filteredDeckOrder.length : cards.length;
+  const filteredReviewPileIds = stats.sortState?.reviewPileIds.filter((cardId) => remainingCardIds.has(cardId)) || [];
+  const filteredGotItPileIds = stats.sortState?.gotItPileIds.filter((cardId) => remainingCardIds.has(cardId)) || [];
+
+  return {
+    ...stats,
+    currentIndex: fallbackDeckLength > 0 ? Math.min(stats.currentIndex, fallbackDeckLength - 1) : 0,
+    deckOrder: filteredDeckOrder,
+    sortState: stats.sortState
+      ? {
+          ...stats.sortState,
+          reviewPileIds: filteredReviewPileIds,
+          gotItPileIds: filteredGotItPileIds,
+        }
+      : undefined,
+  };
+};
+
+const reconcileSrsSessionStats = (
+  stats: CardSet["srsSessionStats"],
+  cards: Card[],
+): CardSet["srsSessionStats"] => {
+  if (!stats) return undefined;
+
+  const remainingCardIds = new Set(cards.map((card) => card.id));
+
+  return {
+    ...stats,
+    currentCardId:
+      stats.currentCardId && remainingCardIds.has(stats.currentCardId)
+        ? stats.currentCardId
+        : null,
+  };
+};
+
+const preserveEditedSetProgress = (
+  nextSet: CardSet,
+  previousSet?: CardSet,
+): CardSet => {
+  if (!previousSet) return nextSet;
+
+  const previousCardsById = new Map(previousSet.cards.map((card) => [card.id, card]));
+  const cards = nextSet.cards.map((card) => {
+    const previousCard = previousCardsById.get(card.id);
+    if (!previousCard) return card;
+
+    return {
+      ...card,
+      mastery: previousCard.mastery,
+      srsMastery: previousCard.srsMastery,
+      easinessFactor: previousCard.easinessFactor,
+      interval: previousCard.interval,
+      repetitions: previousCard.repetitions,
+      nextReviewDate: previousCard.nextReviewDate,
+    };
+  });
+
+  return {
+    ...previousSet,
+    ...nextSet,
+    cards,
+    learnSessionStats: reconcileLearnSessionStats(previousSet.learnSessionStats, cards),
+    flashcardsSessionStats: reconcileFlashcardsSessionStats(previousSet.flashcardsSessionStats, cards),
+    srsSessionStats: reconcileSrsSessionStats(previousSet.srsSessionStats, cards),
+  };
+};
+
 export type UiAuditRequest =
   | { type: "add-set" }
   | { type: "set-config" }
@@ -4343,7 +4444,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       return;
     }
 
-    const newSet: CardSet = {
+    const oldSet = editingSetId
+      ? librarySets.find((s) => s.id === editingSetId)
+      : undefined;
+
+    let newSet: CardSet = {
       id: editingSetId || generateId(),
       name: setName,
       cards,
@@ -4360,11 +4465,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       tags: appliedTags,
     };
 
-    if (editingSetId) {
-      const oldSet = librarySets.find((s) => s.id === editingSetId);
-      if (oldSet) {
-        newSet.folderId = oldSet.folderId;
-      }
+    if (oldSet) {
+      newSet.folderId = oldSet.folderId;
+      newSet = preserveEditedSetProgress(newSet, oldSet);
     }
 
     onSaveToLibrary(newSet);
