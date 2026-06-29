@@ -269,23 +269,41 @@ export const resetSetStudyProgress = (set: CardSet): CardSet => ({
   cards: set.cards.map(resetCardStudyProgress)
 });
 
+const MAX_ANSWER_MATCH_LENGTH = 2000;
+
 // Levenshtein Distance for Fuzzy Matching
-export const distance = (a: string, b: string): number => {
+export const distance = (a: string, b: string, maxDistance = Infinity): number => {
   const _a = a.toLowerCase();
   const _b = b.toLowerCase();
+  const bounded = Number.isFinite(maxDistance);
+
+  if (bounded && Math.abs(_a.length - _b.length) > maxDistance) {
+    return maxDistance + 1;
+  }
+
   const dp = new Array(_b.length + 1);
   for (let j = 0; j <= _b.length; j++) dp[j] = j;
   for (let i = 1; i <= _a.length; i++) {
     let prev = i - 1;
     dp[0] = i;
+    let rowMin = dp[0];
+
     for (let j = 1; j <= _b.length; j++) {
       const temp = dp[j];
       dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + (_a[i - 1] === _b[j - 1] ? 0 : 1));
+      rowMin = Math.min(rowMin, dp[j]);
       prev = temp;
+    }
+
+    if (bounded && rowMin > maxDistance) {
+      return maxDistance + 1;
     }
   }
   return dp[_b.length];
 };
+
+const canFuzzyCompare = (a: string, b: string): boolean =>
+  a.length <= MAX_ANSWER_MATCH_LENGTH && b.length <= MAX_ANSWER_MATCH_LENGTH;
 
 const normalizeForAnswerMatch = (
   value: string,
@@ -330,11 +348,15 @@ export const checkAnswer = (
 ) => {
   // 1. Check Term
   const strippedInput = normalizeForAnswerMatch(inputTerm);
+  const threshold = strict ? 0 : 2;
   let bestDist = Infinity;
   let bestTerm = '';
 
   for (const t of card.term) {
-    const dist = distance(strippedInput, normalizeForAnswerMatch(t));
+    const normalizedTerm = normalizeForAnswerMatch(t);
+    const dist = canFuzzyCompare(strippedInput, normalizedTerm)
+      ? distance(strippedInput, normalizedTerm, threshold)
+      : Infinity;
     if (dist < bestDist) {
       bestDist = dist;
       bestTerm = t;
@@ -342,7 +364,6 @@ export const checkAnswer = (
   }
 
   // Strict: distance must be 0. Loose: distance <= 2
-  const threshold = strict ? 0 : 2;
   const isTermMatch = bestDist <= threshold;
 
   // 2. Check Year (if applicable)
@@ -400,11 +421,12 @@ export const checkDefinitionAnswer = (
   const strippedInput = normalizeForAnswerMatch(inputDefinition, { flattenBlocks: true });
   const strippedContent = normalizeForAnswerMatch(card.content, { flattenBlocks: true });
 
-  const def_dist = distance(strippedInput, strippedContent);
-
   // For definitions, we use a proportional threshold since they can be longer
   // Strict: distance must be 0. Loose: distance <= max(2, 5% of content length)
   const threshold = strict ? 0 : Math.max(2, Math.floor(strippedContent.length * 0.05));
+  const def_dist = canFuzzyCompare(strippedInput, strippedContent)
+    ? distance(strippedInput, strippedContent, threshold)
+    : Infinity;
   const isDefinitionMatch = def_dist <= threshold;
 
   // 2. Check Year (if applicable)

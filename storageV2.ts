@@ -69,6 +69,23 @@ const DRIVE_FOLDER_ID_KEY = `flashcardsish-drive-folder-id${STORAGE_NAMESPACE_SU
 const CLOUD_BACKUP_LAST_AT_KEY = `flashcardsish-cloud-backup-last-at${STORAGE_NAMESPACE_SUFFIX}`;
 const CLOUD_BACKUP_INTERVAL_MS = 10 * 60 * 1000;
 const CLOUD_BACKUP_MAX_FILES = 25;
+const SAFE_STORAGE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+const createStorageId = (prefix: string): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
+const getSafeStorageId = (id: unknown): string | null => {
+    if (typeof id !== 'string') return null;
+    const trimmed = id.trim();
+    return SAFE_STORAGE_ID_RE.test(trimmed) ? trimmed : null;
+};
+
+const normalizeStorageId = (id: unknown, prefix: string): string =>
+    getSafeStorageId(id) ?? createStorageId(prefix);
 
 // ============================================================================
 // TYPES
@@ -197,6 +214,38 @@ const createDefaultStructure = (): StructureFile => ({
     },
     setManifest: {}
 });
+
+const uniqueSafeIds = (ids: unknown): string[] => {
+    if (!Array.isArray(ids)) return [];
+    return Array.from(new Set(ids.map(getSafeStorageId).filter((id): id is string => Boolean(id))));
+};
+
+const normalizeStructure = (structure: StructureFile): StructureFile => {
+    const folders = Array.isArray(structure.folders)
+        ? structure.folders
+            .filter((folder): folder is Folder => typeof folder === 'object' && folder !== null)
+            .map(folder => ({
+                ...folder,
+                id: normalizeStorageId(folder.id, 'folder'),
+                setIds: uniqueSafeIds(folder.setIds)
+            }))
+        : [];
+
+    const setManifest = Object.entries(structure.setManifest || {}).reduce<Record<string, SetManifestEntry>>((acc, [id, entry]) => {
+        const safeId = getSafeStorageId(id);
+        if (safeId) {
+            acc[safeId] = entry;
+        }
+        return acc;
+    }, {});
+
+    return {
+        ...structure,
+        folders,
+        rootSets: uniqueSafeIds(structure.rootSets),
+        setManifest
+    };
+};
 
 /**
  * Deep merge two objects, preferring values from 'updates' but keeping
@@ -463,6 +512,7 @@ export const normalizeCardSet = (cardSet: CardSet): CardSet => {
     const cleanSet = sanitizeStrings(cardSet);
     return {
         ...cleanSet,
+        id: normalizeStorageId(cleanSet.id, 'set'),
         cards: normalizeCards(cleanSet.cards || [])
     };
 };
@@ -471,6 +521,7 @@ const normalizeFlashcardFile = (file: FlashcardFile): FlashcardFile => {
     const cleanFile = sanitizeStrings(file);
     return {
         ...cleanFile,
+        id: normalizeStorageId(cleanFile.id, 'set'),
         cards: normalizeCards(cleanFile.cards || [])
     };
 };
@@ -742,7 +793,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
             if (!hadError) {
                 // Merge with defaults so newly-added fields are always present
                 const defaults = createDefaultStructure();
-                const merged: StructureFile = {
+                const merged: StructureFile = normalizeStructure({
                     ...defaults,
                     ...data,
                     stats: { ...defaults.stats, ...(data.stats || {}) },
@@ -751,7 +802,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
                     folders: data.folders ?? defaults.folders,
                     rootSets: data.rootSets ?? defaults.rootSets,
                     setManifest: data.setManifest ?? defaults.setManifest,
-                };
+                });
                 return { structure: merged, wasCorrupted: false };
             }
         }
@@ -782,7 +833,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
 
         // Merge with defaults so newly-added fields are always present
         const defaults = createDefaultStructure();
-        const merged: StructureFile = {
+        const merged: StructureFile = normalizeStructure({
             ...defaults,
             ...data,
             stats: { ...defaults.stats, ...(data.stats || {}) },
@@ -791,7 +842,7 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
             folders: data.folders ?? defaults.folders,
             rootSets: data.rootSets ?? defaults.rootSets,
             setManifest: data.setManifest ?? defaults.setManifest,
-        };
+        });
 
         // Cache locally
         localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(merged));
@@ -808,11 +859,14 @@ export const readStructure = async (forceCloud = false): Promise<{ structure: St
  */
 export const writeStructure = async (structure: StructureFile): Promise<void> => {
     // Always ensure warning header
-    structure._WARNING = WARNING_LINES;
-    structure.version = CURRENT_VERSION;
+    const normalizedStructure = normalizeStructure({
+        ...structure,
+        _WARNING: WARNING_LINES,
+        version: CURRENT_VERSION
+    });
 
     // Cache locally
-    localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(structure));
+    localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(normalizedStructure));
 
     const user = await getUser();
     if (!user) return;
@@ -821,9 +875,9 @@ export const writeStructure = async (structure: StructureFile): Promise<void> =>
         const folderId = await ensureDriveFolder();
 
         // Check for orphaned .flashcards files before saving
-        await discoverOrphanedSets(folderId, structure);
+        await discoverOrphanedSets(folderId, normalizedStructure);
 
-        await googleDrive.writeFile(folderId, 'structure.json', JSON.stringify(structure, null, 2));
+        await googleDrive.writeFile(folderId, 'structure.json', JSON.stringify(normalizedStructure, null, 2));
     } catch (error) {
         console.error('[StorageV2] Failed to write structure:', error);
     }
@@ -844,7 +898,10 @@ const discoverOrphanedSets = async (folderId: string, structure: StructureFile):
 
         // Find orphaned files
         for (const file of files) {
-            const setId = file.name.replace('.flashcards', '');
+            const setId = getSafeStorageId(file.name.replace('.flashcards', ''));
+            if (!setId) {
+                continue;
+            }
             if (!knownIds.has(setId)) {
                 // console.log('[StorageV2] Found orphaned set, adding to root:', setId);
                 structure.rootSets.push(setId);
@@ -905,11 +962,17 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
     recoveredCards?: number;
     totalCards?: number;
 }> => {
+    const safeSetId = getSafeStorageId(setId);
+    if (!safeSetId) {
+        console.warn(`[StorageV2] Refusing to read set with unsafe id: ${setId}`);
+        return { set: null, wasCorrupted: true };
+    }
+
     const user = await getUser();
 
     // Try local cache first (unless forceCloud is set)
     if (!forceCloud) {
-        const cached = await get<CardSet>(`${SET_CACHE_PREFIX}${setId}`);
+        const cached = await get<CardSet>(`${SET_CACHE_PREFIX}${safeSetId}`);
         if (cached) {
             return { set: normalizeCardSet(cached), wasCorrupted: false };
         }
@@ -922,7 +985,7 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
     try {
         const folderId = await ensureDriveFolder();
         const setsFolderId = await ensureSetsFolder(folderId);
-        const content = await googleDrive.readFile(setsFolderId, `${setId}.flashcards`);
+        const content = await googleDrive.readFile(setsFolderId, `${safeSetId}.flashcards`);
 
         if (content === null) {
             return { set: null, wasCorrupted: false };
@@ -936,9 +999,9 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
             const { cards, recovered, total } = recoverCardsFromCorruptedSet(content);
 
             if (recovered > 0) {
-                console.warn(`[StorageV2] Recovered ${recovered}/${total} cards from corrupted set ${setId}`);
+                console.warn(`[StorageV2] Recovered ${recovered}/${total} cards from corrupted set ${safeSetId}`);
                 const recoveredSet = normalizeCardSet({
-                    id: setId,
+                    id: safeSetId,
                     name: 'Recovered Set',
                     cards,
                     lastPlayed: Date.now(),
@@ -947,7 +1010,7 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
                 });
 
                 // Non-destructive recovery: do not overwrite cloud set with partial recovery.
-                await set(`${SET_CACHE_PREFIX}${setId}`, recoveredSet);
+                await set(`${SET_CACHE_PREFIX}${safeSetId}`, recoveredSet);
 
                 return {
                     set: recoveredSet,
@@ -965,7 +1028,7 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
         const { structure } = await readStructure();
         let fId: string | undefined;
         for (const folder of structure.folders) {
-            if (folder.setIds.includes(setId)) {
+            if (folder.setIds.includes(safeSetId)) {
                 fId = folder.id;
                 break;
             }
@@ -974,11 +1037,11 @@ export const readFlashcardSet = async (setId: string, forceCloud = false): Promi
         const cardSet = fileToSet(data, fId);
 
         // Cache locally
-        await set(`${SET_CACHE_PREFIX}${setId}`, cardSet);
+        await set(`${SET_CACHE_PREFIX}${safeSetId}`, cardSet);
 
         return { set: cardSet, wasCorrupted: false };
     } catch (error) {
-        console.error(`[StorageV2] Failed to read set ${setId}:`, error);
+        console.error(`[StorageV2] Failed to read set ${safeSetId}:`, error);
         return { set: null, wasCorrupted: true };
     }
 };
@@ -1019,12 +1082,12 @@ export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions
             if (cached) {
                 const structure = JSON.parse(cached) as StructureFile;
                 if (!structure.setManifest) structure.setManifest = {};
-                structure.setManifest[cardSet.id] = { modifiedAt: now };
+                structure.setManifest[normalizedSet.id] = { modifiedAt: now };
                 localStorage.setItem(STRUCTURE_CACHE_KEY, JSON.stringify(structure));
             }
         } catch (_) { /* best effort */ }
     } catch (error) {
-        console.error(`[StorageV2] Failed to write set ${cardSet.id}:`, error);
+        console.error(`[StorageV2] Failed to write set ${normalizedSet.id}:`, error);
         throw error;
     }
 };
@@ -1033,8 +1096,14 @@ export const writeFlashcardSet = async (cardSet: CardSet, options?: WriteOptions
  * Delete a flashcard set file
  */
 export const deleteFlashcardSet = async (setId: string): Promise<void> => {
+    const safeSetId = getSafeStorageId(setId);
+    if (!safeSetId) {
+        console.warn(`[StorageV2] Refusing to delete set with unsafe id: ${setId}`);
+        return;
+    }
+
     // Remove from cache
-    await del(`${SET_CACHE_PREFIX}${setId}`);
+    await del(`${SET_CACHE_PREFIX}${safeSetId}`);
 
     const user = await getUser();
     if (!user) return;
@@ -1042,18 +1111,18 @@ export const deleteFlashcardSet = async (setId: string): Promise<void> => {
     try {
         const folderId = await ensureDriveFolder();
         const setsFolderId = await ensureSetsFolder(folderId);
-        await googleDrive.deleteFile(setsFolderId, `${setId}.flashcards`);
+        await googleDrive.deleteFile(setsFolderId, `${safeSetId}.flashcards`);
 
         // Also remove from structure
         const { structure } = await readStructure();
-        structure.rootSets = structure.rootSets.filter(id => id !== setId);
+        structure.rootSets = structure.rootSets.filter(id => id !== safeSetId);
         structure.folders = structure.folders.map(folder => ({
             ...folder,
-            setIds: folder.setIds.filter(id => id !== setId)
+            setIds: folder.setIds.filter(id => id !== safeSetId)
         }));
         await writeStructure(structure);
     } catch (error) {
-        console.error(`[StorageV2] Failed to delete set ${setId}:`, error);
+        console.error(`[StorageV2] Failed to delete set ${safeSetId}:`, error);
     }
 };
 
@@ -1062,15 +1131,21 @@ export const deleteFlashcardSet = async (setId: string): Promise<void> => {
  * Used when moving a set from Cloud to Local Only.
  */
 export const deleteSetFromCloud = async (setId: string): Promise<void> => {
+    const safeSetId = getSafeStorageId(setId);
+    if (!safeSetId) {
+        console.warn(`[StorageV2] Refusing to delete cloud set with unsafe id: ${setId}`);
+        return;
+    }
+
     const user = await getUser();
     if (!user) return;
 
     try {
         const folderId = await ensureDriveFolder();
         const setsFolderId = await ensureSetsFolder(folderId);
-        await googleDrive.deleteFile(setsFolderId, `${setId}.flashcards`);
+        await googleDrive.deleteFile(setsFolderId, `${safeSetId}.flashcards`);
     } catch (error) {
-        console.error(`[StorageV2] Failed to delete set ${setId} from cloud:`, error);
+        console.error(`[StorageV2] Failed to delete set ${safeSetId} from cloud:`, error);
     }
 };
 
@@ -1120,20 +1195,26 @@ export const listFlashcardSetMetadata = async (): Promise<SetMetadata[]> => {
  * Read an in-progress session
  */
 export const readSession = async (sessionId: string): Promise<SessionFile | null> => {
+    const safeSessionId = getSafeStorageId(sessionId);
+    if (!safeSessionId) {
+        console.warn(`[StorageV2] Refusing to read session with unsafe id: ${sessionId}`);
+        return null;
+    }
+
     const user = await getUser();
     if (!user) return null;
 
     try {
         const folderId = await ensureDriveFolder();
         const sessionsFolderId = await ensureSessionsFolder(folderId);
-        const content = await googleDrive.readFile(sessionsFolderId, `${sessionId}.json`);
+        const content = await googleDrive.readFile(sessionsFolderId, `${safeSessionId}.json`);
 
         if (content === null) return null;
 
         const { data, hadError } = safeParseJSON<SessionFile>(content, null as any);
         return hadError ? null : data;
     } catch (error) {
-        console.error(`[StorageV2] Failed to read session ${sessionId}:`, error);
+        console.error(`[StorageV2] Failed to read session ${safeSessionId}:`, error);
         return null;
     }
 };
@@ -1142,6 +1223,12 @@ export const readSession = async (sessionId: string): Promise<SessionFile | null
  * Write an in-progress session
  */
 export const writeSession = async (session: SessionFile, sessionId: string): Promise<void> => {
+    const safeSessionId = getSafeStorageId(sessionId);
+    if (!safeSessionId) {
+        console.warn(`[StorageV2] Refusing to write session with unsafe id: ${sessionId}`);
+        return;
+    }
+
     session.version = CURRENT_VERSION;
 
     const user = await getUser();
@@ -1150,9 +1237,9 @@ export const writeSession = async (session: SessionFile, sessionId: string): Pro
     try {
         const folderId = await ensureDriveFolder();
         const sessionsFolderId = await ensureSessionsFolder(folderId);
-        await googleDrive.writeFile(sessionsFolderId, `${sessionId}.json`, JSON.stringify(session, null, 2));
+        await googleDrive.writeFile(sessionsFolderId, `${safeSessionId}.json`, JSON.stringify(session, null, 2));
     } catch (error) {
-        console.error(`[StorageV2] Failed to write session ${sessionId}:`, error);
+        console.error(`[StorageV2] Failed to write session ${safeSessionId}:`, error);
     }
 };
 
@@ -1160,15 +1247,21 @@ export const writeSession = async (session: SessionFile, sessionId: string): Pro
  * Delete an in-progress session (when completed)
  */
 export const deleteSession = async (sessionId: string): Promise<void> => {
+    const safeSessionId = getSafeStorageId(sessionId);
+    if (!safeSessionId) {
+        console.warn(`[StorageV2] Refusing to delete session with unsafe id: ${sessionId}`);
+        return;
+    }
+
     const user = await getUser();
     if (!user) return;
 
     try {
         const folderId = await ensureDriveFolder();
         const sessionsFolderId = await ensureSessionsFolder(folderId);
-        await googleDrive.deleteFile(sessionsFolderId, `${sessionId}.json`);
+        await googleDrive.deleteFile(sessionsFolderId, `${safeSessionId}.json`);
     } catch (error) {
-        console.error(`[StorageV2] Failed to delete session ${sessionId}:`, error);
+        console.error(`[StorageV2] Failed to delete session ${safeSessionId}:`, error);
     }
 };
 

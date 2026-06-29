@@ -82,6 +82,14 @@ const htmlToMarkdown = (node: Node): string => {
 };
 
 // MARKDOWN TO HTML (Supports Lists first, then Recursive Helpers)
+const escapeHtml = (value: string): string =>
+    value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
 const markdownToHtml = (text: string): string => {
     if (!text) return '';
 
@@ -89,48 +97,33 @@ const markdownToHtml = (text: string): string => {
     // Identify blocks of lines starting with "- "
     // Regex matches consecutive lines starting with "- " (handling \n)
     // We treat the whole block as a list
-    let processedText = text;
-
-    // We can't easily regex match the whole block with JS regex without multiline flag carefully
-    // Instead, let's process line by line or use a block replacer
-
     // List parser for lines starting with "- " or "* "
     const lines = text.split('\n');
     let inList = false;
-    let newLines: string[] = [];
+    const htmlParts: string[] = [];
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         const trimmed = line.trim();
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
             if (!inList) {
-                newLines.push('<ul>');
+                htmlParts.push('<ul>');
                 inList = true;
             }
             // Process content of list item recursively (for bold etc)
             const content = trimmed.substring(2);
-            newLines.push(`<li>${markdownToHtmlInline(content)}</li>`);
+            htmlParts.push(`<li>${markdownToHtmlInline(content)}</li>`);
         } else {
             if (inList) {
-                newLines.push('</ul>');
+                htmlParts.push('</ul>');
                 inList = false;
             }
-            newLines.push(line);
+            htmlParts.push(markdownToHtmlInline(line));
         }
     }
-    if (inList) newLines.push('</ul>');
+    if (inList) htmlParts.push('</ul>');
 
-    // Join back. 
-    // BUT: markdownToHtmlInline expects text tokens.
-    // Ideally we return the HTML string now for non-list lines too?
-    // Let's refactor: separate inline parser
-
-    const htmlLines = newLines.map(line => {
-        if (line.startsWith('<ul>') || line.startsWith('<li>') || line.startsWith('</ul>')) return line;
-        return markdownToHtmlInline(line);
-    });
-
-    return htmlLines.join(''); // Join without \n because <li> handles block, keeping \n might be redundant or needed for paragraphs
+    return htmlParts.join(''); // Join without \n because <li> handles block, keeping \n might be redundant or needed for paragraphs
 };
 
 // Inline Parser (Old markdownToHtml)
@@ -145,7 +138,7 @@ const markdownToHtmlInline = (text: string): string => {
         const match = remaining.match(tokenRegex);
 
         if (!match) {
-            html += remaining;
+            html += escapeHtml(remaining);
             break;
         }
 
@@ -153,14 +146,14 @@ const markdownToHtmlInline = (text: string): string => {
         const token = match[0];
 
         if (idx > 0) {
-            html += remaining.substring(0, idx);
+            html += escapeHtml(remaining.substring(0, idx));
         }
 
         const rest = remaining.substring(idx + token.length);
 
         if (token.startsWith('[[') && token.endsWith(']]')) {
             const innerText = token.substring(2, token.length - 2);
-            html += `<span data-md-start="[[" data-md-end="]]" contenteditable="false" class="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px);">${innerText}</span>`;
+            html += `<span data-md-start="[[" data-md-end="]]" contenteditable="false" class="inline-block bg-[#1f2937] text-slate-300 px-2 py-0.5 rounded text-[0.9em] font-medium mx-1 cursor-default select-none border border-slate-600" style="background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.05) 5px, rgba(255,255,255,0.05) 10px);">${escapeHtml(innerText)}</span>`;
             remaining = rest;
         } else if (token.startsWith('<h=')) {
             // Highlight opener
@@ -188,7 +181,7 @@ const markdownToHtmlInline = (text: string): string => {
                 html += `<span data-md-start="${def.start}" data-md-end="${def.end}" class="${def.className}">${innerHtml}</span>`;
                 remaining = rest.substring(endIdx + 4); // skip </h>
             } else {
-                html += token; // Unmatched
+                html += escapeHtml(token); // Unmatched
                 remaining = rest;
             }
         } else if (token === '***') {
@@ -197,38 +190,38 @@ const markdownToHtmlInline = (text: string): string => {
             if (end !== -1) {
                 html += `<span data-md-start="***" data-md-end="***" class="font-bold italic">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 3);
-            } else { html += token; remaining = rest; }
+            } else { html += escapeHtml(token); remaining = rest; }
         } else if (token === '**') {
             // Bold
             const end = rest.indexOf('**');
             if (end !== -1) {
                 html += `<span data-md-start="**" data-md-end="**" class="${TAGS.bold.className}">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 2);
-            } else { html += token; remaining = rest; }
+            } else { html += escapeHtml(token); remaining = rest; }
         } else if (token === '*') {
             // Italic
             const end = rest.indexOf('*');
             if (end !== -1) {
                 html += `<span data-md-start="*" data-md-end="*" class="${TAGS.italic.className}">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 1);
-            } else { html += token; remaining = rest; }
+            } else { html += escapeHtml(token); remaining = rest; }
         } else if (token === '__') {
             const end = rest.indexOf('__');
             if (end !== -1) {
                 html += `<span data-md-start="__" data-md-end="__" class="${TAGS.underline.className}">${markdownToHtmlInline(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 2);
-            } else { html += token; remaining = rest; }
+            } else { html += escapeHtml(token); remaining = rest; }
         } else if (token === '`') {
             const end = rest.indexOf('`');
             if (end !== -1) {
-                html += `<span data-md-start="\`" data-md-end="\`" class="${TAGS.code.className}">${rest.substring(0, end)}</span>`;
+                html += `<span data-md-start="\`" data-md-end="\`" class="${TAGS.code.className}">${escapeHtml(rest.substring(0, end))}</span>`;
                 remaining = rest.substring(end + 1);
-            } else { html += token; remaining = rest; }
+            } else { html += escapeHtml(token); remaining = rest; }
         } else if (token.startsWith('</')) {
-            html += token;
+            html += escapeHtml(token);
             remaining = rest;
         } else {
-            html += token;
+            html += escapeHtml(token);
             remaining = rest;
         }
         continue;

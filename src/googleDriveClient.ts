@@ -12,16 +12,37 @@ declare global {
 const FALLBACK_GOOGLE_CLIENT_ID = '108421532744-dcb911h9go7p3abunl0qe3jkd32v61c3.apps.googleusercontent.com';
 const FALLBACK_GOOGLE_API_KEY = 'AIzaSyCw87RLNiLF5MAo2JIpbmkX7nGfz7vhJuA';
 const runtimeConfig = (globalThis as any).__FLASHCARDSISH_CONFIG__ ?? {};
-const CLIENT_ID = String(
-    runtimeConfig.googleClientId ??
-    import.meta.env.VITE_GOOGLE_CLIENT_ID ??
+
+const isUsableConfigValue = (value: unknown): value is string => {
+    if (typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    const normalized = trimmed.toLowerCase();
+    return !['undefined', 'null', 'your_client_id', 'your_api_key'].includes(normalized);
+};
+
+const resolveConfigValue = (...values: unknown[]): string => {
+    for (const value of values) {
+        if (isUsableConfigValue(value)) {
+            return value.trim();
+        }
+    }
+    return '';
+};
+
+const driveQueryLiteral = (value: string): string =>
+    `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
+
+const CLIENT_ID = resolveConfigValue(
+    runtimeConfig.googleClientId,
+    import.meta.env.VITE_GOOGLE_CLIENT_ID,
     FALLBACK_GOOGLE_CLIENT_ID
-).trim();
-const API_KEY = String(
-    runtimeConfig.googleApiKey ??
-    import.meta.env.VITE_GOOGLE_API_KEY ??
+);
+const API_KEY = resolveConfigValue(
+    runtimeConfig.googleApiKey,
+    import.meta.env.VITE_GOOGLE_API_KEY,
     FALLBACK_GOOGLE_API_KEY
-).trim();
+);
 // Need both Drive access and user info access
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile';
 
@@ -701,7 +722,7 @@ class GoogleDriveClient {
 
         // Search for existing "Flashcardsish" folder
         const response = await window.gapi.client.drive.files.list({
-            q: "name='Flashcardsish' and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            q: `name=${driveQueryLiteral('Flashcardsish')} and mimeType='application/vnd.google-apps.folder' and trashed=false`,
             spaces: 'drive',
             fields: 'files(id, name)',
         });
@@ -742,7 +763,7 @@ class GoogleDriveClient {
 
         // Search for the data file
         const response = await window.gapi.client.drive.files.list({
-            q: `name='flashcardsish_data.json' and '${folderId}' in parents and trashed=false`,
+            q: `name=${driveQueryLiteral('flashcardsish_data.json')} and ${driveQueryLiteral(folderId)} in parents and trashed=false`,
             spaces: 'drive',
             fields: 'files(id)',
         });
@@ -779,7 +800,7 @@ class GoogleDriveClient {
 
         // Search for existing file
         const response = await window.gapi.client.drive.files.list({
-            q: `name='flashcardsish_data.json' and '${folderId}' in parents and trashed=false`,
+            q: `name=${driveQueryLiteral('flashcardsish_data.json')} and ${driveQueryLiteral(folderId)} in parents and trashed=false`,
             spaces: 'drive',
             fields: 'files(id)',
         });
@@ -912,7 +933,7 @@ class GoogleDriveClient {
 
         // Search for existing subfolder
         const response = await window.gapi.client.drive.files.list({
-            q: `name='${folderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+            q: `name=${driveQueryLiteral(folderName)} and ${driveQueryLiteral(parentFolderId)} in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
             spaces: 'drive',
             fields: 'files(id, name)',
         });
@@ -950,7 +971,7 @@ class GoogleDriveClient {
 
         // Search for the file
         const response = await window.gapi.client.drive.files.list({
-            q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+            q: `name=${driveQueryLiteral(filename)} and ${driveQueryLiteral(folderId)} in parents and trashed=false`,
             spaces: 'drive',
             fields: 'files(id, modifiedTime)',
         });
@@ -985,7 +1006,7 @@ class GoogleDriveClient {
 
         // Search for existing file
         const response = await window.gapi.client.drive.files.list({
-            q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+            q: `name=${driveQueryLiteral(filename)} and ${driveQueryLiteral(folderId)} in parents and trashed=false`,
             spaces: 'drive',
             fields: 'files(id, modifiedTime)',
         });
@@ -1039,7 +1060,7 @@ class GoogleDriveClient {
 
         // Search for the file
         const response = await window.gapi.client.drive.files.list({
-            q: `name='${filename}' and '${folderId}' in parents and trashed=false`,
+            q: `name=${driveQueryLiteral(filename)} and ${driveQueryLiteral(folderId)} in parents and trashed=false`,
             spaces: 'drive',
             fields: 'files(id)',
         });
@@ -1062,9 +1083,9 @@ class GoogleDriveClient {
             throw new Error('Not authenticated');
         }
 
-        let query = `'${folderId}' in parents and trashed=false`;
+        let query = `${driveQueryLiteral(folderId)} in parents and trashed=false`;
         if (extension) {
-            query += ` and name contains '${extension}'`;
+            query += ` and name contains ${driveQueryLiteral(extension)}`;
         }
 
         const response = await window.gapi.client.drive.files.list({
@@ -1092,7 +1113,7 @@ class GoogleDriveClient {
 
         // Search for the file
         const response = await window.gapi.client.drive.files.list({
-            q: `name='${oldFilename}' and '${folderId}' in parents and trashed=false`,
+            q: `name=${driveQueryLiteral(oldFilename)} and ${driveQueryLiteral(folderId)} in parents and trashed=false`,
             spaces: 'drive',
             fields: 'files(id)',
         });
