@@ -18,18 +18,32 @@ import clsx from 'clsx';
 import { saveLibrary, saveDirtySets, loadLibrary, saveFolders, loadFolders, loadAllUserData, saveSettings, loadSettings, loadStats, loadTags, saveStats, deleteAllUserData, CorruptionReport, resetSettingsToDefault, DEFAULT_SETTINGS, saveTags, CloudConflictDetail } from './storage';
 import { normalizeCardSet, readFlashcardSet, readStructure } from './storageV2';
 import { googleDrive, GoogleDriveUser } from './src/googleDriveClient';
-import { normalizeCardMastery } from './cardNormalization';
 import { normalizeSrsSessionStats } from './srs';
 import { UserModal } from './components/UserModal';
 import { ProfileCard } from './components/ProfileCard';
 import { SignInCard } from './components/SignInCard';
 import { CursorTooltip } from './components/CursorTooltip';
+import { FeatureNudge } from './components/FeatureNudge';
 import { CorruptionNotification, CorruptionPopup } from './components/CorruptionNotification';
 import { OnboardingTour } from './components/OnboardingTour';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import { SharedSetView } from './components/SharedSetView';
 import { SharedSetSnapshot } from './src/sharing';
 import { OFFLINE_ONLY_MODE, STORAGE_NAMESPACE_SUFFIX } from './runtimeMode';
+import {
+   mergeSetWithoutLosingCards,
+   parseExportData
+} from './src/dataMerge';
+import { applyServiceWorkerUpdate, PWA_UPDATE_READY_EVENT, PwaUpdateReadyDetail } from './src/pwa';
+import { deriveSyncDashboardState, SyncDashboardState } from './src/syncDashboard';
+import {
+   dismissFeaturePrompt,
+   DismissedFeaturePrompts,
+   FeatureDiscoveryPromptId,
+   readDismissedFeaturePrompts,
+   resetFeatureDiscoveryState,
+   selectFeatureDiscoveryPrompt
+} from './src/featureDiscovery';
 // UI Audit panel disabled. Uncomment this import and the <UiAuditPanel /> block below to re-enable.
 // import { UiAuditPanel } from './components/UiAuditPanel';
 
@@ -67,84 +81,6 @@ const normalizeLoadedSet = (set: CardSet): CardSet => {
       isSessionActive: false,
       sourceSetIds: undefined
    };
-};
-
-interface FlashcardsishExportFile {
-   exportedAt: string;
-   version: 'flashcardsish-export-v1';
-   librarySets?: CardSet[];
-   folders?: Folder[];
-   settings?: Partial<Settings>;
-   stats?: { lifetimeCorrect?: number };
-   tags?: Tag[];
-}
-
-interface FlashcardsishPayloadFile {
-   createdAt: string;
-   version: 'flashcardsish-payload-v1';
-   source: 'offline-mode';
-   librarySets?: CardSet[];
-   folders?: Folder[];
-   settings?: Partial<Settings>;
-   stats?: { lifetimeCorrect?: number };
-   tags?: Tag[];
-}
-
-const parseExportData = (raw: string): FlashcardsishExportFile => {
-   const parsed = JSON.parse(raw);
-   if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Backup file is not valid JSON data.');
-   }
-
-   if (parsed.version !== 'flashcardsish-export-v1') {
-      throw new Error('Unsupported backup version. Expected flashcardsish-export-v1.');
-   }
-
-   return parsed as FlashcardsishExportFile;
-};
-
-const parsePayloadData = (raw: string): FlashcardsishPayloadFile => {
-   const parsed = JSON.parse(raw);
-   if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Payload file is not valid JSON data.');
-   }
-
-   if (parsed.version !== 'flashcardsish-payload-v1') {
-      throw new Error('Unsupported payload version. Expected flashcardsish-payload-v1.');
-   }
-
-   return parsed as FlashcardsishPayloadFile;
-};
-
-const mergeFoldersForPayload = (existingFolders: Folder[], payloadFolders: Folder[]): Folder[] => {
-   const mergedById = new Map<string, Folder>();
-
-   existingFolders.forEach(folder => {
-      mergedById.set(folder.id, { ...folder, setIds: [...folder.setIds] });
-   });
-
-   payloadFolders.forEach(folder => {
-      const existing = mergedById.get(folder.id);
-      if (!existing) {
-         mergedById.set(folder.id, { ...folder, setIds: [...folder.setIds] });
-         return;
-      }
-
-      mergedById.set(folder.id, {
-         ...existing,
-         ...folder,
-         setIds: Array.from(new Set([...(existing.setIds || []), ...(folder.setIds || [])]))
-      });
-   });
-
-   return Array.from(mergedById.values());
-};
-
-const mergeTagsForPayload = (existingTags: Tag[], payloadTags: Tag[]): Tag[] => {
-   const mergedById = new Map<string, Tag>();
-   existingTags.forEach(tag => mergedById.set(tag.id, tag));
-   payloadTags.forEach(tag => mergedById.set(tag.id, { ...(mergedById.get(tag.id) || {} as Tag), ...tag }));
-   return Array.from(mergedById.values());
 };
 
 const OfflineModeInfoModal: React.FC<{
@@ -201,8 +137,8 @@ const OfflineModeInfoModal: React.FC<{
                   sign-in, and hosted sharing are disabled in this mode so your local session stays self-contained.
                </p>
                <p className="leading-relaxed">
-                  When you are ready to move this work back into the hosted app, use <span className="text-yellow font-medium">Create Payload</span>.
-                  Then open the live Flashcardsish app and import that payload from the yellow button beside <span className="text-text font-medium">Feedback</span> on the home screen.
+                  When you are ready to move or back up this work, use <span className="text-yellow font-medium">Settings - Global Settings - Export Data</span>.
+                  You can restore that backup later from the same Settings area.
                </p>
             </div>
 
@@ -219,62 +155,108 @@ const OfflineModeInfoModal: React.FC<{
    );
 };
 
-const PayloadImportModal: React.FC<{
+const SyncDashboardModal: React.FC<{
    isOpen: boolean;
    onClose: () => void;
-   onChooseFile: () => void;
-   user: GoogleDriveUser | null;
-}> = ({ isOpen, onClose, onChooseFile, user }) => {
+   state: SyncDashboardState;
+   isSignedIn: boolean;
+   dirtySetCount: number;
+   hasPendingLibrarySave: boolean;
+   hasPendingStructureChanges: boolean;
+   cloudConflictCount: number;
+   cloudSaveInFlight: boolean;
+   syncInProgress: boolean;
+   isCloudLoading: boolean;
+   onManualSync: () => void;
+}> = ({
+   isOpen,
+   onClose,
+   state,
+   isSignedIn,
+   dirtySetCount,
+   hasPendingLibrarySave,
+   hasPendingStructureChanges,
+   cloudConflictCount,
+   cloudSaveInFlight,
+   syncInProgress,
+   isCloudLoading,
+   onManualSync
+}) => {
    if (!isOpen) return null;
 
+   const toneClassName = {
+      idle: 'border-outline text-muted',
+      busy: 'border-yellow/40 text-yellow',
+      success: 'border-green/40 text-green',
+      warning: 'border-yellow/40 text-yellow',
+      error: 'border-red/40 text-red'
+   }[state.tone];
+
    return (
-         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in p-4" onMouseDown={onClose}>
-          <div
-             className="bg-panel border border-outline rounded-2xl p-8 w-full max-w-xl shadow-2xl animate-in zoom-in-95 flex flex-col relative"
-             onMouseDown={(e) => e.stopPropagation()}
-          >
-             <div className="relative w-full mb-5">
-                <h2
-                   className="text-3xl text-text text-center"
-                   style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 500 }}
-                >
-                   Import Offline Payload
-                </h2>
-                <button
-                   onClick={onClose}
-                   className="absolute right-0 top-1/2 -translate-y-1/2 text-muted hover:text-text p-2 rounded-lg hover:bg-panel-2 transition-colors"
-                   aria-label="Close payload modal"
-                >
-                   <X size={22} />
-                </button>
-             </div>
+      <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in p-4" onMouseDown={onClose}>
+         <div
+            className="w-full max-w-xl rounded-2xl border border-outline bg-panel p-6 shadow-2xl animate-in zoom-in-95"
+            onMouseDown={(event) => event.stopPropagation()}
+         >
+            <div className="flex items-start justify-between gap-4 border-b border-outline pb-4">
+               <div>
+                  <h2 className="text-2xl text-text" style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}>
+                     Sync Dashboard
+                  </h2>
+                  <p className="mt-1 text-sm text-muted">{state.detail}</p>
+               </div>
+               <button onClick={onClose} className="rounded-lg p-2 text-muted hover:bg-panel-2 hover:text-text transition-colors" aria-label="Close sync dashboard">
+                  <X size={20} />
+               </button>
+            </div>
 
-             <div className="space-y-4 text-sm text-text">
-                {!user ? (
-                   <div className="rounded-2xl border border-yellow/30 bg-yellow/10 p-4 text-yellow leading-relaxed">
-                      Sign in first. Payload import only works on the hosted app, and it merges offline work into your existing Flashcardsish library instead of wiping everything.
-                   </div>
-                ) : (
-                   <div className="rounded-2xl border border-outline bg-panel-2 p-4 text-text leading-relaxed">
-                      Uploading a payload merges offline changes into your current library. Existing hosted sets stay in place, payload-only sets are added, and matching sets are merged without dropping cards.
-                   </div>
-                )}
-             </div>
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+               <div className="rounded-xl border border-outline bg-panel-2 p-4">
+                  <div className="text-xs font-bold uppercase tracking-widest text-muted">Mode</div>
+                  <div className="mt-2 text-lg font-bold text-text">{state.modeLabel}</div>
+                  <div className="mt-1 text-sm text-muted">{isSignedIn ? 'Signed in' : 'Not signed in'}</div>
+               </div>
+               <div className={`rounded-xl border bg-panel-2 p-4 ${toneClassName}`}>
+                  <div className="text-xs font-bold uppercase tracking-widest opacity-80">Status</div>
+                  <div className="mt-2 text-lg font-bold">{state.statusLabel}</div>
+                  <div className="mt-1 text-sm opacity-80">{state.pendingLocalChanges ? 'Local fallback active' : 'No local queue'}</div>
+               </div>
+               <div className="rounded-xl border border-outline bg-panel-2 p-4">
+                  <div className="text-xs font-bold uppercase tracking-widest text-muted">Pending Sets</div>
+                  <div className="mt-2 text-2xl font-bold text-text">{dirtySetCount}</div>
+                  <div className="mt-1 text-sm text-muted">{hasPendingLibrarySave ? 'Library save queued' : 'No library save queued'}</div>
+               </div>
+               <div className="rounded-xl border border-outline bg-panel-2 p-4">
+                  <div className="text-xs font-bold uppercase tracking-widest text-muted">Structure</div>
+                  <div className="mt-2 text-lg font-bold text-text">{hasPendingStructureChanges ? 'Pending' : 'Clean'}</div>
+                  <div className="mt-1 text-sm text-muted">{cloudConflictCount} cloud conflict{cloudConflictCount === 1 ? '' : 's'}</div>
+               </div>
+            </div>
 
-             <div className="flex items-center justify-end gap-3 mt-7">
-                <button
-                   onClick={onClose}
-                   className="px-5 py-2.5 bg-panel-2 border border-outline text-text rounded-xl text-sm hover:border-accent hover:text-accent transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                   onClick={onChooseFile}
-                   disabled={!user}
-                   className="px-5 py-2.5 bg-yellow text-bg rounded-xl text-sm font-medium hover:bg-yellow/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                   Choose Payload File
-                </button>
+            <div className="mt-4 rounded-xl border border-outline bg-panel-2 p-4 text-sm text-text">
+               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <span>Cloud save: <strong>{cloudSaveInFlight ? 'running' : 'idle'}</strong></span>
+                  <span>Cloud pull: <strong>{syncInProgress || isCloudLoading ? 'running' : 'idle'}</strong></span>
+               </div>
+               <div className="mt-2 text-muted">Last local fallback: {state.lastLocalFallbackLabel}</div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-3">
+               <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl border border-outline bg-panel-2 px-4 py-2 text-sm font-bold text-text hover:border-accent transition-colors"
+               >
+                  Close
+               </button>
+               <button
+                  type="button"
+                  onClick={onManualSync}
+                  disabled={!state.canManualSync}
+                  className="rounded-xl bg-accent px-4 py-2 text-sm font-bold text-bg hover:bg-accent/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+               >
+                  Sync Now
+               </button>
             </div>
          </div>
       </div>
@@ -286,155 +268,6 @@ const formatConflictTimestamp = (value?: string): string => {
    const date = new Date(value);
    if (Number.isNaN(date.getTime())) return value;
    return date.toLocaleString();
-};
-
-const dedupeStrings = (values: string[] = []): string[] => Array.from(new Set(values));
-
-const normalizeStringArrayForSignature = (values: string[] = []): string[] =>
-   Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-
-const normalizeCustomFieldsForSignature = (fields: { name: string; value: string }[] = []) =>
-   fields
-      .map(field => ({ name: field.name || '', value: field.value || '' }))
-      .sort((a, b) => a.name.localeCompare(b.name) || a.value.localeCompare(b.value));
-
-const cardContentSignature = (card: CardSet['cards'][number]): string => JSON.stringify({
-   term: Array.isArray(card.term) ? card.term : [],
-   content: card.content || '',
-   year: card.year || '',
-   image: card.image || '',
-   termImage: card.termImage || '',
-   customFields: normalizeCustomFieldsForSignature(card.customFields || []),
-   tags: normalizeStringArrayForSignature(card.tags || [])
-});
-
-const stableHash = (value: string): string => {
-   let hash = 0;
-   for (let i = 0; i < value.length; i += 1) {
-      hash = ((hash << 5) - hash) + value.charCodeAt(i);
-      hash |= 0;
-   }
-   return Math.abs(hash).toString(36);
-};
-
-const createConflictCardId = (baseId: string, signature: string, usedIds: Set<string>): string => {
-   const base = `${baseId}__merge_${stableHash(signature)}`;
-   if (!usedIds.has(base)) return base;
-
-   let counter = 2;
-   let candidate = `${base}_${counter}`;
-   while (usedIds.has(candidate)) {
-      counter += 1;
-      candidate = `${base}_${counter}`;
-   }
-   return candidate;
-};
-
-const mergeSetWithoutLosingCards = (localSet: CardSet, cloudSet: CardSet): CardSet => {
-   const localCards = localSet.cards || [];
-   const cloudCards = cloudSet.cards || [];
-   const mergedCards = localCards.map(card => ({ ...card }));
-   const usedIds = new Set(mergedCards.map(card => card.id));
-   const localIndexById = new Map<string, number>();
-   const signatureToIndex = new Map<string, number>();
-
-   const mergeProgressFields = (
-      preferredContent: CardSet['cards'][number],
-      localCard: CardSet['cards'][number],
-      cloudCard: CardSet['cards'][number]
-   ): CardSet['cards'][number] => ({
-      ...preferredContent,
-      // Keep study state from whichever side progressed further.
-      mastery: Math.max(normalizeCardMastery(localCard.mastery), normalizeCardMastery(cloudCard.mastery)),
-      star: localCard.star === true || cloudCard.star === true,
-      originalSetId: preferredContent.originalSetId || localCard.originalSetId || cloudCard.originalSetId,
-      originalSetName: preferredContent.originalSetName || localCard.originalSetName || cloudCard.originalSetName
-   });
-
-   mergedCards.forEach((card, index) => {
-      localIndexById.set(card.id, index);
-      const signature = cardContentSignature(card);
-      if (!signatureToIndex.has(signature)) {
-         signatureToIndex.set(signature, index);
-      }
-   });
-
-   for (const cloudCard of cloudCards) {
-      const cloudSignature = cardContentSignature(cloudCard);
-      const localIndex = localIndexById.get(cloudCard.id);
-
-      if (localIndex !== undefined) {
-         const localCard = mergedCards[localIndex];
-         const localSignature = cardContentSignature(localCard);
-
-         // Keep local card content for existing IDs to avoid accidental overwrite.
-         mergedCards[localIndex] = mergeProgressFields(localCard, localCard, cloudCard);
-
-         // If same ID has different content, preserve cloud variant as an extra card.
-         if (localSignature !== cloudSignature && !signatureToIndex.has(cloudSignature)) {
-            const conflictId = createConflictCardId(cloudCard.id, cloudSignature, usedIds);
-            const conflictCard = mergeProgressFields(
-               { ...cloudCard, id: conflictId },
-               localCard,
-               cloudCard
-            );
-            mergedCards.push(conflictCard);
-            const newIndex = mergedCards.length - 1;
-            usedIds.add(conflictId);
-            localIndexById.set(conflictId, newIndex);
-            signatureToIndex.set(cloudSignature, newIndex);
-         }
-         continue;
-      }
-
-      const existingBySignature = signatureToIndex.get(cloudSignature);
-      if (existingBySignature !== undefined) {
-         const existingCard = mergedCards[existingBySignature];
-         mergedCards[existingBySignature] = mergeProgressFields(existingCard, existingCard, cloudCard);
-         continue;
-      }
-
-      let nextId = cloudCard.id;
-      if (usedIds.has(nextId)) {
-         nextId = createConflictCardId(cloudCard.id, cloudSignature, usedIds);
-      }
-      const mergedCloudCard = { ...cloudCard, id: nextId };
-      mergedCards.push(mergedCloudCard);
-      const newIndex = mergedCards.length - 1;
-      usedIds.add(nextId);
-      localIndexById.set(nextId, newIndex);
-      signatureToIndex.set(cloudSignature, newIndex);
-   }
-
-   const useLocalMetadata = (localSet.lastPlayed || 0) > (cloudSet.lastPlayed || 0);
-   const metadataSource = useLocalMetadata ? localSet : cloudSet;
-
-   return normalizeLoadedSet({
-      ...cloudSet,
-      name: metadataSource.name,
-      sourceId: metadataSource.sourceId ?? cloudSet.sourceId,
-      version: metadataSource.version ?? cloudSet.version,
-      termLabel: metadataSource.termLabel ?? cloudSet.termLabel,
-      definitionLabel: metadataSource.definitionLabel ?? cloudSet.definitionLabel,
-      termSideFields: metadataSource.termSideFields ?? cloudSet.termSideFields,
-      defSideFields: metadataSource.defSideFields ?? cloudSet.defSideFields,
-      enableTermCards: metadataSource.enableTermCards ?? cloudSet.enableTermCards,
-      customFieldNames: dedupeStrings([
-         ...(cloudSet.customFieldNames || []),
-         ...(localSet.customFieldNames || [])
-      ]),
-      tags: dedupeStrings([...(cloudSet.tags || []), ...(localSet.tags || [])]),
-      isMultistudy: metadataSource.isMultistudy ?? cloudSet.isMultistudy,
-      sourceSetIds: metadataSource.sourceSetIds ?? cloudSet.sourceSetIds,
-      lastPlayed: Math.max(localSet.lastPlayed || 0, cloudSet.lastPlayed || 0),
-      elapsedTime: Math.max(localSet.elapsedTime || 0, cloudSet.elapsedTime || 0),
-      topStreak: Math.max(localSet.topStreak || 0, cloudSet.topStreak || 0),
-      isSessionActive: Boolean(localSet.isSessionActive || cloudSet.isSessionActive),
-      learnSessionStats: metadataSource.learnSessionStats ?? cloudSet.learnSessionStats ?? localSet.learnSessionStats,
-      isLocalOnly: false,
-      folderId: cloudSet.folderId ?? (localSet.isLocalOnly ? undefined : localSet.folderId),
-      cards: mergedCards
-   });
 };
 
 const WiggleInput: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
@@ -558,6 +391,7 @@ const SettingsModal: React.FC<{
    onExportData: () => void;
    onImportData: (file: File) => Promise<void>;
    onResetSettings: () => void;
+   onResetFeatureTips: () => void;
    onStartOnboarding: () => void;
    onCreateAlphabetSet: () => void;
    librarySets: CardSet[];
@@ -571,7 +405,7 @@ const SettingsModal: React.FC<{
    onUpdateTags: (tags: Tag[]) => void;
    onOpenPrivacy?: () => void;
    offlineMode?: boolean;
-}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onStartOnboarding, onCreateAlphabetSet, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy, offlineMode = false }) => {
+}> = ({ isOpen, onClose, settings, onUpdate, onOpenKeybinds, onDeleteData, onExportData, onImportData, onResetSettings, onResetFeatureTips, onStartOnboarding, onCreateAlphabetSet, librarySets, user, lifetimeCorrect, onLogin, onLogout, initialTab = 'set', tags, onUpdateTags, onOpenPrivacy, offlineMode = false }) => {
    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
    const [showResetConfirm, setShowResetConfirm] = useState(false);
    const [activeTab, setActiveTab] = useState<'set' | 'global' | 'you' | 'builder' | 'tags'>(initialTab);
@@ -1311,6 +1145,21 @@ const SettingsModal: React.FC<{
                            </button>
                         </div>
 
+                        <div className="p-4 bg-accent/5 rounded-xl border border-accent/20 hover:border-accent/40 transition-all">
+                           <span className="font-medium text-accent block mb-3 flex items-center gap-2">
+                              <Sparkles size={18} /> Feature Tips
+                           </span>
+                           <p className="text-sm text-muted mb-3">
+                              Bring back dismissed in-flow tips when you want Flashcardsish to point out useful tools again.
+                           </p>
+                           <button
+                              onClick={onResetFeatureTips}
+                              className="w-full flex items-center justify-center gap-2 py-2 text-accent border border-accent/30 rounded-lg font-bold hover:bg-accent/10 transition-colors text-sm"
+                           >
+                              Reset Feature Tips
+                           </button>
+                        </div>
+
 
 
                         {/* Export Data Box */}
@@ -1555,6 +1404,9 @@ const App: React.FC = () => {
    const activeSession = effectiveLibrarySets.find(s => s.id === activeSetId) || null;
    const winSession = completedSession ?? activeSession;
    const [isHomeScreenActive, setIsHomeScreenActive] = useState(true);
+   const [dismissedFeaturePrompts, setDismissedFeaturePrompts] = useState<DismissedFeaturePrompts>(
+      () => readDismissedFeaturePrompts()
+   );
    const shouldHighlightSignIn = !OFFLINE_ONLY_MODE && !user && !isAuthLoading && gameState === GameState.MENU && isHomeScreenActive;
 
    const [settings, setSettings] = useState<Settings>({
@@ -1589,9 +1441,14 @@ const App: React.FC = () => {
    const [isTermsOpen, setIsTermsOpen] = useState(false);
    const [isKeybindsModalOpen, setIsKeybindsModalOpen] = useState(false);
    const [isOfflineInfoOpen, setIsOfflineInfoOpen] = useState(false);
-   const [isPayloadImportOpen, setIsPayloadImportOpen] = useState(false);
+   const [isSyncDashboardOpen, setIsSyncDashboardOpen] = useState(false);
+   const [pwaUpdateRegistration, setPwaUpdateRegistration] = useState<ServiceWorkerRegistration | null>(null);
    const [appToast, setAppToast] = useState<AppToast | null>(null);
-   const payloadImportInputRef = useRef<HTMLInputElement>(null);
+   const [lastLocalFallbackAt, setLastLocalFallbackAt] = useState<number | null>(() => {
+      const raw = localStorage.getItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY);
+      const parsed = raw ? Number.parseInt(raw, 10) : 0;
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+   });
 
    const [uiAuditRequest, setUiAuditRequest] = useState<UiAuditRequest | null>(null);
    const [uiAuditToastReports, setUiAuditToastReports] = useState<CorruptionReport[]>([]);
@@ -1621,6 +1478,16 @@ const App: React.FC = () => {
 
       return () => window.clearTimeout(timer);
    }, [appToast]);
+
+   useEffect(() => {
+      const handlePwaUpdateReady = (event: Event) => {
+         const customEvent = event as CustomEvent<PwaUpdateReadyDetail>;
+         setPwaUpdateRegistration(customEvent.detail.registration);
+      };
+
+      window.addEventListener(PWA_UPDATE_READY_EVENT, handlePwaUpdateReady);
+      return () => window.removeEventListener(PWA_UPDATE_READY_EVENT, handlePwaUpdateReady);
+   }, []);
 
    // Set Detail View
    const [detailSetId, setDetailSetId] = useState<string | null>(null);
@@ -1692,16 +1559,16 @@ const App: React.FC = () => {
 
    const flushPendingLibrarySave = async () => {
       if (cloudSaveInFlightRef.current) return;
-      const payload = pendingLibrarySaveRef.current;
-      if (!payload) return;
+      const pendingSave = pendingLibrarySaveRef.current;
+      if (!pendingSave) return;
 
       pendingLibrarySaveRef.current = null;
       cloudSaveInFlightRef.current = true;
       const syncLocked = syncInProgressRef.current || isCloudLoading;
       const skipCloudWrite = Boolean(
-         payload.skipCloud ||
+         pendingSave.skipCloud ||
          syncLocked ||
-         (user && !hasSyncedOnceRef.current && !payload.ignoreConflicts)
+         (user && !hasSyncedOnceRef.current && !pendingSave.ignoreConflicts)
       );
 
       if (user && !skipCloudWrite) setCloudSyncStatus('saving');
@@ -1710,11 +1577,11 @@ const App: React.FC = () => {
          // V3: Use dirty-set save for targeted writes, fall back to full save for ignoreConflicts (overwrite)
          let result: { success: boolean; savedToCloud: boolean; savedSetIds?: string[]; error?: string; conflicts?: string[]; conflictDetails?: CloudConflictDetail[] };
 
-         if (payload.ignoreConflicts) {
+         if (pendingSave.ignoreConflicts) {
             // Full save path - used for conflict overwrite resolution
-            result = await saveLibrary(payload.sets, {
+            result = await saveLibrary(pendingSave.sets, {
                ignoreConflicts: true,
-               folders: payload.folders,
+               folders: pendingSave.folders,
                skipCloud: skipCloudWrite
             });
          } else {
@@ -1722,9 +1589,9 @@ const App: React.FC = () => {
             const dirtyIds = new Set(dirtySetIdsRef.current);
             const shouldWriteStructure = structureChangedRef.current;
 
-            result = await saveDirtySets(payload.sets, dirtyIds, {
+            result = await saveDirtySets(pendingSave.sets, dirtyIds, {
                ignoreConflicts: false,
-               folders: payload.folders,
+               folders: pendingSave.folders,
                skipCloud: skipCloudWrite,
                structureChanged: shouldWriteStructure
             });
@@ -1740,7 +1607,7 @@ const App: React.FC = () => {
             }
          }
 
-         if (result.conflicts && result.conflicts.length > 0 && !payload.ignoreConflicts) {
+         if (result.conflicts && result.conflicts.length > 0 && !pendingSave.ignoreConflicts) {
             setCloudConflicts(result.conflictDetails || result.conflicts.map((setName, idx) => ({
                setId: `unknown-${idx}`,
                setName,
@@ -1838,7 +1705,6 @@ const App: React.FC = () => {
    const syncCloudData = async () => {
       // Prevent re-entrant / concurrent calls
       if (syncInProgressRef.current) {
-         console.log('[Sync] Already in progress, skipping');
          return;
       }
       syncInProgressRef.current = true;
@@ -1856,8 +1722,6 @@ const App: React.FC = () => {
             return;
          }
 
-         console.log("[Sync] Starting smart merge with cloud data...");
-
          // 1. SMART MERGE LIBRARY SETS
          if (data.library_sets && data.library_sets.length > 0) {
             const cloudSets = data.library_sets.map((s: CardSet) => normalizeLoadedSet(s));
@@ -1873,7 +1737,7 @@ const App: React.FC = () => {
                   } else {
                      // Set exists in both: merge cards with no-loss strategy.
                      const localSet = merged[localIndex];
-                     merged[localIndex] = mergeSetWithoutLosingCards(localSet, cloudSet);
+                     merged[localIndex] = mergeSetWithoutLosingCards(localSet, cloudSet, { normalizeSet: normalizeLoadedSet });
                   }
                });
 
@@ -1921,7 +1785,6 @@ const App: React.FC = () => {
             setCorruptionReports(data.corruptions);
          }
 
-         console.log("[Sync] Smart merge complete");
          hasSyncedOnceRef.current = true;
       } finally {
          syncInProgressRef.current = false;
@@ -2208,139 +2071,6 @@ const App: React.FC = () => {
       }
    };
 
-   const handleCreatePayload = () => {
-      const payloadData: FlashcardsishPayloadFile = {
-         createdAt: new Date().toISOString(),
-         version: 'flashcardsish-payload-v1',
-         source: 'offline-mode',
-         librarySets: librarySets,
-         folders: folders,
-         tags: tags,
-         settings: settings,
-         stats: { lifetimeCorrect }
-      };
-
-      const blob = new Blob([JSON.stringify(payloadData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `flashcardsish-payload-${new Date().toISOString().split('T')[0]}.flashcardsishpayload`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setAppToast({
-         id: Date.now(),
-         type: 'success',
-         message: 'Offline payload created. Import it on the hosted app from the yellow Payload button next to Feedback on the home screen.'
-      });
-   };
-
-   const handleImportPayload = async (file: File): Promise<void> => {
-      if (OFFLINE_ONLY_MODE) {
-         throw new Error('Payload imports are only available in the hosted app.');
-      }
-
-      if (!user) {
-         throw new Error('Sign in before importing an offline payload.');
-      }
-
-      const shouldReplace = window.confirm(
-         'Merge this offline payload into your hosted Flashcardsish library? Existing hosted sets will stay in place, and matching sets will be merged.'
-      );
-      if (!shouldReplace) return;
-
-      await waitForBackgroundSyncIdle();
-
-      const content = await file.text();
-      const parsed = parsePayloadData(content);
-      const payloadSets = Array.isArray(parsed.librarySets)
-         ? parsed.librarySets.map(set => ({ ...normalizeLoadedSet(set), isLocalOnly: false }))
-         : [];
-      const payloadSetIds = new Set(payloadSets.map(set => set.id));
-      const payloadFolders = Array.isArray(parsed.folders) ? parsed.folders : [];
-      const payloadTags = Array.isArray(parsed.tags) ? parsed.tags : [];
-      const mergedSettings = parsed.settings ? { ...settings, ...parsed.settings } : { ...settings };
-      const mergedStats = typeof parsed.stats?.lifetimeCorrect === 'number'
-         ? Math.max(lifetimeCorrect, parsed.stats.lifetimeCorrect)
-         : lifetimeCorrect;
-
-      const mergedSetMap = new Map<string, CardSet>();
-      librarySets.forEach(existingSet => {
-         mergedSetMap.set(existingSet.id, existingSet);
-      });
-      payloadSets.forEach(payloadSet => {
-         const existingSet = mergedSetMap.get(payloadSet.id);
-         if (!existingSet) {
-            mergedSetMap.set(payloadSet.id, payloadSet);
-            return;
-         }
-
-         mergedSetMap.set(payloadSet.id, {
-            ...mergeSetWithoutLosingCards(existingSet, payloadSet),
-            isLocalOnly: false
-         });
-      });
-
-      const mergedSets = Array.from(mergedSetMap.values()).map(set =>
-         payloadSetIds.has(set.id)
-            ? { ...set, isLocalOnly: false }
-            : set
-      );
-      const mergedFolders = mergeFoldersForPayload(folders, payloadFolders);
-      const mergedTags = mergeTagsForPayload(tags, payloadTags);
-      const payloadChangedSetIds = payloadSets.map(set => set.id);
-
-      const importedStats = typeof parsed.stats?.lifetimeCorrect === 'number'
-         ? parsed.stats.lifetimeCorrect
-         : 0;
-
-      setLibrarySets(mergedSets);
-      latestLibrarySetsRef.current = mergedSets;
-      setFolders(mergedFolders);
-      setTags(mergedTags);
-      setSettings(mergedSettings);
-      setLifetimeCorrect(mergedStats);
-      setCloudConflicts([]);
-      setIsConflictDetailsOpen(false);
-      setGameState(GameState.MENU);
-      setDetailSetId(null);
-      setActiveSetId(null);
-      setIsPayloadImportOpen(false);
-
-      const freshSnapshot = new Map<string, string>();
-      for (const importedSet of mergedSets) {
-         freshSnapshot.set(importedSet.id, JSON.stringify(importedSet));
-      }
-      prevLibrarySnapshotRef.current = freshSnapshot;
-      hasCompletedInitialLoad.current = true;
-      dirtySetIdsRef.current.clear();
-      for (const setId of payloadChangedSetIds) {
-         markSetDirty(setId);
-      }
-      structureChangedRef.current = payloadFolders.length > 0;
-
-      await Promise.all([
-         saveFolders(mergedFolders, { skipCloud: true }),
-         saveTags(mergedTags, { skipCloud: false }),
-         saveSettings(mergedSettings, { skipCloud: false }),
-         saveStats({ lifetimeCorrect: mergedStats }, { skipCloud: false })
-      ]);
-
-      queueLibrarySave(mergedSets, mergedFolders, {
-         ignoreConflicts: false,
-         skipCloud: false,
-         changedSetIds: payloadChangedSetIds
-      });
-
-      setAppToast({
-         id: Date.now(),
-         type: 'success',
-         message: `Offline payload merged. ${payloadSets.length} payload set${payloadSets.length === 1 ? '' : 's'} queued for sync without clearing your existing library.`
-      });
-   };
-
    const handleExportData = () => {
       const exportData = {
          exportedAt: new Date().toISOString(),
@@ -2407,8 +2137,10 @@ const App: React.FC = () => {
       const writeLibraryLocalFallbackSnapshot = () => {
          if (!isLibraryLoaded) return;
          try {
+            const writtenAt = Date.now();
             localStorage.setItem(LIBRARY_LOCAL_FALLBACK_KEY, JSON.stringify(latestLibrarySetsRef.current));
-            localStorage.setItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY, String(Date.now()));
+            localStorage.setItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY, String(writtenAt));
+            setLastLocalFallbackAt(writtenAt);
          } catch (error) {
             console.warn('[App] Failed to write local fallback snapshot during unload safety check:', error);
          }
@@ -2466,8 +2198,6 @@ const App: React.FC = () => {
    useEffect(() => {
       const loadData = async () => {
          try {
-            console.log("[App] Starting initial data load...");
-
             const [
                loadedSets,
                loadedFoldersData,
@@ -2490,20 +2220,15 @@ const App: React.FC = () => {
             setSettings(prev => ({ ...prev, ...loadedSettingsData }));
             setLifetimeCorrect(typeof loadedStatsData?.lifetimeCorrect === 'number' ? loadedStatsData.lifetimeCorrect : 0);
 
-            if (sanitizedSets.length > 0) {
-               console.log("[App] Loaded", sanitizedSets.length, "sets from storage");
-            } else {
+            if (sanitizedSets.length === 0) {
                console.warn("[App] No sets found in storage - starting with empty library");
             }
-
-            console.log("[App] Initial data load complete.");
          } catch (error) {
             console.error("[App] CRITICAL ERROR during loadData:", error);
             console.error("[App] Stack:", error instanceof Error ? error.stack : 'No stack trace');
          } finally {
             // CRITICAL: Always mark as loaded, even if there was an error
             // Otherwise the storage system is permanently broken
-            console.log("[App] Setting isLibraryLoaded = true");
             setIsLibraryLoaded(true);
          }
       };
@@ -2535,7 +2260,6 @@ const App: React.FC = () => {
             snapshot.set(s.id, JSON.stringify(s));
          }
          prevLibrarySnapshotRef.current = snapshot;
-         console.log('[App] Initial load complete, library has', librarySets.length, 'sets. Auto-save is now enabled.');
          return;
       }
 
@@ -2590,21 +2314,18 @@ const App: React.FC = () => {
          clearTimeout(saveDebounceTimerRef.current);
       }
 
-      console.log(`[App V3] ${changedSetIds.length} set(s) changed, debouncing cloud save...`);
-
       // Save locally right away
-      const localOnlyPayload = {
+      const localOnlySave = {
          sets: cloneSetsForSave(librarySets),
          folders: folders.map(folder => ({ ...folder, setIds: [...folder.setIds] })),
          skipCloud: true
       };
-      pendingLibrarySaveRef.current = localOnlyPayload;
+      pendingLibrarySaveRef.current = localOnlySave;
       void flushPendingLibrarySave();
 
       // Debounce the cloud save
       if (!cloudWriteBlocked) {
          saveDebounceTimerRef.current = setTimeout(() => {
-            console.log(`[App V3] Flushing ${changedSetIds.length} dirty set(s) to cloud`);
             queueLibrarySave(latestLibrarySetsRef.current, folders, {
                skipCloud: false,
                changedSetIds
@@ -2636,7 +2357,6 @@ const App: React.FC = () => {
          return;
       }
 
-      console.log('[App V3] Resuming deferred cloud save after sync unlock');
       queueLibrarySave(latestLibrarySetsRef.current, folders, {
          skipCloud: false,
          changedSetIds: Array.from(dirtySetIdsRef.current)
@@ -2650,8 +2370,10 @@ const App: React.FC = () => {
    useEffect(() => {
       if (!isLibraryLoaded) return;
       try {
+         const writtenAt = Date.now();
          localStorage.setItem(LIBRARY_LOCAL_FALLBACK_KEY, JSON.stringify(librarySets));
-         localStorage.setItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY, String(Date.now()));
+         localStorage.setItem(LIBRARY_LOCAL_FALLBACK_UPDATED_AT_KEY, String(writtenAt));
+         setLastLocalFallbackAt(writtenAt);
       } catch (error) {
          console.warn('[App] Failed to write local fallback library cache:', error);
       }
@@ -2668,7 +2390,6 @@ const App: React.FC = () => {
       );
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
-         console.log('[App] AUTO-SAVING folders');
          structureChangedRef.current = true;
          saveFolders(folders, { skipCloud: true });
          queueLibrarySave(latestLibrarySetsRef.current, folders, { skipCloud: cloudWriteBlocked });
@@ -2686,7 +2407,6 @@ const App: React.FC = () => {
       );
 
       if (isLibraryLoaded && hasCompletedInitialLoad.current) {
-         console.log('[App] AUTO-SAVING settings');
          saveSettings(settings, { skipCloud });
       }
    }, [settings, isLibraryLoaded, isCloudLoading, user]);
@@ -2701,7 +2421,6 @@ const App: React.FC = () => {
    }, [lifetimeCorrect, isCloudLoading, user]);
 
    useEffect(() => {
-      console.log('App: settings.darkMode is now:', settings.darkMode);
       const isLight = !settings.darkMode;
 
       // Use documentElement (html) instead of body for more reliable theme switching
@@ -2713,12 +2432,9 @@ const App: React.FC = () => {
          document.body.classList.remove('light-mode');
       }
 
-      console.log('App: light-mode class on html:', document.documentElement.classList.contains('light-mode'));
-      console.log('App: light-mode class on body:', document.body.classList.contains('light-mode'));
    }, [settings.darkMode]);
 
    const updateSettings = (newSettings: Settings) => {
-      console.log('DEBUG: updateSettings called with darkMode:', newSettings.darkMode);
       setSettings(newSettings);
       // Saved via effect
    };
@@ -3119,13 +2835,43 @@ const App: React.FC = () => {
       setGameState(GameState.PLAYING);
    };
 
+   const handleStudyStarredFromDetail = () => {
+      if (!detailSet || !detailSet.cards.some(c => c.star)) return;
+
+      const restartedSession: CardSet = {
+         ...detailSet,
+         lastPlayed: Date.now(),
+         elapsedTime: 0,
+         topStreak: 0,
+         isSessionActive: true,
+         learnSessionStats: undefined,
+         cards: detailSet.cards.map(c => c.star ? { ...c, mastery: 0 } : c)
+      };
+
+      updateSettings({ ...settings, starredOnly: true });
+      handleStartFromLibrary(restartedSession);
+   };
+
    const handleResetSettings = async () => {
       setSettings({ ...DEFAULT_SETTINGS });
       await resetSettingsToDefault();
    };
 
+   const handleDismissFeaturePrompt = (id: FeatureDiscoveryPromptId) => {
+      setDismissedFeaturePrompts(dismissFeaturePrompt(id));
+   };
+
+   const handleResetFeatureTips = () => {
+      resetFeatureDiscoveryState();
+      setDismissedFeaturePrompts({});
+      setAppToast({
+         id: Date.now(),
+         type: 'success',
+         message: 'Feature tips reset.'
+      });
+   };
+
    const handleStartOnboarding = () => {
-      setIsSettingsOpen(false);
       setIsSettingsOpen(false);
       handleBackToMenu();
       setIsOnboardingTourOpen(true);
@@ -3228,6 +2974,33 @@ const App: React.FC = () => {
       setIncomingShareId(null);
    };
 
+   const syncDashboardState = deriveSyncDashboardState({
+      offlineMode: OFFLINE_ONLY_MODE,
+      isSignedIn: Boolean(user),
+      isLibraryLoaded,
+      isCloudLoading,
+      cloudSyncStatus,
+      cloudConflictCount: cloudConflicts.length,
+      dirtySetCount: dirtySetIdsRef.current.size,
+      hasPendingLocalLibraryChanges: hasPendingLocalLibraryChangesRef.current,
+      hasPendingLibrarySave: pendingLibrarySaveRef.current !== null,
+      hasPendingStructureChanges: structureChangedRef.current,
+      cloudSaveInFlight: cloudSaveInFlightRef.current,
+      syncInProgress: syncInProgressRef.current,
+      lastLocalFallbackAt
+   });
+   const syncNeedsAttention = !OFFLINE_ONLY_MODE && (
+      syncDashboardState.tone === 'error' ||
+      cloudConflicts.length > 0 ||
+      dirtySetIdsRef.current.size > 0 ||
+      pendingLibrarySaveRef.current !== null ||
+      structureChangedRef.current
+   );
+   const studySummaryFeaturePrompt = selectFeatureDiscoveryPrompt({
+      screen: 'study-summary',
+      dismissed: dismissedFeaturePrompts
+   });
+
    return (
       <div className="min-h-screen flex flex-col bg-bg text-text font-sans selection:bg-accent selection:text-bg transition-colors duration-300">
          {gameState === GameState.WIN && <Confetti />}
@@ -3235,7 +3008,6 @@ const App: React.FC = () => {
          <SettingsModal
             isOpen={isSettingsOpen}
             onClose={() => {
-               setIsSettingsOpen(false);
                setIsSettingsOpen(false);
             }}
             settings={settings}
@@ -3245,6 +3017,7 @@ const App: React.FC = () => {
             onExportData={handleExportData}
             onImportData={handleImportData}
             onResetSettings={handleResetSettings}
+            onResetFeatureTips={handleResetFeatureTips}
             onStartOnboarding={handleStartOnboarding}
             onCreateAlphabetSet={handleCreateAlphabetSet}
             librarySets={librarySets}
@@ -3311,33 +3084,21 @@ const App: React.FC = () => {
             onClose={() => setIsOfflineInfoOpen(false)}
          />
 
-         <PayloadImportModal
-            isOpen={isPayloadImportOpen}
-            onClose={() => setIsPayloadImportOpen(false)}
-            onChooseFile={() => payloadImportInputRef.current?.click()}
-            user={user}
-         />
-
-         <input
-            ref={payloadImportInputRef}
-            type="file"
-            className="hidden"
-            accept=".flashcardsishpayload,application/json,.json"
-            onChange={(event) => {
-               const file = event.target.files?.[0];
-               if (!file) return;
-               void handleImportPayload(file).catch((error) => {
-                  const message = error instanceof Error ? error.message : 'Could not import payload.';
-                  setAppToast({
-                     id: Date.now(),
-                     type: 'error',
-                     message
-                  });
-               }).finally(() => {
-                  if (payloadImportInputRef.current) {
-                     payloadImportInputRef.current.value = '';
-                  }
-               });
+         <SyncDashboardModal
+            isOpen={isSyncDashboardOpen}
+            onClose={() => setIsSyncDashboardOpen(false)}
+            state={syncDashboardState}
+            isSignedIn={Boolean(user)}
+            dirtySetCount={dirtySetIdsRef.current.size}
+            hasPendingLibrarySave={pendingLibrarySaveRef.current !== null}
+            hasPendingStructureChanges={structureChangedRef.current}
+            cloudConflictCount={cloudConflicts.length}
+            cloudSaveInFlight={cloudSaveInFlightRef.current}
+            syncInProgress={syncInProgressRef.current}
+            isCloudLoading={isCloudLoading}
+            onManualSync={() => {
+               setIsSyncDashboardOpen(false);
+               void handleManualCloudSync();
             }}
          />
 
@@ -3362,6 +3123,30 @@ const App: React.FC = () => {
                   >
                      <X size={16} />
                   </button>
+               </div>
+            </div>
+         )}
+         {pwaUpdateRegistration && (
+            <div className="fixed bottom-4 left-4 z-[120] max-w-sm animate-in fade-in slide-in-from-bottom-2 duration-200">
+               <div className="rounded-xl border border-accent/40 bg-panel px-4 py-3 shadow-2xl">
+                  <div className="text-sm font-bold text-text">Update ready</div>
+                  <div className="mt-1 text-sm text-muted">A fresh version of Flashcardsish is available.</div>
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                     <button
+                        type="button"
+                        onClick={() => setPwaUpdateRegistration(null)}
+                        className="rounded-lg border border-outline bg-panel-2 px-3 py-1.5 text-xs font-bold text-text hover:border-accent transition-colors"
+                     >
+                        Later
+                     </button>
+                     <button
+                        type="button"
+                        onClick={() => applyServiceWorkerUpdate(pwaUpdateRegistration)}
+                        className="rounded-lg bg-accent px-3 py-1.5 text-xs font-bold text-bg hover:bg-accent/90 transition-colors"
+                     >
+                        Reload
+                     </button>
+                  </div>
                </div>
             </div>
          )}
@@ -3552,6 +3337,32 @@ const App: React.FC = () => {
                      </button>
                   )}
 
+                  <CursorTooltip
+                     content="Open sync and local fallback details."
+                     isEnabled={!settings.hideTooltips}
+                     tooltipClassName="w-64 max-w-[90vw]"
+                  >
+                     <button
+                        onClick={() => setIsSyncDashboardOpen(true)}
+                        className={clsx(
+                           "flex items-center justify-center p-2 rounded-lg border transition-all",
+                           syncDashboardState.tone === 'error'
+                              ? "border-red/40 text-red hover:border-red"
+                              : syncDashboardState.tone === 'warning'
+                                 ? "border-yellow/40 text-yellow hover:border-yellow"
+                                 : syncDashboardState.tone === 'busy'
+                                    ? "border-yellow/40 text-yellow"
+                                    : syncDashboardState.tone === 'success'
+                                       ? "border-green/40 text-green hover:border-green"
+                                       : "border-outline text-muted hover:text-text hover:border-accent"
+                        )}
+                        aria-label="Open sync dashboard"
+                        title="Sync dashboard"
+                     >
+                        <Cloud size={14} />
+                     </button>
+                  </CursorTooltip>
+
                   <button
                      onClick={() => {
                         setSettingsInitialTab('set');
@@ -3710,7 +3521,12 @@ const App: React.FC = () => {
                   onStartOnboardingTour={handleStartOnboarding}
                   isAuthLoading={isAuthLoading}
                   signedInUserName={user?.name || user?.email?.split('@')[0] || null}
+                  isSignedIn={Boolean(user)}
                   offlineMode={OFFLINE_ONLY_MODE}
+                  syncNeedsAttention={syncNeedsAttention}
+                  dismissedFeaturePrompts={dismissedFeaturePrompts}
+                  onDismissFeaturePrompt={handleDismissFeaturePrompt}
+                  onOpenSyncDashboard={() => setIsSyncDashboardOpen(true)}
                />
             )}
 
@@ -3723,9 +3539,13 @@ const App: React.FC = () => {
                   onStartFlashcards={handleStartFlashcardsFromDetail}
                   onStartSRS={handleStartSRSFromDetail}
                   onStartExam={handleStartExamFromDetail}
+                  onStudyStarred={handleStudyStarredFromDetail}
+                  onOpenKeybinds={() => setIsKeybindsModalOpen(true)}
                   onUpdateSet={handleUpdateLibrarySet}
                   tags={tags}
                   canShare={!OFFLINE_ONLY_MODE}
+                  dismissedFeaturePrompts={dismissedFeaturePrompts}
+                  onDismissFeaturePrompt={handleDismissFeaturePrompt}
                   onEdit={() => {
                      // Set the edit request and go back to menu
                      setEditRequestSetId(detailSet.id);
@@ -3809,6 +3629,18 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex w-full max-w-lg flex-col gap-4 px-6">
+                     <FeatureNudge
+                        prompt={studySummaryFeaturePrompt}
+                        onAction={() => {
+                           if (!studySummaryFeaturePrompt) return;
+                           handleDismissFeaturePrompt(studySummaryFeaturePrompt.id);
+                           handleRestart();
+                        }}
+                        onDismiss={() => {
+                           if (studySummaryFeaturePrompt) handleDismissFeaturePrompt(studySummaryFeaturePrompt.id);
+                        }}
+                     />
+
                      <button
                         onClick={handleRestart}
                         className="w-full bg-panel-2 border border-outline text-text px-6 py-4 rounded-xl font-bold text-lg hover:border-accent transition-all shadow-sm flex items-center justify-center gap-2"
@@ -3844,42 +3676,18 @@ const App: React.FC = () => {
             )}
          </main>
 
-         {OFFLINE_ONLY_MODE ? (
+         {!OFFLINE_ONLY_MODE && isHomeScreenActive && gameState === GameState.MENU ? (
             <button
                type="button"
-               onClick={handleCreatePayload}
-               className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border border-yellow/40 bg-yellow px-4 py-3 text-sm font-medium text-bg shadow-2xl transition-all hover:-translate-y-0.5 hover:bg-yellow/90 focus:outline-none focus:ring-2 focus:ring-yellow/60"
-               aria-label="Create offline payload"
-               title="Create offline payload"
+               data-tally-open="A7dV60"
+               data-tally-auto-close="1000"
+               className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full border border-outline bg-panel px-4 py-3 text-sm font-bold text-text shadow-2xl transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
+               aria-label="Open feedback form"
+               title="Send feedback"
             >
-               <Download size={16} />
-               <span>Create Payload</span>
+               <MessageSquare size={16} />
+               <span>Feedback</span>
             </button>
-         ) : isHomeScreenActive && gameState === GameState.MENU ? (
-            <div className="fixed bottom-6 right-6 z-40 flex items-center gap-3">
-               <button
-                  type="button"
-                  onClick={() => setIsPayloadImportOpen(true)}
-                  className="flex items-center gap-2 rounded-full border border-yellow/40 bg-yellow px-4 py-3 text-sm font-medium text-bg shadow-2xl transition-all hover:-translate-y-0.5 hover:bg-yellow/90 focus:outline-none focus:ring-2 focus:ring-yellow/60"
-                  aria-label="Import offline payload"
-                  title="Import offline payload"
-               >
-                  <Upload size={16} />
-                  <span>Payload</span>
-               </button>
-
-               <button
-                  type="button"
-                  data-tally-open="A7dV60"
-                  data-tally-auto-close="1000"
-                  className="flex items-center gap-2 rounded-full border border-outline bg-panel px-4 py-3 text-sm font-bold text-text shadow-2xl transition-all hover:-translate-y-0.5 hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-accent/60"
-                  aria-label="Open feedback form"
-                  title="Send feedback"
-               >
-                  <MessageSquare size={16} />
-                  <span>Feedback</span>
-               </button>
-            </div>
          ) : null}
 
          <footer className="py-6 text-center text-muted text-sm border-t border-outline bg-panel-2/50">

@@ -22,6 +22,8 @@ const resolveConfigValue = (...values: unknown[]): string => {
 };
 
 const firebaseConfig = {
+  // Firebase web config is public browser configuration. Protect the project with
+  // Firebase security rules, App Check where appropriate, and restricted API keys.
   apiKey: resolveConfigValue(runtimeFirebaseConfig.apiKey, runtimeConfig.firebaseApiKey, import.meta.env.VITE_FIREBASE_API_KEY),
   authDomain: resolveConfigValue(runtimeFirebaseConfig.authDomain, runtimeConfig.firebaseAuthDomain, import.meta.env.VITE_FIREBASE_AUTH_DOMAIN),
   projectId: resolveConfigValue(runtimeFirebaseConfig.projectId, runtimeConfig.firebaseProjectId, import.meta.env.VITE_FIREBASE_PROJECT_ID),

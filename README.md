@@ -42,14 +42,9 @@ Offline-only mode keeps the normal Flashcardsish interface and study flow, but s
 
 This is the recommended local path for most people. It does not require Google credentials and avoids the old local boot issues caused by cloud setup expectations.
 
-Offline-only mode includes payload handoff for moving your local snapshot back into the hosted app:
+## **Public Browser Configuration**
 
-1. In the offline build, click `Create Payload`.
-2. Open the hosted app and go to the home screen.
-3. Click the yellow `Payload` button next to `Feedback`.
-4. Upload the `.flashcardsishpayload` file to merge your offline work into the hosted library.
-
-Payload import is merge-first. Existing hosted sets stay in place, payload-only sets are added, and matching sets are merged without intentionally wiping unrelated content.
+The hosted app uses browser-exposed Google OAuth, Google Drive, and Firebase configuration. These values are public identifiers, not server-side secrets. If you self-host Flashcardsish with your own Google or Firebase project, restrict browser API keys by allowed origins and APIs, configure OAuth authorized JavaScript origins, and rely on Firebase security rules for Firestore access control.
 
 # **Credits**
 

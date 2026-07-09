@@ -918,7 +918,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     <ul className="space-y-2 text-muted">
                         <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Standard:</strong> typed answer input with spelling forgiveness, retype-on-mistake, and answer checking across main and extra fields.</span></li>
                         <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Multiple Choice:</strong> option-based answering when you want less typing and faster pacing.</span></li>
-                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Random Choice:</strong> AI-assisted distractor generation for option sets. This depends on AI setup and is optional.</span></li>
+                        <li className="flex items-start gap-2"><ChevronRight size={14} className="text-accent shrink-0 mt-0.5" /><span><strong className="text-text">Random Choice:</strong> Flashcardsish can build option sets from the other answers already in your deck.</span></li>
                     </ul>
 
                     <h3 className="text-xl font-bold mt-8 mb-4">Important Study Settings</h3>
@@ -1076,7 +1076,7 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                     <div className="space-y-2 mt-8">
                         <h4 className="font-bold text-accent mb-2">Privacy Note</h4>
                         <p className="text-muted">
-                            Flashcardsish does not use ads or sell user data. Check the in-app Privacy Policy for exact storage, deletion, and third-party service details, especially if you use optional Google or AI-related features.
+                            Flashcardsish does not use ads or sell user data. Check the in-app Privacy Policy for exact storage, deletion, and third-party service details, especially if you use optional Google sync or sharing features.
                         </p>
                     </div>
                 </div>
@@ -1118,21 +1118,21 @@ export const Documentation: React.FC<DocumentationProps> = ({ onBack }) => {
                             </p>
                         </div>
                         <div className="border border-outline rounded-lg p-4 space-y-3">
-                            <h4 className="font-bold">Payload Handoff</h4>
+                            <h4 className="font-bold">Backup and Restore</h4>
                             <ol className="text-sm text-text space-y-2 list-decimal pl-5">
-                                <li>In the offline build, click <span className="text-yellow font-medium">Create Payload</span>.</li>
-                                <li>Open the hosted app and go to the home screen.</li>
-                                <li>Click the yellow <span className="text-yellow font-medium">Payload</span> button next to <span className="font-medium text-text">Feedback</span>.</li>
-                                <li>Upload the `.flashcardsishpayload` file to merge your offline work into the hosted library.</li>
+                                <li>Open Settings.</li>
+                                <li>Go to Global Settings.</li>
+                                <li>Use Export Data to download a full JSON backup.</li>
+                                <li>Use Restore Backup from the same area when you need to bring that snapshot back.</li>
                             </ol>
                             <p className="text-sm text-muted">
-                                Best when you want to move an offline-only machine snapshot back into the hosted version without manually rebuilding anything or clearing your current library.
+                                Best when you want a portable copy of your sets, folders, tags, settings, and progress without relying on cloud sync.
                             </p>
                         </div>
                     </div>
 
                     <p className="text-muted">
-                        Offline-only mode keeps the main app feel intact while separating local storage from the hosted app. Payload files let you bring those offline changes back through the home screen without replacing unrelated hosted sets.
+                        Offline-only mode keeps the main app feel intact while separating local storage from the hosted app. Use full backups when you want to move or preserve that local data.
                     </p>
 
                     <div className="grid md:grid-cols-2 gap-4">

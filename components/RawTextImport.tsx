@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { generateId } from '../utils';
 import { Card, Settings } from '../types';
 import clsx from 'clsx';
 import { ArrowLeft, ArrowRight, AlertCircle, Check, X, ChevronDown } from 'lucide-react';
 import { CursorTooltip } from './CursorTooltip';
 import { CardPreview } from './CardPreview';
+import { COMMON_CARD_SEPARATORS, COMMON_TERM_DEFINITION_SEPARATORS, parseRawImportCards } from '../src/rawImport';
 
 interface RawTextImportProps {
     onClose: () => void; // Modal close logic ("Leave without saving" or just back)
@@ -15,9 +15,6 @@ interface RawTextImportProps {
     settings?: Settings;
     isModal?: boolean;
 }
-
-const COMMON_TERM_DEF = ['/', ':', '-'];
-const COMMON_CARD = ['\\n\\n', '&&&', ';;;'];
 
 export const RawTextImport: React.FC<RawTextImportProps> = ({
     onClose,
@@ -67,71 +64,15 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
     const parsedCards = useMemo(() => {
         if (!rawText.trim()) return [];
 
-        const result: Partial<Card>[] = [];
-
-        // Resolve separators
-        // Handle escaped newline sequence for card separator if user typed "\n\n"
         const resolvedCardSep = (isCustomCardSep ? customCardSep : cardSep).replace(/\\n/g, '\n');
         const resolvedTermDefSep = isCustomTermDef ? customTermDef : termDefSep;
 
-        if (!resolvedCardSep || !resolvedTermDefSep) return [];
-
-        const rawCards = rawText.split(resolvedCardSep);
-
-        rawCards.forEach(rawCard => {
-            const trimmedCard = rawCard.trim();
-            if (!trimmedCard) return;
-
-            // Bullet Point Logic (Chunk Mode): Append to previous card if marker matches start of chunk
-            if (useBulletMarker && bulletMarker && trimmedCard.startsWith(bulletMarker)) {
-                if (result.length > 0) {
-                    const prevCard = result[result.length - 1];
-                    const bulletContent = trimmedCard.slice(bulletMarker.length).trim();
-
-                    if (prevCard.content) {
-                        prevCard.content += `\n- ${bulletContent}`;
-                    } else {
-                        prevCard.content = `- ${bulletContent}`;
-                    }
-                    return;
-                }
-            }
-
-            let term = '';
-            let def = '';
-
-            // Split Term and Rest
-            const parts = rawCard.split(resolvedTermDefSep);
-            if (parts.length > 0) {
-                term = parts[0].trim();
-                const rest = parts.slice(1).join(resolvedTermDefSep).trim();
-                def = rest;
-            }
-
-            // Bullet Point Logic (Inline Mode): Check inside definition for lines starting with marker
-            if (useBulletMarker && bulletMarker && def) {
-                def = def.split('\n').map(line => {
-                    const trimmedLine = line.trim();
-                    if (trimmedLine.startsWith(bulletMarker)) {
-                        return '- ' + trimmedLine.slice(bulletMarker.length).trim();
-                    }
-                    return line;
-                }).join('\n');
-            }
-
-            if (term || def) {
-                result.push({
-                    term: [term], // Card type uses array for terms sometimes? check type def. 
-                    // Wait, Card definition says term: string[]
-                    content: def,
-                    id: generateId(),
-                    mastery: 0,
-                    star: false
-                });
-            }
+        return parseRawImportCards(rawText, {
+            termDefinitionSeparator: resolvedTermDefSep,
+            cardSeparator: resolvedCardSep,
+            useBulletMarker,
+            bulletMarker
         });
-
-        return result;
     }, [rawText, termDefSep, customTermDef, isCustomTermDef, cardSep, customCardSep, isCustomCardSep, bulletMarker, useBulletMarker]);
 
 
@@ -301,7 +242,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
                             {renderRadioGroup(
                                 "Between Term & Definition",
-                                COMMON_TERM_DEF,
+                                COMMON_TERM_DEFINITION_SEPARATORS,
                                 termDefSep,
                                 setTermDefSep,
                                 isCustomTermDef,
@@ -312,7 +253,7 @@ export const RawTextImport: React.FC<RawTextImportProps> = ({
 
                             {renderRadioGroup(
                                 "Between Cards",
-                                COMMON_CARD,
+                                COMMON_CARD_SEPARATORS,
                                 cardSep,
                                 setCardSep,
                                 isCustomCardSep,

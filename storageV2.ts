@@ -78,13 +78,13 @@ const createStorageId = (prefix: string): string => {
     return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 };
 
-const getSafeStorageId = (id: unknown): string | null => {
+export const getSafeStorageId = (id: unknown): string | null => {
     if (typeof id !== 'string') return null;
     const trimmed = id.trim();
     return SAFE_STORAGE_ID_RE.test(trimmed) ? trimmed : null;
 };
 
-const normalizeStorageId = (id: unknown, prefix: string): string =>
+export const normalizeStorageId = (id: unknown, prefix: string): string =>
     getSafeStorageId(id) ?? createStorageId(prefix);
 
 // ============================================================================
@@ -1473,7 +1473,7 @@ export const createCloudSafetyBackupIfNeeded = async (): Promise<void> => {
         }
 
         const nowIso = new Date().toISOString();
-        const backupPayload = {
+        const backupData = {
             version: 'flashcardsish-cloud-backup-v1',
             createdAt: nowIso,
             config,
@@ -1481,7 +1481,7 @@ export const createCloudSafetyBackupIfNeeded = async (): Promise<void> => {
             library_sets: librarySets
         };
         const filename = `cloud-backup-${nowIso.replace(/[:.]/g, '-')}.json`;
-        await googleDrive.writeFile(backupsFolderId, filename, JSON.stringify(backupPayload, null, 2), { ignoreConflicts: true });
+        await googleDrive.writeFile(backupsFolderId, filename, JSON.stringify(backupData, null, 2), { ignoreConflicts: true });
         localStorage.setItem(CLOUD_BACKUP_LAST_AT_KEY, Date.now().toString());
 
         // Keep only the newest N backups.

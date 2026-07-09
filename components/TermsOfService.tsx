@@ -53,7 +53,6 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                         <h3 className="text-lg font-bold text-text mb-2">3. Eligibility</h3>
                         <ul className="list-disc pl-5 my-2 space-y-1">
                             <li>General use: 16 years or older</li>
-                            <li>AI-related features: 18 years or older</li>
                         </ul>
                         <p>By using the Service, you confirm that you meet these requirements.</p>
                     </section>
@@ -103,16 +102,14 @@ export const TermsOfServiceModal: React.FC<TermsOfServiceModalProps> = ({ isOpen
                     </section>
 
                     <section>
-                        <h3 className="text-lg font-bold text-text mb-2">8. Developer API & AI Features</h3>
-                        <p>Optional AI features are powered by Google Cloud Vertex AI. These features allow you to use your own Google Cloud projects and API keys. By using these features, you confirm that:</p>
+                        <h3 className="text-lg font-bold text-text mb-2">8. Public Browser Configuration</h3>
+                        <p>Flashcardsish uses browser-exposed Google and Firebase configuration for sign-in, Drive sync, image access, and temporary shared-set snapshots. Browser client IDs and browser API keys are public identifiers, not secret server credentials.</p>
                         <ul className="list-disc pl-5 my-2 space-y-1">
-                            <li>You are 18 years or older</li>
-                            <li>You are authorized to use the keys and projects you provide</li>
-                            <li>You comply with third-party terms</li>
-                            <li>You assume all responsibility for generated content</li>
-                            <li>You are solely responsible for your own Google Cloud billing and usage</li>
+                            <li>Google OAuth access is still controlled by Google consent and scopes</li>
+                            <li>Google Drive access is limited to files created by Flashcardsish</li>
+                            <li>Firebase access must be protected by Firebase security rules</li>
+                            <li>Self-hosted copies should restrict browser API keys by origin and API</li>
                         </ul>
-                        <p className="mt-2 italic">AI output may be inaccurate or inappropriate. You use it at your own risk.</p>
                     </section>
 
                     <section>

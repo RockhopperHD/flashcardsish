@@ -9,6 +9,9 @@ declare global {
     }
 }
 
+// Browser OAuth client IDs and browser API keys are public identifiers, not secrets.
+// Keep the configured Google Cloud credentials restricted by origin, API, and OAuth
+// authorized JavaScript origins in Google Cloud Console.
 const FALLBACK_GOOGLE_CLIENT_ID = '108421532744-dcb911h9go7p3abunl0qe3jkd32v61c3.apps.googleusercontent.com';
 const FALLBACK_GOOGLE_API_KEY = 'AIzaSyCw87RLNiLF5MAo2JIpbmkX7nGfz7vhJuA';
 const runtimeConfig = (globalThis as any).__FLASHCARDSISH_CONFIG__ ?? {};
@@ -176,7 +179,7 @@ class GoogleDriveClient {
 
     private validateDriveConfig(): void {
         if (!API_KEY) {
-            throw new Error('Google API key is missing. Set VITE_GOOGLE_API_KEY.');
+            throw new Error('Google browser API key is missing. Set VITE_GOOGLE_API_KEY with an origin-restricted key.');
         }
     }
 

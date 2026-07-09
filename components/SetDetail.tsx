@@ -9,6 +9,13 @@ import { CardPreview } from './CardPreview';
 import { getSrsCounts, isSrsCardDue } from '../srs';
 import { normalizeCardMastery } from '../cardNormalization';
 import { SrsTriangle } from './SrsTriangle';
+import { FeatureNudge } from './FeatureNudge';
+import {
+    DismissedFeaturePrompts,
+    FeatureDiscoveryPrompt,
+    FeatureDiscoveryPromptId,
+    selectFeatureDiscoveryPrompt
+} from '../src/featureDiscovery';
 
 interface SetDetailProps {
     set: CardSet;
@@ -18,12 +25,16 @@ interface SetDetailProps {
     onStartFlashcards: () => void;
     onStartSRS: () => void;
     onStartExam: () => void;
+    onStudyStarred: () => void;
+    onOpenKeybinds: () => void;
     onUpdateSet: (set: CardSet) => void;
     onEdit: () => void;
     onDuplicate: () => void;
     onDelete: () => void;
     tags: Tag[]; // Global tag definitions
     canShare?: boolean;
+    dismissedFeaturePrompts?: DismissedFeaturePrompts;
+    onDismissFeaturePrompt?: (id: FeatureDiscoveryPromptId) => void;
 }
 
 // Mode Button Component
@@ -153,12 +164,16 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     onStartFlashcards,
     onStartSRS,
     onStartExam,
+    onStudyStarred,
+    onOpenKeybinds,
     onUpdateSet,
     onEdit,
     onDuplicate,
     onDelete,
     tags,
-    canShare = true
+    canShare = true,
+    dismissedFeaturePrompts,
+    onDismissFeaturePrompt
 }) => {
     const [deleteConfirm, setDeleteConfirm] = useState(false);
     const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -204,6 +219,33 @@ export const SetDetail: React.FC<SetDetailProps> = ({
     const hasActiveLearnSession = Boolean(set.isSessionActive && !set.srsSessionStats && !set.flashcardsSessionStats);
     const srsCounts = React.useMemo(() => getSrsCounts(set.cards), [set.cards]);
     const srsDueCount = React.useMemo(() => set.cards.filter(card => isSrsCardDue(card)).length, [set.cards]);
+    const featureDiscoveryPrompt = React.useMemo(
+        () => selectFeatureDiscoveryPrompt({
+            screen: 'set-detail',
+            currentSet: set,
+            settings,
+            dismissed: dismissedFeaturePrompts
+        }),
+        [set, settings, dismissedFeaturePrompts]
+    );
+
+    const handleFeaturePromptAction = (prompt: FeatureDiscoveryPrompt) => {
+        onDismissFeaturePrompt?.(prompt.id);
+
+        switch (prompt.action) {
+            case 'start-srs':
+                onStartSRS();
+                break;
+            case 'study-starred':
+                onStudyStarred();
+                break;
+            case 'open-keybinds':
+                onOpenKeybinds();
+                break;
+            default:
+                break;
+        }
+    };
 
     const getCardKey = (card: Card): string => {
         if (set.isMultistudy && card.originalSetId) return `${card.originalSetId}::${card.id}`;
@@ -413,6 +455,15 @@ export const SetDetail: React.FC<SetDetailProps> = ({
                 <div className="mb-6 p-3 bg-red/10 border border-red/30 rounded-xl text-sm text-red">
                     {shareError ?? 'Failed to create share link. Please try again.'}
                 </div>
+            )}
+
+            {featureDiscoveryPrompt && (
+                <FeatureNudge
+                    prompt={featureDiscoveryPrompt}
+                    className="mb-6"
+                    onAction={() => handleFeaturePromptAction(featureDiscoveryPrompt)}
+                    onDismiss={() => onDismissFeaturePrompt?.(featureDiscoveryPrompt.id)}
+                />
             )}
 
             {/* Modes Grid */}

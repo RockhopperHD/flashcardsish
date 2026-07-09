@@ -103,15 +103,15 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
                         </div>
 
                         <div className="mb-4">
-                            <h4 className="font-bold mb-1">3.5 Developer API Keys (Optional Features)</h4>
-                            <p>Some optional features allow you to supply your own third-party API keys and project IDs (for example, Google Cloud Vertex AI). When using a Bring Your Own Key (BYOK) model, data is processed directly via your specified Google Cloud project.</p>
+                            <h4 className="font-bold mb-1">3.5 Public Browser Configuration</h4>
+                            <p>Flashcardsish uses Google and Firebase browser configuration for sign-in, Drive sync, image access, and shared-set snapshots. Browser client IDs and browser API keys are public identifiers, not secret server credentials.</p>
                             <ul className="list-disc pl-5 my-2 space-y-1">
-                                <li>API credentials are entered by you</li>
-                                <li>They are processed only within your browser</li>
-                                <li>They are sent directly to the third-party provider</li>
-                                <li>Flashcardsish does not log, store, or transmit these keys to any first-party server</li>
+                                <li>Google OAuth access still requires user consent</li>
+                                <li>Google Drive access uses the limited drive.file scope</li>
+                                <li>Firebase shared snapshots are temporary and link-accessible</li>
+                                <li>Self-hosted copies should restrict browser API keys by origin and API</li>
                             </ul>
-                            <p>You are solely responsible for how you use third-party APIs and for complying with their terms. Your usage is subject to the Google Cloud Privacy Notice.</p>
+                            <p>Project security depends on Google Cloud restrictions and Firebase security rules, not on hiding browser configuration values.</p>
                         </div>
 
                         <div>
@@ -176,7 +176,7 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({ isOpen, 
 
                     <section>
                         <h3 className="text-lg font-bold text-text mb-2">10. Children's Privacy</h3>
-                        <p>The Service is intended for users 16 years and older. AI-related features require users to be 18 years or older.</p>
+                        <p>The Service is intended for users 16 years and older.</p>
                         <p className="mt-2">We do not knowingly collect personal information from children under 16. If such data is discovered, it will be deleted.</p>
                     </section>
 

@@ -126,8 +126,6 @@ export interface Settings {
   shuffleCards: boolean; // Shuffle cards in Learn mode (default true)
   brutalMode: boolean; // Zen mode: if wrong at 1/2 mastery, reset to 0/2 (default false)
   autoCloseImageWindow?: boolean; // Automatically close image window on paste (default false)
-  // AI Features
-  // AI Features
   learnModeLeftKey1?: string; // Primary key for Left/Option A/True (default 'a')
   learnModeLeftKey2?: string; // Secondary key for Left/Option A/True (default 'ArrowLeft')
   learnModeRightKey1?: string; // Primary key for Right/Option B/False (default 'b')

@@ -83,6 +83,13 @@ import { sanitizeStrings } from "../storageV2";
 import { getSrsCounts, isSrsCardDue } from "../srs";
 import { SrsTriangle } from "./SrsTriangle";
 import { STORAGE_NAMESPACE_SUFFIX } from "../runtimeMode";
+import { FeatureNudge } from "./FeatureNudge";
+import {
+  DismissedFeaturePrompts,
+  FeatureDiscoveryPrompt,
+  FeatureDiscoveryPromptId,
+  selectFeatureDiscoveryPrompt,
+} from "../src/featureDiscovery";
 
 interface StartMenuProps {
   librarySets: CardSet[];
@@ -116,7 +123,12 @@ interface StartMenuProps {
   onStartOnboardingTour?: () => void;
   isAuthLoading?: boolean;
   signedInUserName?: string | null;
+  isSignedIn?: boolean;
   offlineMode?: boolean;
+  syncNeedsAttention?: boolean;
+  dismissedFeaturePrompts?: DismissedFeaturePrompts;
+  onDismissFeaturePrompt?: (id: FeatureDiscoveryPromptId) => void;
+  onOpenSyncDashboard?: () => void;
 }
 
 interface BuilderRow {
@@ -2676,7 +2688,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onStartOnboardingTour,
   isAuthLoading = false,
   signedInUserName,
+  isSignedIn = false,
   offlineMode = false,
+  syncNeedsAttention = false,
+  dismissedFeaturePrompts,
+  onDismissFeaturePrompt,
+  onOpenSyncDashboard,
 }) => {
   const topAnchorRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<"menu" | "builder" | "raw-text">("menu");
@@ -3779,6 +3796,59 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     day: "numeric",
     year: "numeric",
   });
+  const builderCompleteCardCount = builderRows.filter((row) => row.term.trim() && row.def.trim()).length;
+  const builderHasContent = builderRows.some((row) => row.term.trim() || row.def.trim()) || rawText.trim().length > 0;
+  const suppressMenuDiscovery =
+    showDraftRecoveryBanner ||
+    (showOnboardingPromptBanner && !hasCompletedOnboarding && !isAuthLoading) ||
+    selectedSetIds.size > 0 ||
+    Boolean(movingSetId) ||
+    isCreatingFolder ||
+    Boolean(currentFolderId) ||
+    librarySearchQuery.trim().length > 0 ||
+    Boolean(activeLibraryTagFilter);
+  const featureDiscoveryPrompt = useMemo(
+    () => {
+      if (view === "builder") {
+        return selectFeatureDiscoveryPrompt({
+          screen: "builder",
+          builderCardCount: builderCompleteCardCount,
+          builderHasContent,
+          dismissed: dismissedFeaturePrompts
+        });
+      }
+
+      if (view === "menu" && !suppressMenuDiscovery) {
+        return selectFeatureDiscoveryPrompt({
+          screen: "menu",
+          librarySets,
+          folders,
+          tags,
+          hasCompletedOnboarding,
+          isSignedIn,
+          offlineMode,
+          syncNeedsAttention,
+          dismissed: dismissedFeaturePrompts
+        });
+      }
+
+      return null;
+    },
+    [
+      view,
+      builderCompleteCardCount,
+      builderHasContent,
+      dismissedFeaturePrompts,
+      suppressMenuDiscovery,
+      librarySets,
+      folders,
+      tags,
+      hasCompletedOnboarding,
+      isSignedIn,
+      offlineMode,
+      syncNeedsAttention
+    ]
+  );
 
   // Persist builder rows only in visual mode
   useEffect(() => {
@@ -3875,6 +3945,40 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setSetName(defaultName);
 
     setView("raw-text");
+  };
+
+  const handleFeaturePromptAction = (prompt: FeatureDiscoveryPrompt) => {
+    onDismissFeaturePrompt?.(prompt.id);
+
+    switch (prompt.action) {
+      case "open-raw-import":
+        startRawImport();
+        break;
+      case "open-markdown-help":
+        setShowMarkdownHelp(true);
+        break;
+      case "select-multistudy": {
+        const candidates = [...displayedSets, ...displayedLocalSets]
+          .filter((set) => !set.isMultistudy && set.cards.length > 0)
+          .slice(0, 2);
+        if (candidates.length >= 2) {
+          setSelectedSetIds(new Set(candidates.map((set) => set.id)));
+        }
+        break;
+      }
+      case "open-organizer":
+        if (folders.length === 0) {
+          handleCreateFolder();
+        } else {
+          onOpenSettings?.();
+        }
+        break;
+      case "open-sync":
+        onOpenSyncDashboard?.();
+        break;
+      default:
+        break;
+    }
   };
 
   const handleCreateNew = () => {
@@ -5114,6 +5218,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
             )}
 
+            {featureDiscoveryPrompt?.screen === "menu" && (
+              <FeatureNudge
+                prompt={featureDiscoveryPrompt}
+                className="mb-6"
+                onAction={() => handleFeaturePromptAction(featureDiscoveryPrompt)}
+                onDismiss={() => onDismissFeaturePrompt?.(featureDiscoveryPrompt.id)}
+              />
+            )}
+
             {/* ONGOING SESSIONS */}
             {!currentFolderId && ongoingSessions.length > 0 && (
               <div className="mb-8">
@@ -6169,6 +6282,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             <p className="text-sm text-text leading-relaxed max-w-4xl">
               Build your set here. Use markdown for formatting, drag handles to reorder cards, and card actions to star, duplicate, or swap content. Open Set Configuration to rename labels, add year/custom fields, and tune import behavior.
             </p>
+
+            {featureDiscoveryPrompt?.screen === "builder" && (
+              <FeatureNudge
+                prompt={featureDiscoveryPrompt}
+                onAction={() => handleFeaturePromptAction(featureDiscoveryPrompt)}
+                onDismiss={() => onDismissFeaturePrompt?.(featureDiscoveryPrompt.id)}
+              />
+            )}
 
 
             {/* 1. Header Panel (Floating Container) */}

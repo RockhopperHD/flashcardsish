@@ -1,5 +1,6 @@
-const STATIC_CACHE = "flashcardsish-static-v1";
-const RUNTIME_CACHE = "flashcardsish-runtime-v1";
+const CACHE_VERSION = "v2";
+const STATIC_CACHE = `flashcardsish-static-${CACHE_VERSION}`;
+const RUNTIME_CACHE = `flashcardsish-runtime-${CACHE_VERSION}`;
 const STATIC_ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/images/tudio.png"];
 
 self.addEventListener("install", (event) => {
@@ -20,6 +21,12 @@ self.addEventListener("activate", (event) => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

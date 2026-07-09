@@ -313,8 +313,6 @@ export const saveDirtySets = async (
     try {
         const conflicts: string[] = [];
         const conflictDetails: CloudConflictDetail[] = [];
-        console.log(`[Storage V3] Saving ${dirtySets.length} dirty sets to Google Drive...`);
-
         // Write only the dirty sets
         for (const cardSet of dirtySets) {
             try {
@@ -389,7 +387,6 @@ export const saveDirtySets = async (
             await storageV2.writeStructure(structure);
         }
 
-        console.log(`[Storage V3] Successfully saved ${savedSetIds.length} dirty sets to Google Drive`);
         return { success: true, savedToCloud: true, savedSetIds };
     } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
