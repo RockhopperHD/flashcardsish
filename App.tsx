@@ -184,21 +184,24 @@ const SyncDashboardModal: React.FC<{
 }) => {
    if (!isOpen) return null;
 
-   const toneClassName = {
-      idle: 'border-outline text-muted',
-      busy: 'border-yellow/40 text-yellow',
-      success: 'border-green/40 text-green',
-      warning: 'border-yellow/40 text-yellow',
-      error: 'border-red/40 text-red'
+   const toneTextClassName = {
+      idle: 'text-muted',
+      busy: 'text-yellow',
+      success: 'text-green',
+      warning: 'text-yellow',
+      error: 'text-red'
    }[state.tone];
+   const structureLabel = hasPendingStructureChanges ? 'Pending' : 'Clean';
+   const cloudActivityLabel = syncInProgress || isCloudLoading ? 'running' : 'idle';
+   const cloudSaveLabel = cloudSaveInFlight ? 'running' : 'idle';
 
    return (
       <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in p-4" onMouseDown={onClose}>
          <div
-            className="w-full max-w-xl rounded-2xl border border-outline bg-panel p-6 shadow-2xl animate-in zoom-in-95"
+            className="w-full max-w-3xl rounded-2xl border border-outline bg-panel shadow-2xl animate-in zoom-in-95 overflow-hidden"
             onMouseDown={(event) => event.stopPropagation()}
          >
-            <div className="flex items-start justify-between gap-4 border-b border-outline pb-4">
+            <div className="flex items-start justify-between gap-4 border-b border-outline px-6 py-5">
                <div>
                   <h2 className="text-2xl text-text" style={{ fontFamily: "'Red Hat Display', sans-serif", fontWeight: 800 }}>
                      Sync Dashboard
@@ -210,53 +213,61 @@ const SyncDashboardModal: React.FC<{
                </button>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-               <div className="rounded-xl border border-outline bg-panel-2 p-4">
-                  <div className="text-xs font-bold uppercase tracking-widest text-muted">Mode</div>
-                  <div className="mt-2 text-lg font-bold text-text">{state.modeLabel}</div>
-                  <div className="mt-1 text-sm text-muted">{isSignedIn ? 'Signed in' : 'Not signed in'}</div>
+            <div className="px-6 py-5">
+               <div className="grid gap-5 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                  <div className="min-w-0">
+                     <div className="text-xs font-bold uppercase tracking-widest text-muted">Mode</div>
+                     <div className="mt-2 text-2xl font-bold text-text">{state.modeLabel}</div>
+                     <div className="mt-1 text-sm text-muted">{isSignedIn ? 'Signed in' : 'Not signed in'}</div>
+                  </div>
+                  <div className="min-w-0 border-t border-outline pt-5 md:border-l md:border-t-0 md:pl-5 md:pt-0">
+                     <div className={`text-xs font-bold uppercase tracking-widest ${toneTextClassName}`}>Status</div>
+                     <div className={`mt-2 text-2xl font-bold ${toneTextClassName}`}>{state.statusLabel}</div>
+                     <div className="mt-1 text-sm text-muted">{state.pendingLocalChanges ? 'Local fallback active' : 'No local queue'}</div>
+                  </div>
                </div>
-               <div className={`rounded-xl border bg-panel-2 p-4 ${toneClassName}`}>
-                  <div className="text-xs font-bold uppercase tracking-widest opacity-80">Status</div>
-                  <div className="mt-2 text-lg font-bold">{state.statusLabel}</div>
-                  <div className="mt-1 text-sm opacity-80">{state.pendingLocalChanges ? 'Local fallback active' : 'No local queue'}</div>
-               </div>
-               <div className="rounded-xl border border-outline bg-panel-2 p-4">
+            </div>
+
+            <div className="grid grid-cols-1 border-y border-outline sm:grid-cols-3 sm:divide-x sm:divide-outline">
+               <div className="px-6 py-4">
                   <div className="text-xs font-bold uppercase tracking-widest text-muted">Pending Sets</div>
-                  <div className="mt-2 text-2xl font-bold text-text">{dirtySetCount}</div>
+                  <div className="mt-2 text-3xl font-bold text-text">{dirtySetCount}</div>
                   <div className="mt-1 text-sm text-muted">{hasPendingLibrarySave ? 'Library save queued' : 'No library save queued'}</div>
                </div>
-               <div className="rounded-xl border border-outline bg-panel-2 p-4">
+               <div className="border-t border-outline px-6 py-4 sm:border-t-0">
                   <div className="text-xs font-bold uppercase tracking-widest text-muted">Structure</div>
-                  <div className="mt-2 text-lg font-bold text-text">{hasPendingStructureChanges ? 'Pending' : 'Clean'}</div>
+                  <div className="mt-2 text-2xl font-bold text-text">{structureLabel}</div>
                   <div className="mt-1 text-sm text-muted">{cloudConflictCount} cloud conflict{cloudConflictCount === 1 ? '' : 's'}</div>
                </div>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-outline bg-panel-2 p-4 text-sm text-text">
-               <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                  <span>Cloud save: <strong>{cloudSaveInFlight ? 'running' : 'idle'}</strong></span>
-                  <span>Cloud pull: <strong>{syncInProgress || isCloudLoading ? 'running' : 'idle'}</strong></span>
+               <div className="border-t border-outline px-6 py-4 sm:border-t-0">
+                  <div className="text-xs font-bold uppercase tracking-widest text-muted">Fallback</div>
+                  <div className="mt-2 text-sm font-bold text-text">Last local save</div>
+                  <div className="mt-1 text-sm text-muted">{state.lastLocalFallbackLabel}</div>
                </div>
-               <div className="mt-2 text-muted">Last local fallback: {state.lastLocalFallbackLabel}</div>
             </div>
 
-            <div className="mt-5 flex justify-end gap-3">
-               <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-xl border border-outline bg-panel-2 px-4 py-2 text-sm font-bold text-text hover:border-accent transition-colors"
-               >
-                  Close
-               </button>
-               <button
-                  type="button"
-                  onClick={onManualSync}
-                  disabled={!state.canManualSync}
-                  className="rounded-xl bg-accent px-4 py-2 text-sm font-bold text-bg hover:bg-accent/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-               >
-                  Sync Now
-               </button>
+            <div className="flex flex-col gap-3 px-6 py-5 text-sm text-text sm:flex-row sm:items-center sm:justify-between">
+               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <span>Cloud save: <strong>{cloudSaveLabel}</strong></span>
+                  <span>Cloud pull: <strong>{cloudActivityLabel}</strong></span>
+               </div>
+               <div className="flex justify-end gap-3">
+                  <button
+                     type="button"
+                     onClick={onClose}
+                     className="rounded-xl border border-outline px-4 py-2 text-sm font-bold text-text hover:border-accent hover:text-accent transition-colors"
+                  >
+                     Close
+                  </button>
+                  <button
+                     type="button"
+                     onClick={onManualSync}
+                     disabled={!state.canManualSync}
+                     className="rounded-xl bg-accent px-4 py-2 text-sm font-bold text-bg hover:bg-accent/90 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                     Sync Now
+                  </button>
+               </div>
             </div>
          </div>
       </div>
