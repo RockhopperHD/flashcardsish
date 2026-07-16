@@ -8,6 +8,7 @@ import { SetDetail } from './components/SetDetail';
 import { Confetti } from './components/Confetti';
 import { PrivacyPolicyModal } from './components/PrivacyPolicy';
 import { TermsOfServiceModal } from './components/TermsOfService';
+import { ChangelogModal } from './components/ChangelogModal';
 import { Documentation } from './components/Documentation';
 import { FlashcardsMode } from './components/FlashcardsMode';
 import { SRSMode } from './components/SRSMode';
@@ -1450,6 +1451,7 @@ const App: React.FC = () => {
 
    const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
    const [isTermsOpen, setIsTermsOpen] = useState(false);
+   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
    const [isKeybindsModalOpen, setIsKeybindsModalOpen] = useState(false);
    const [isOfflineInfoOpen, setIsOfflineInfoOpen] = useState(false);
    const [isSyncDashboardOpen, setIsSyncDashboardOpen] = useState(false);
@@ -3083,6 +3085,11 @@ const App: React.FC = () => {
             onClose={() => setIsTermsOpen(false)}
          />
 
+         <ChangelogModal
+            isOpen={isChangelogOpen}
+            onClose={() => setIsChangelogOpen(false)}
+         />
+
          <KeybindsModal
             isOpen={isKeybindsModalOpen}
             onClose={() => setIsKeybindsModalOpen(false)}
@@ -3711,6 +3718,13 @@ const App: React.FC = () => {
                   className="hover:text-accent hover:opacity-100 transition-all underline-offset-2 hover:underline"
                >
                   Privacy Policy
+               </button>
+               <span className="text-outline">&bull;</span>
+               <button
+                  onClick={() => setIsChangelogOpen(true)}
+                  className="hover:text-accent hover:opacity-100 transition-all underline-offset-2 hover:underline"
+               >
+                  Changelog
                </button>
                <span className="text-outline">&bull;</span>
                <button
